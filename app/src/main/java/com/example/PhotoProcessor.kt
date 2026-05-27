@@ -138,8 +138,8 @@ object PhotoProcessor {
                 paint.color = Color.parseColor("#E6111111")
                 canvas.drawRect(x, y, x + cardWidth, y + cardHeight, paint)
 
-                // High contrast copper highlight strip
-                paint.color = Color.parseColor("#C96A2B")
+                // High contrast action highlight strip (Electric blue)
+                paint.color = Color.parseColor("#1E5EFF")
                 val stripWidth = 8f
                 canvas.drawRect(x, y, x + stripWidth, y + cardHeight, paint)
 
@@ -154,7 +154,7 @@ object PhotoProcessor {
                 
                 // Line 1: Station Title
                 textPaint.textSize = (lineGap * 0.45f).coerceAtLeast(14f)
-                textPaint.color = Color.parseColor("#F5F3EE")
+                textPaint.color = Color.parseColor("#F4F1E8")
                 canvas.drawText(
                     "GEOFIELD PRO | NODE: $stationCode", 
                     x + stripWidth + 18f, 
@@ -164,7 +164,7 @@ object PhotoProcessor {
 
                 // Line 2: Lat/Lon Coords
                 textPaint.textSize = (lineGap * 0.38f).coerceAtLeast(11f)
-                textPaint.color = Color.parseColor("#C4C2BE")
+                textPaint.color = Color.parseColor("#D8D2C6")
                 canvas.drawText(
                     "WGS84 lat/lon: ${String.format(Locale.US, "%.6f°, %.6f°", lat, lon)}",
                     x + stripWidth + 18f,
@@ -172,8 +172,8 @@ object PhotoProcessor {
                     textPaint
                 )
 
-                // Line 3: UTM readings 
-                textPaint.color = Color.parseColor("#0A84FF") // Tech Blue
+                // Line 3: UTM readings (GPS_ACTIVE style #00A86B)
+                textPaint.color = Color.parseColor("#00A86B")
                 canvas.drawText(
                     "UTM z${utmZone}  ${String.format(Locale.US, "%.1f E | %.1f N", utmEasting, utmNorthing)}",
                     x + stripWidth + 18f,
@@ -181,8 +181,8 @@ object PhotoProcessor {
                     textPaint
                 )
 
-                // Line 4: Azimuth Sight
-                textPaint.color = Color.parseColor("#FF9F0A") // Compass Yellow
+                // Line 4: Azimuth Sight (DATA_WARNING style #FFB020)
+                textPaint.color = Color.parseColor("#FFB020")
                 canvas.drawText(
                     "SIGHT_AZIMUTH: ${azimuth}° ${getCompassDirection(azimuth)} (TRUE SURVEY)",
                     x + stripWidth + 18f,
@@ -191,7 +191,7 @@ object PhotoProcessor {
                 )
 
                 // Line 5: Elevation and UTC Time
-                textPaint.color = Color.parseColor("#C4C2BE")
+                textPaint.color = Color.parseColor("#D8D2C6")
                 val surveyDate = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(timestamp))
                 canvas.drawText(
                     "ALT: ${String.format(Locale.US, "%.1f m", elevation)} a.s.l. | $surveyDate",

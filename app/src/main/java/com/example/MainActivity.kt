@@ -1205,9 +1205,9 @@ fun CreateStationScreen(
         }
 
         // GPS Capturing Status Card
-        val isDark = isSystemInDarkTheme()
+        val gpsActiveColor = Color(0xFF00A86B)
         val borderHighlightColor = if (gps.isCaptured) {
-            if (isDark) Color(0xFF30D158) else Color(0xFF34C759)
+            gpsActiveColor
         } else {
             MaterialTheme.colorScheme.outline
         }
@@ -1230,17 +1230,17 @@ fun CreateStationScreen(
                         text = "STEP 2: OFFLINE LOCATION LOCK",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (gps.isCaptured) Color(0xFF30D158) else MaterialTheme.colorScheme.primary,
+                        color = if (gps.isCaptured) gpsActiveColor else MaterialTheme.colorScheme.primary,
                         letterSpacing = 1.sp
                     )
                     if (gps.isCaptured) {
                         Badge(
-                            containerColor = if (isDark) Color(0xFF1E3A1E) else Color(0xFFE8F5E9),
-                            contentColor = if (isDark) Color(0xFF30D158) else Color(0xFF2E7D32)
+                            containerColor = gpsActiveColor.copy(alpha = 0.15f),
+                            contentColor = gpsActiveColor
                         ) {
                             Text(
                                 text = "Locked | ${gps.source}",
-                                modifier = Modifier.padding(6.dp),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 11.sp
                             )
@@ -1317,11 +1317,16 @@ fun CreateStationScreen(
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Horizontal Accuracy", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                            val accuracyColor = when {
+                                gps.accuracy < 5.0 -> Color(0xFF00A86B)        // GPS_ACTIVE
+                                gps.accuracy < 15.0 -> Color(0xFFFFB020)       // DATA_WARNING
+                                else -> Color(0xFFFF3B30)                      // DATA_ERROR
+                            }
                             Text(
                                 text = String.format(Locale.US, "± %.1f m", gps.accuracy),
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold,
-                                color = if (gps.accuracy < 10.0) Color(0xFF30D158) else Color(0xFFFF453A),
+                                color = accuracyColor,
                                 fontSize = 14.sp
                             )
                         }
@@ -1460,14 +1465,19 @@ fun StationDetailScreen(
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
+                    val accuracyColor = when {
+                        station.accuracy < 5.0 -> Color(0xFF00A86B)        // GPS_ACTIVE
+                        station.accuracy < 15.0 -> Color(0xFFFFB020)       // DATA_WARNING
+                        else -> Color(0xFFFF3B30)                      // DATA_ERROR
+                    }
                     Badge(
-                        containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                        contentColor = MaterialTheme.colorScheme.primary
+                        containerColor = accuracyColor.copy(alpha = 0.15f),
+                        contentColor = accuracyColor
                     ) {
                         Text(
                             text = "Accuracy ±${String.format(Locale.US, "%.1f m", station.accuracy)}",
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                            color = MaterialTheme.colorScheme.primary,
+                            color = accuracyColor,
                             fontWeight = FontWeight.Bold,
                             fontSize = 11.sp
                         )
