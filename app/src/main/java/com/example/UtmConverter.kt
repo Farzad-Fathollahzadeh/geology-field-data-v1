@@ -15,23 +15,33 @@ object UtmConverter {
     }
 
     fun convertLatLngToUtm(latitude: Double, longitude: Double, forcedZoneString: String? = null): UtmResult {
-        val latRad = Math.toRadians(latitude)
-        val lonRad = Math.toRadians(longitude)
+        // Normalise longitude to [-180, 180) to cover all global coordinates perfectly
+        var adjustedLon = longitude
+        while (adjustedLon < -180.0) adjustedLon += 360.0
+        while (adjustedLon >= 180.0) adjustedLon -= 360.0
 
-        val zoneNumber = ((longitude + 180) / 6).toInt() + 1
+        // Clamp latitude to standard UTM limits (-80 to 84) to prevent projection distortions
+        val adjustedLat = latitude.coerceIn(-80.0, 84.0)
+
+        val latRad = Math.toRadians(adjustedLat)
+        val lonRad = Math.toRadians(adjustedLon)
+
+        var zoneNumber = (((adjustedLon + 180) / 6).toInt() % 60) + 1
+        if (zoneNumber <= 0) zoneNumber = 1
+        if (zoneNumber > 60) zoneNumber = 60
         
         val parsedDigits = forcedZoneString?.filter { it.isDigit() } ?: ""
         val parsedLetters = forcedZoneString?.filter { it.isLetter() } ?: ""
         val parsedZoneNumber = parsedDigits.toIntOrNull()
         val parsedZoneChar = parsedLetters.firstOrNull()?.uppercaseChar()
 
-        val actualZoneNumber = parsedZoneNumber ?: if (latitude >= 56.0 && latitude < 64.0 && longitude >= 3.0 && longitude < 12.0) {
+        val actualZoneNumber = parsedZoneNumber ?: if (adjustedLat >= 56.0 && adjustedLat < 64.0 && adjustedLon >= 3.0 && adjustedLon < 12.0) {
             32
-        } else if (latitude >= 72.0 && latitude < 84.0) {
-            if (longitude >= 0.0 && longitude < 9.0) 31
-            else if (longitude >= 9.0 && longitude < 21.0) 33
-            else if (longitude >= 21.0 && longitude < 33.0) 35
-            else if (longitude >= 33.0 && longitude < 42.0) 37
+        } else if (adjustedLat >= 72.0 && adjustedLat < 84.0) {
+            if (adjustedLon >= 0.0 && adjustedLon < 9.0) 31
+            else if (adjustedLon >= 9.0 && adjustedLon < 21.0) 33
+            else if (adjustedLon >= 21.0 && adjustedLon < 33.0) 35
+            else if (adjustedLon >= 33.0 && adjustedLon < 42.0) 37
             else zoneNumber
         } else {
             zoneNumber
@@ -40,7 +50,7 @@ object UtmConverter {
         val lonOrigin = (actualZoneNumber - 1) * 6 - 180 + 3
         val lonOriginRad = Math.toRadians(lonOrigin.toDouble())
 
-        val utmLetterDesignator = parsedZoneChar ?: getUtmLetterDesignator(latitude)
+        val utmLetterDesignator = parsedZoneChar ?: getUtmLetterDesignator(adjustedLat)
 
         // WGS84 Ellipsoid constants
         val a = 6378137.0

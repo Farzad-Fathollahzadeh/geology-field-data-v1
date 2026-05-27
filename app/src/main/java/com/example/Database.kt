@@ -152,6 +152,9 @@ interface GeologyDao {
     @Query("SELECT * FROM stations WHERE id = :stationId")
     fun getStationById(stationId: Int): Flow<Station?>
 
+    @Query("SELECT * FROM stations WHERE id = :stationId")
+    suspend fun getStationByIdOnce(stationId: Int): Station?
+
     @Query("SELECT COUNT(*) FROM stations WHERE projectId = :projectId AND prefix = :prefix")
     suspend fun getStationCountForPrefix(projectId: Int, prefix: String): Int
 

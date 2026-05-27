@@ -69,9 +69,36 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
     private val _currentScreen = MutableStateFlow<Screen>(Screen.ProjectList)
     val currentScreen: StateFlow<Screen> = _currentScreen
 
-    // Navigation helper
+    // Navigation helper with built-in state synchronization
     fun navigateTo(screen: Screen) {
         _currentScreen.value = screen
+        when (screen) {
+            is Screen.ProjectDashboard -> {
+                setActiveProject(screen.projectId)
+            }
+            is Screen.CreateStation -> {
+                setActiveProject(screen.projectId)
+            }
+            is Screen.StationDetail -> {
+                setActiveStation(screen.stationId)
+                viewModelScope.launch {
+                    val station = dao.getStationByIdOnce(screen.stationId)
+                    if (station != null) {
+                        setActiveProject(station.projectId)
+                    }
+                }
+            }
+            is Screen.AddObservation -> {
+                setActiveStation(screen.stationId)
+                viewModelScope.launch {
+                    val station = dao.getStationByIdOnce(screen.stationId)
+                    if (station != null) {
+                        setActiveProject(station.projectId)
+                    }
+                }
+            }
+            else -> {}
+        }
     }
 
     // List of all projects
@@ -255,25 +282,108 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                         utmZone = utm.zoneString,
                         isCaptured = true,
                         isLocating = false,
-                        source = "GPS Tracker"
+                        source = "GPS (Fused Satellite)"
                     )
                 }
             } else {
+                // Fallback to Native Hardware LocationManager for direct satellite tracking (essential for desert/underground drilling sites)
+                try {
+                    val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+                    var bestLocation: android.location.Location? = null
+                    
+                    if (locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
+                        bestLocation = locationManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+                    }
+                    if (bestLocation == null && locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) {
+                        val netLoc = locationManager.getLastKnownLocation(android.location.LocationManager.NETWORK_PROVIDER)
+                        if (netLoc != null) bestLocation = netLoc
+                    }
+                    if (bestLocation == null && locationManager.isProviderEnabled(android.location.LocationManager.PASSIVE_PROVIDER)) {
+                        val passiveLoc = locationManager.getLastKnownLocation(android.location.LocationManager.PASSIVE_PROVIDER)
+                        if (passiveLoc != null) bestLocation = passiveLoc
+                    }
+
+                    if (bestLocation != null) {
+                        val activeProj = activeProject.value
+                        val forcedZone = if (activeProj?.utmZoneMode == "MANUAL") activeProj.utmZoneManual else null
+                        val utm = convertLatLngToUtm(bestLocation.latitude, bestLocation.longitude, forcedZone)
+                        _gpsState.update {
+                            it.copy(
+                                latitude = bestLocation.latitude,
+                                longitude = bestLocation.longitude,
+                                elevation = bestLocation.altitude,
+                                accuracy = bestLocation.accuracy.toDouble(),
+                                utmEasting = utm.easting,
+                                utmNorthing = utm.northing,
+                                utmZone = utm.zoneString,
+                                isCaptured = true,
+                                isLocating = false,
+                                source = "GPS (Native Hardware)"
+                            )
+                        }
+                        Toast.makeText(context, "Hardware satellite lock active!", Toast.LENGTH_SHORT).show()
+                    } else {
+                        _gpsState.update {
+                            it.copy(
+                                isLocating = false,
+                                source = "None",
+                                message = "GPS signal weak/offline. Using Simulation is recommended!"
+                            )
+                        }
+                        Toast.makeText(context, "GPS Signal offline. Try simulated mode!", Toast.LENGTH_LONG).show()
+                    }
+                } catch (e: Exception) {
+                    _gpsState.update {
+                        it.copy(
+                            isLocating = false,
+                            source = "None",
+                            message = "GPS Signal acquisition failed: ${e.localizedMessage}"
+                        )
+                    }
+                }
+            }
+        }.addOnFailureListener { exception ->
+            // Try Native LocationManager fallback directly as well
+            try {
+                val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as android.location.LocationManager
+                var bestLocation: android.location.Location? = null
+                
+                if (locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
+                    bestLocation = locationManager.getLastKnownLocation(android.location.LocationManager.GPS_PROVIDER)
+                }
+                if (bestLocation != null) {
+                    val activeProj = activeProject.value
+                    val forcedZone = if (activeProj?.utmZoneMode == "MANUAL") activeProj.utmZoneManual else null
+                    val utm = convertLatLngToUtm(bestLocation.latitude, bestLocation.longitude, forcedZone)
+                    _gpsState.update {
+                        it.copy(
+                            latitude = bestLocation.latitude,
+                            longitude = bestLocation.longitude,
+                            elevation = bestLocation.altitude,
+                            accuracy = bestLocation.accuracy.toDouble(),
+                            utmEasting = utm.easting,
+                            utmNorthing = utm.northing,
+                            utmZone = utm.zoneString,
+                            isCaptured = true,
+                            isLocating = false,
+                            source = "GPS (Hardware Fallback)"
+                        )
+                    }
+                } else {
+                    _gpsState.update {
+                        it.copy(
+                            isLocating = false,
+                            message = "GPS Capture Failed: ${exception.localizedMessage}"
+                        )
+                    }
+                }
+            } catch (e: Exception) {
                 _gpsState.update {
                     it.copy(
                         isLocating = false,
-                        source = "None",
-                        message = "GPS signal weak or offline. Using Simulation is recommended for quick indoor test edits!"
+                        message = "GPS Capture Failed: ${exception.localizedMessage}"
                     )
                 }
-                Toast.makeText(context, "Real GPS is null. Try simulated mode!", Toast.LENGTH_LONG).show()
-            }
-        }.addOnFailureListener { exception ->
-            _gpsState.update {
-                it.copy(
-                    isLocating = false,
-                    message = "GPS Capture Failed: ${exception.localizedMessage}"
-                )
             }
         }
     }

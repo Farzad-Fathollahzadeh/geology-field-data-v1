@@ -4,6 +4,7 @@ import android.Manifest
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.*
@@ -16,6 +17,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -99,13 +103,25 @@ fun MainScreenContent(
 
     var showSplash by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) {
-        delay(1500) // Beautiful Apple-inspired instrument logo boot sequence
+        delay(450) // Crisp, lightning-fast boot sequence for optimal user response
         showSplash = false
     }
 
     if (showSplash) {
         GeoFieldSplashScreen()
     } else {
+        // System Back Button Navigation System
+        BackHandler(enabled = currentScreen != Screen.ProjectList) {
+            when (currentScreen) {
+                is Screen.CreateProject -> viewModel.navigateTo(Screen.ProjectList)
+                is Screen.ProjectDashboard -> viewModel.navigateTo(Screen.ProjectList)
+                is Screen.CreateStation -> viewModel.navigateTo(Screen.ProjectDashboard(activeProject?.id ?: 0))
+                is Screen.StationDetail -> viewModel.navigateTo(Screen.ProjectDashboard(activeProject?.id ?: 0))
+                is Screen.AddObservation -> viewModel.navigateTo(Screen.StationDetail(activeStation?.id ?: 0))
+                else -> viewModel.navigateTo(Screen.ProjectList)
+            }
+        }
+
         val title = when (val screen = currentScreen) {
             is Screen.ProjectList -> "GeoField"
             is Screen.CreateProject -> "New Field Project"
@@ -1163,40 +1179,62 @@ fun CreateStationScreen(
                     color = MaterialTheme.colorScheme.primary,
                     letterSpacing = 1.sp
                 )
-                Spacer(modifier = Modifier.height(10.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    prefixes.forEach { prefix ->
-                        val isSelected = prefix == selectedPrefix
-                        val isDark = isSystemInDarkTheme()
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(46.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(
-                                    if (isSelected) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        if (isDark) Color(0xFF2C2C2F) else Color(0xFFF9F7F5)
-                                    }
-                                )
-                                .border(
-                                    1.dp,
-                                    if (isSelected) Color.Transparent else MaterialTheme.colorScheme.outline,
-                                    RoundedCornerShape(12.dp)
-                                )
-                                .clickable { selectedPrefix = prefix }
-                                .testTag("prefix_chip_$prefix"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = prefix,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 13.sp
+                Spacer(modifier = Modifier.height(12.dp))
+
+                var isDropdownExpanded by remember { mutableStateOf(false) }
+                val prefixDescriptions = mapOf(
+                    "LITH" to "Lithology Observation (LITH) - جنس سنگ",
+                    "ALT" to "Alteration Mapping (ALT) - دگرسانی",
+                    "FLT" to "Fault Survey (FLT) - برداشت گسل",
+                    "STR" to "Structural Logging (STR) - لایه‌بندی ساختاری",
+                    "SMP" to "Physical Specimen Sample (SMP) - نمونه فیزیکی"
+                )
+
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isSystemInDarkTheme()) Color(0xFF2C2C2F) else Color(0xFFF9F7F5))
+                            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
+                            .clickable { isDropdownExpanded = true }
+                            .padding(horizontal = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = prefixDescriptions[selectedPrefix] ?: selectedPrefix,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 13.sp
+                        )
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = "Dropdown indicator",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = isDropdownExpanded,
+                        onDismissRequest = { isDropdownExpanded = false },
+                        modifier = Modifier.fillMaxWidth(0.85f).background(MaterialTheme.colorScheme.surface)
+                    ) {
+                        prefixes.forEach { prefix ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = prefixDescriptions[prefix] ?: prefix,
+                                        fontWeight = if (prefix == selectedPrefix) FontWeight.Bold else FontWeight.Normal,
+                                        fontSize = 13.sp,
+                                        color = if (prefix == selectedPrefix) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                    )
+                                },
+                                onClick = {
+                                    selectedPrefix = prefix
+                                    isDropdownExpanded = false
+                                }
                             )
                         }
                     }
@@ -1817,6 +1855,8 @@ fun AddObservationScreen(
     var isOverlayEnabled by remember { mutableStateOf(true) }
     var overlayPosition by remember { mutableStateOf("BOTTOM_LEFT") }
     var sightAzimuth by remember { mutableStateOf(180) }
+    var showCameraViewfinder by remember { mutableStateOf(false) }
+    var activeViewerPhotoPath by remember { mutableStateOf<String?>(null) }
 
     val context = LocalContext.current
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
@@ -2418,7 +2458,7 @@ fun AddObservationScreen(
                                 AsyncImage(
                                     model = path,
                                     contentDescription = null,
-                                    modifier = Modifier.fillMaxSize(),
+                                    modifier = Modifier.fillMaxSize().clickable { activeViewerPhotoPath = path },
                                     contentScale = ContentScale.Crop
                                 )
                                 Box(
@@ -2487,24 +2527,7 @@ fun AddObservationScreen(
                     val targetObsType = obsType
                     Button(
                         onClick = {
-                            val mockBitmap = com.example.PhotoProcessor.generateMockOutcropBitmap(context, targetObsType)
-                            val path = com.example.PhotoProcessor.saveAnnotatedImage(
-                                context = context,
-                                baseBitmap = mockBitmap,
-                                stationCode = stationCode,
-                                lat = station?.latitude ?: 0.0,
-                                lon = station?.longitude ?: 0.0,
-                                elevation = station?.elevation ?: 0.0,
-                                utmZone = station?.utmZone ?: "39N",
-                                utmEasting = station?.utmEasting ?: 0.0,
-                                utmNorthing = station?.utmNorthing ?: 0.0,
-                                azimuth = sightAzimuth,
-                                timestamp = System.currentTimeMillis(),
-                                settings = com.example.PhotoProcessor.OverlaySettings(isOverlayEnabled, overlayPosition)
-                            )
-                            if (path != null) {
-                                attachedPhotoPathsList = attachedPhotoPathsList + path
-                            }
+                            showCameraViewfinder = true
                         },
                         modifier = Modifier.weight(1.2f).height(44.dp),
                         shape = RoundedCornerShape(10.dp)
@@ -2594,6 +2617,329 @@ fun AddObservationScreen(
                 Icon(Icons.Default.Done, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Save Observation", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+
+    // Interactive Field Viewfinder HUD overlay
+    if (showCameraViewfinder) {
+        Dialog(
+            onDismissRequest = { showCameraViewfinder = false },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+            ) {
+                // Viewfinder Simulated Outcrop Canvas representation
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(bottom = 120.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // Rule-of-Thirds Gridlines
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val w = size.width
+                        val h = size.height
+
+                        // Grid lines
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.25f),
+                            start = androidx.compose.ui.geometry.Offset(w / 3, 0f),
+                            end = androidx.compose.ui.geometry.Offset(w / 3, h),
+                            strokeWidth = 1.dp.toPx()
+                        )
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.25f),
+                            start = androidx.compose.ui.geometry.Offset(2 * w / 3, 0f),
+                            end = androidx.compose.ui.geometry.Offset(2 * w / 3, h),
+                            strokeWidth = 1.dp.toPx()
+                        )
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.25f),
+                            start = androidx.compose.ui.geometry.Offset(0f, h / 3),
+                            end = androidx.compose.ui.geometry.Offset(w, h / 3),
+                            strokeWidth = 1.dp.toPx()
+                        )
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.25f),
+                            start = androidx.compose.ui.geometry.Offset(0f, 2 * h / 3),
+                            end = androidx.compose.ui.geometry.Offset(w, 2 * h / 3),
+                            strokeWidth = 1.dp.toPx()
+                        )
+                    }
+
+                    // Simulated Outcrop Background
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = "LIVE GEOLOGICAL OPTICS LENS",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF00A86B),
+                            letterSpacing = 1.5.sp
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        
+                        // Sleek Circular Aim Reticle with Crosshairs
+                        Box(
+                            modifier = Modifier
+                                .size(240.dp)
+                                .border(2.dp, Color.White.copy(0.40f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                val w = size.width
+                                val h = size.height
+                                drawCircle(Color(0xFF00A86B), radius = 4.dp.toPx())
+                                drawLine(Color.White.copy(0.3f), androidx.compose.ui.geometry.Offset(w / 2 - 40.dp.toPx(), h / 2), androidx.compose.ui.geometry.Offset(w / 2 + 40.dp.toPx(), h / 2), strokeWidth = 1.5.dp.toPx())
+                                drawLine(Color.White.copy(0.3f), androidx.compose.ui.geometry.Offset(w / 2, h / 2 - 40.dp.toPx()), androidx.compose.ui.geometry.Offset(w / 2, h / 2 + 40.dp.toPx()), strokeWidth = 1.5.dp.toPx())
+                            }
+                        }
+                    }
+
+                    // HUD telemetry indicators
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(20.dp)
+                    ) {
+                        Column(modifier = Modifier.align(Alignment.TopStart)) {
+                            Text("AZIMUTH SURVEY", fontSize = 10.sp, color = Color.Gray, fontWeight = FontWeight.SemiBold)
+                            Text("${sightAzimuth}° ${PhotoProcessor.getCompassDirection(sightAzimuth)}", fontSize = 20.sp, color = Color(0xFFFFB020), fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                        }
+
+                        Column(modifier = Modifier.align(Alignment.TopEnd), horizontalAlignment = Alignment.End) {
+                            Text("SATELLITE POSITION", fontSize = 10.sp, color = Color.Gray, fontWeight = FontWeight.SemiBold)
+                            Text(stationCode, fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                            Text("LAT/LON: Active Lock", fontSize = 10.sp, color = Color(0xFF00A86B), fontWeight = FontWeight.Bold)
+                        }
+
+                        Column(modifier = Modifier.align(Alignment.BottomStart)) {
+                            Text("CAMERA ATTITUDE", fontSize = 10.sp, color = Color.Gray, fontWeight = FontWeight.SemiBold)
+                            Text("PITCH: -1.2°", fontSize = 11.sp, color = Color.White, fontFamily = FontFamily.Monospace)
+                            Text("ROLL: +0.4°", fontSize = 11.sp, color = Color.White, fontFamily = FontFamily.Monospace)
+                        }
+
+                        Column(modifier = Modifier.align(Alignment.BottomEnd), horizontalAlignment = Alignment.End) {
+                            Text("WATERMARK STAMP", fontSize = 10.sp, color = Color.Gray, fontWeight = FontWeight.SemiBold)
+                            Text(if (isOverlayEnabled) "STAMP_ACTIVE" else "STAMP_MUTED", fontSize = 11.sp, color = if (isOverlayEnabled) Color(0xFF1E5EFF) else Color.Gray, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                // Shutter controller strip (Bottom)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(120.dp)
+                        .background(Color(0xFF0F0F11))
+                        .align(Alignment.BottomCenter),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(
+                            onClick = { showCameraViewfinder = false }
+                        ) {
+                            Text("CANCEL", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .size(72.dp)
+                                .clip(CircleShape)
+                                .background(Color.White)
+                                .clickable {
+                                    val mockBitmap = PhotoProcessor.generateMockOutcropBitmap(context, obsType)
+                                    val path = PhotoProcessor.saveAnnotatedImage(
+                                        context = context,
+                                        baseBitmap = mockBitmap,
+                                        stationCode = stationCode,
+                                        lat = station?.latitude ?: 0.0,
+                                        lon = station?.longitude ?: 0.0,
+                                        elevation = station?.elevation ?: 0.0,
+                                        utmZone = station?.utmZone ?: "39N",
+                                        utmEasting = station?.utmEasting ?: 0.0,
+                                        utmNorthing = station?.utmNorthing ?: 0.0,
+                                        azimuth = sightAzimuth,
+                                        timestamp = System.currentTimeMillis(),
+                                        settings = PhotoProcessor.OverlaySettings(isOverlayEnabled, overlayPosition)
+                                    )
+                                    if (path != null) {
+                                        attachedPhotoPathsList = attachedPhotoPathsList + path
+                                    }
+                                    showCameraViewfinder = false
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(62.dp)
+                                    .border(2.dp, Color(0xFF0F0F11), CircleShape)
+                                    .background(Color.White, CircleShape)
+                            )
+                        }
+
+                        Text(
+                            text = "WIDE LENS 1.0X",
+                            fontSize = 10.sp,
+                            color = Color(0xFFFFB020),
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // Geotagged Fullscreen Photo Viewer Dialog with Metadata bottom panel
+    if (activeViewerPhotoPath != null) {
+        Dialog(
+            onDismissRequest = { activeViewerPhotoPath = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+            ) {
+                AsyncImage(
+                    model = activeViewerPhotoPath,
+                    contentDescription = "Geotagged Station Evidence Photo",
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(bottom = 200.dp),
+                    contentScale = ContentScale.Fit
+                )
+
+                // HUD Overlay Dismiss header
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 40.dp, start = 16.dp, end = 16.dp)
+                        .align(Alignment.TopCenter),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "VISUAL INSPECTION SYSTEM",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.6f),
+                        letterSpacing = 1.sp
+                    )
+                    IconButton(
+                        onClick = { activeViewerPhotoPath = null },
+                        modifier = Modifier.background(Color.Black.copy(0.40f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close viewer",
+                            tint = Color.White
+                        )
+                    }
+                }
+
+                // BOTTOM METADATA HUD PANEL
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.BottomCenter)
+                        .padding(16.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "DEC COMPILING TELEMETRY STAMP",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            letterSpacing = 1.sp
+                        )
+                        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline.copy(0.5f))
+                        
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text("STATION NODE", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(stationCode, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text("TRUE PLANE SIGHT", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("${sightAzimuth}° ${PhotoProcessor.getCompassDirection(sightAzimuth)}", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFFFFB020), fontFamily = FontFamily.Monospace)
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text("WGS84 COORDINATES", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    "${String.format(Locale.US, "%.6f°", station?.latitude ?: 0.0)}, ${String.format(Locale.US, "%.6f°", station?.longitude ?: 0.0)}",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text("UTM PROJECTION COORDINATES", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    "z${station?.utmZone ?: "39N"} ${String.format(Locale.US, "%.1f E", station?.utmEasting ?: 0.0)}",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF00A86B),
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text("ALTITUDE (ELEVATION)", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    "${String.format(Locale.US, "%.1f m", station?.elevation ?: 0.0)} a.s.l.",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text("IMAGE TIMECODE EXIF", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(station?.createdAt ?: System.currentTimeMillis())),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
