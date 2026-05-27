@@ -1,0 +1,6 @@
+{
+  "name": "GeoField Pro",
+  "description": "An offline-first, mobile field data logger designed for geological mapping, fieldwork, and mineral exploration, featuring automatic GPS to UTM conversion and structured multi-sheet Excel exporting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
