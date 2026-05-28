@@ -48,6 +48,7 @@ data class GpsData(
     val longitude: Double = 0.0,
     val elevation: Double = 0.0,
     val accuracy: Double = 0.0,
+    val elevationAccuracy: Double = 0.0,
     val utmEasting: Double = 0.0,
     val utmNorthing: Double = 0.0,
     val utmZone: String = "",
@@ -219,6 +220,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
             val simLon = baseLog + randomOffsetLon
             val simElev = 350.0 + (Math.random() * 50)
             val simAcc = 2.0 + (Math.random() * 3)
+            val simElevAcc = 1.5 + (Math.random() * 2)
             
             val activeProj = activeProject.value
             val forcedZone = if (activeProj?.utmZoneMode == "MANUAL") activeProj.utmZoneManual else null
@@ -230,6 +232,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                     longitude = simLon,
                     elevation = simElev,
                     accuracy = simAcc,
+                    elevationAccuracy = simElevAcc,
                     utmEasting = utm.easting,
                     utmNorthing = utm.northing,
                     utmZone = utm.zoneString,
@@ -273,12 +276,18 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                 val activeProj = activeProject.value
                 val forcedZone = if (activeProj?.utmZoneMode == "MANUAL") activeProj.utmZoneManual else null
                 val utm = convertLatLngToUtm(location.latitude, location.longitude, forcedZone)
+                val elevAcc = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O && location.hasVerticalAccuracy()) {
+                    location.verticalAccuracyMeters.toDouble()
+                } else {
+                    location.accuracy.toDouble() * 1.5
+                }
                 _gpsState.update {
                     it.copy(
                         latitude = location.latitude,
                         longitude = location.longitude,
                         elevation = location.altitude,
                         accuracy = location.accuracy.toDouble(),
+                        elevationAccuracy = elevAcc,
                         utmEasting = utm.easting,
                         utmNorthing = utm.northing,
                         utmZone = utm.zoneString,
@@ -309,12 +318,18 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                         val activeProj = activeProject.value
                         val forcedZone = if (activeProj?.utmZoneMode == "MANUAL") activeProj.utmZoneManual else null
                         val utm = convertLatLngToUtm(bestLocation.latitude, bestLocation.longitude, forcedZone)
+                        val elevAcc = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O && bestLocation.hasVerticalAccuracy()) {
+                            bestLocation.verticalAccuracyMeters.toDouble()
+                        } else {
+                            bestLocation.accuracy.toDouble() * 1.5
+                        }
                         _gpsState.update {
                             it.copy(
                                 latitude = bestLocation.latitude,
                                 longitude = bestLocation.longitude,
                                 elevation = bestLocation.altitude,
                                 accuracy = bestLocation.accuracy.toDouble(),
+                                elevationAccuracy = elevAcc,
                                 utmEasting = utm.easting,
                                 utmNorthing = utm.northing,
                                 utmZone = utm.zoneString,
@@ -429,6 +444,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                     longitude = gps.longitude,
                     elevation = gps.elevation,
                     accuracy = gps.accuracy,
+                    elevationAccuracy = gps.elevationAccuracy,
                     utmEasting = gps.utmEasting,
                     utmNorthing = gps.utmNorthing,
                     utmZone = gps.utmZone
@@ -474,6 +490,9 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
         faultType: String? = null,
         strike: Int? = null,
         dip: Int? = null,
+        dipDirection: Int? = null,
+        rake: Int? = null,
+        rakeDirection: String? = null,
         movement: String? = null,
         width: Double? = null,
 
@@ -506,6 +525,9 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                     faultType = faultType,
                     strike = strike,
                     dip = dip,
+                    dipDirection = dipDirection,
+                    rake = rake,
+                    rakeDirection = rakeDirection,
                     movement = movement,
                     width = width
                 )
@@ -607,6 +629,9 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                             structureType = it.observationType,
                             strike = it.strike,
                             dip = it.dip,
+                            dipDirection = it.dipDirection,
+                            rake = it.rake,
+                            rakeDirection = it.rakeDirection,
                             movement = it.movement ?: it.veinMineralogy ?: "",
                             width = it.width,
                             notes = it.notes ?: "",
@@ -751,6 +776,9 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                             structureType = it.observationType,
                             strike = it.strike,
                             dip = it.dip,
+                            dipDirection = it.dipDirection,
+                            rake = it.rake,
+                            rakeDirection = it.rakeDirection,
                             movement = it.movement ?: it.veinMineralogy ?: "",
                             width = it.width,
                             notes = it.notes ?: "",
@@ -821,8 +849,8 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
 
                         // Add CSV: structures/faults
                         val faultCsv = toCsvString(
-                            listOf("Station Code", "Timestamp", "Structure Type", "Strike (deg)", "Dip (deg)", "Movement", "Width (cm)", "Notes", "Has Sample?", "Photos"),
-                            excelFaults.map { listOf(it.stationCode, it.timestamp, it.structureType, it.strike ?: "", it.dip ?: "", it.movement ?: "", it.width ?: "", it.notes ?: "", it.hasSample, it.photos) }
+                            listOf("Station Code", "Timestamp", "Structure Type", "Strike (deg)", "Dip (deg)", "Dip Direction (deg)", "Rake (deg)", "Rake Direction", "Movement", "Width (cm)", "Notes", "Has Sample?", "Photos"),
+                            excelFaults.map { listOf(it.stationCode, it.timestamp, it.structureType, it.strike ?: "", it.dip ?: "", it.dipDirection ?: "", it.rake ?: "", it.rakeDirection ?: "", it.movement ?: "", it.width ?: "", it.notes ?: "", it.hasSample, it.photos) }
                         )
                         zos.putNextEntry(java.util.zip.ZipEntry("data/structures_dataset.csv"))
                         zos.write(faultCsv.toByteArray(java.nio.charset.StandardCharsets.UTF_8))

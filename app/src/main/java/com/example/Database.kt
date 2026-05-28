@@ -43,6 +43,7 @@ data class Station(
     val longitude: Double,
     val elevation: Double,
     val accuracy: Double,
+    val elevationAccuracy: Double = 0.0,
     val utmEasting: Double,
     val utmNorthing: Double,
     val utmZone: String,
@@ -86,6 +87,9 @@ data class Observation(
     val faultType: String? = null,
     val strike: Int? = null,
     val dip: Int? = null,
+    val dipDirection: Int? = null,
+    val rake: Int? = null,
+    val rakeDirection: String? = null,
     val movement: String? = null,
     val width: Double? = null, // Width in cm/meters
 
@@ -206,7 +210,7 @@ interface GeologyDao {
 
 @Database(
     entities = [Project::class, Station::class, Observation::class, Sample::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class GeologyDatabase : RoomDatabase() {

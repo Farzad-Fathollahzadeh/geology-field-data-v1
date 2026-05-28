@@ -53,6 +53,9 @@ object XlsxWriter {
         val structureType: String,
         val strike: Int?,
         val dip: Int?,
+        val dipDirection: Int?,
+        val rake: Int?,
+        val rakeDirection: String?,
         val movement: String?,
         val width: Double?,
         val notes: String?,
@@ -180,8 +183,8 @@ object XlsxWriter {
             writeSheet(
                 zipOut,
                 "xl/worksheets/sheet4.xml",
-                listOf("Station Code", "Timestamp", "Structure Type", "Strike (°)", "Dip (°)", "Movement", "Width (cm)", "Notes", "Has Sample?", "Photos"),
-                faults.map { listOf(it.stationCode, it.timestamp, it.structureType, it.strike ?: "", it.dip ?: "", it.movement ?: "", it.width ?: "", it.notes ?: "", it.hasSample, it.photos) }
+                listOf("Station Code", "Timestamp", "Structure Type", "Strike (°)", "Dip (°)", "Dip Direction (°)", "Rake (°)", "Rake Direction", "Movement", "Width (cm)", "Notes", "Has Sample?", "Photos"),
+                faults.map { listOf(it.stationCode, it.timestamp, it.structureType, it.strike ?: "", it.dip ?: "", it.dipDirection ?: "", it.rake ?: "", it.rakeDirection ?: "", it.movement ?: "", it.width ?: "", it.notes ?: "", it.hasSample, it.photos) }
             )
 
             writeSheet(

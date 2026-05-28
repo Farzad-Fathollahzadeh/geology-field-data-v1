@@ -1,6 +1,7 @@
 package com.example
 
 import android.Manifest
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -391,6 +392,9 @@ fun MainScreenContent(
                                         faultType = details["faultType"] as? String,
                                         strike = details["strike"] as? Int,
                                         dip = details["dip"] as? Int,
+                                        dipDirection = details["dipDirection"] as? Int,
+                                        rake = details["rake"] as? Int,
+                                        rakeDirection = details["rakeDirection"] as? String,
                                         movement = details["movement"] as? String,
                                         width = details["width"] as? Double,
 
@@ -634,6 +638,7 @@ fun ProjectListScreen(
     onCreateClick: () -> Unit,
     onDeleteClick: (Int) -> Unit
 ) {
+    val context = LocalContext.current
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -685,9 +690,53 @@ fun ProjectListScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("New Project", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
+                Spacer(modifier = Modifier.height(24.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth(0.8f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
+                        .clickable {
+                            try {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/geofieldpro"))
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                // ignore
+                            }
+                        }
+                        .padding(vertical = 12.dp, horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Send,
+                        contentDescription = "Telegram Link",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "کانال تلگرام زمین‌پوی: t.me/geofieldpro",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         } else {
             Column(modifier = Modifier.fillMaxSize()) {
+                var searchQuery by remember { mutableStateOf("") }
+                val filteredProjects = remember(projects, searchQuery) {
+                    if (searchQuery.isBlank()) {
+                        projects
+                    } else {
+                        projects.filter {
+                            it.name.contains(searchQuery, ignoreCase = true) ||
+                            (it.description?.contains(searchQuery, ignoreCase = true) ?: false)
+                        }
+                    }
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp, start = 4.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -709,84 +758,148 @@ fun ProjectListScreen(
                     )
                 }
 
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(projects) { project ->
-                        val isDark = isSystemInDarkTheme()
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("project_item_${project.id}")
-                                .clickable { onSelectProject(project) },
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surface
-                            ),
-                            shape = RoundedCornerShape(20.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp)
+                        .testTag("project_search_input"),
+                    placeholder = { Text("جستجو در پروژه‌ها...") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search icon",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(
+                                    imageVector = Icons.Default.Clear,
+                                    contentDescription = "Clear search",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                if (filteredProjects.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
                         ) {
-                            Row(
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "نتیجه‌ای یافت نشد",
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 16.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "پروژه‌ای با کلمات جستجو شده همخوانی ندارد.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                            )
+                        }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(filteredProjects) { project ->
+                            val isDark = isSystemInDarkTheme()
+                            Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(16.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                    .testTag("project_item_${project.id}")
+                                    .clickable { onSelectProject(project) },
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surface
+                                ),
+                                shape = RoundedCornerShape(20.dp),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                             ) {
-                                Box(
+                                Row(
                                     modifier = Modifier
-                                        .size(48.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(if (isDark) Color(0xFF232620) else Color(0xFFF9F7F5))
-                                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp)),
-                                    contentAlignment = Alignment.Center
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
                                 ) {
-                                    Text("📂", fontSize = 18.sp)
-                                }
-
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                    Box(
+                                        modifier = Modifier
+                                            .size(48.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(if (isDark) Color(0xFF232620) else Color(0xFFF9F7F5))
+                                            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp)),
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = project.name,
-                                                fontSize = 16.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.onSurface
-                                            )
-                                            Text(
-                                                text = "START: ${project.date}",
-                                                fontSize = 11.sp,
-                                                color = MaterialTheme.colorScheme.primary,
-                                                fontWeight = FontWeight.Bold,
-                                                letterSpacing = 0.5.sp
-                                            )
-                                        }
-                                        IconButton(
-                                            onClick = { onDeleteClick(project.id) },
-                                            modifier = Modifier.testTag("delete_project_${project.id}").size(36.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Delete,
-                                                contentDescription = "Delete project",
-                                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                                                modifier = Modifier.size(18.dp)
-                                              )
-                                        }
+                                        Text("📂", fontSize = 18.sp)
                                     }
-                                    if (!project.description.isNullOrBlank()) {
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        Divider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        Text(
-                                            text = project.description,
-                                            fontSize = 13.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            maxLines = 2
-                                        )
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = project.name,
+                                                    fontSize = 16.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                Text(
+                                                    text = "START: ${project.date}",
+                                                    fontSize = 11.sp,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    fontWeight = FontWeight.Bold,
+                                                    letterSpacing = 0.5.sp
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = { onDeleteClick(project.id) },
+                                                modifier = Modifier.testTag("delete_project_${project.id}").size(36.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Delete,
+                                                    contentDescription = "Delete project",
+                                                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                                                    modifier = Modifier.size(18.dp)
+                                                  )
+                                            }
+                                        }
+                                        if (!project.description.isNullOrBlank()) {
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Divider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Text(
+                                                text = project.description,
+                                                fontSize = 13.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                maxLines = 2
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -810,6 +923,38 @@ fun ProjectListScreen(
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("ADD NEW FIELD PROJECT", fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
+                        .clickable {
+                            try {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/geofieldpro"))
+                                context.startActivity(intent)
+                            } catch (e: Exception) {
+                                // ignore
+                            }
+                        }
+                        .padding(vertical = 12.dp, horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Send,
+                        contentDescription = "Telegram Link",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "کانال تلگرام زمین‌پوی: t.me/geofieldpro",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
         }
@@ -1389,14 +1534,31 @@ fun CreateStationScreen(
                         }
                         Divider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Elevation", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                            Text("Elevation (Altitude)", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                             Text(
-                                text = String.format(Locale.US, "%.0f m", gps.elevation), 
+                                text = String.format(Locale.US, "%.2f m", gps.elevation), 
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface,
                                 fontSize = 14.sp
                             )
+                        }
+                        if (gps.elevationAccuracy > 0.0) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Elevation Error Margin", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                                val elevAccColor = when {
+                                    gps.elevationAccuracy < 8.0 -> Color(0xFF00A86B)
+                                    gps.elevationAccuracy < 20.0 -> Color(0xFFFFB020)
+                                    else -> Color(0xFFFF3B30)
+                                }
+                                Text(
+                                    text = String.format(Locale.US, "± %.2f m", gps.elevationAccuracy),
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = elevAccColor,
+                                    fontSize = 14.sp
+                                )
+                            }
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("Horizontal Accuracy", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
@@ -1983,6 +2145,9 @@ fun AddObservationScreen(
     var faultType by remember { mutableStateOf("") }
     var strike by remember { mutableStateOf("") }
     var dip by remember { mutableStateOf("") }
+    var dipDirection by remember { mutableStateOf("") }
+    var rake by remember { mutableStateOf("") }
+    var rakeDirection by remember { mutableStateOf("") }
     var movement by remember { mutableStateOf("") }
     var width by remember { mutableStateOf("") }
 
@@ -2427,6 +2592,49 @@ fun AddObservationScreen(
                         shape = RoundedCornerShape(12.dp),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
+
+                    OutlinedTextField(
+                        value = dipDirection,
+                        onValueChange = { dipDirection = it },
+                        label = { Text("Dip Dir (0-360°)") },
+                        placeholder = { Text("e.g. 135") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("dip_direction_input"),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedTextField(
+                        value = rake,
+                        onValueChange = { rake = it },
+                        label = { Text("Rake / Pitch (0-90°)") },
+                        placeholder = { Text("e.g. 35") },
+                        modifier = Modifier
+                            .weight(1.3f)
+                            .testTag("rake_input"),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+
+                    OutlinedTextField(
+                        value = rakeDirection,
+                        onValueChange = { rakeDirection = it },
+                        label = { Text("Rake Dir") },
+                        placeholder = { Text("e.g. NW, SE") },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("rake_dir_input"),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
+                    )
                 }
 
                 Row(
@@ -2732,6 +2940,9 @@ fun AddObservationScreen(
                             mapDetails["faultType"] = faultType.ifBlank { obsType }
                             mapDetails["strike"] = strike.toIntOrNull()
                             mapDetails["dip"] = dip.toIntOrNull()
+                            mapDetails["dipDirection"] = dipDirection.toIntOrNull()
+                            mapDetails["rake"] = rake.toIntOrNull()
+                            mapDetails["rakeDirection"] = rakeDirection.ifBlank { null }
                             mapDetails["movement"] = movement.ifBlank { null }
                             mapDetails["width"] = width.toDoubleOrNull()
                         }
