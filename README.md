@@ -1,64 +1,83 @@
 # 🌍 GeoField Pro — Industrial Geological Field Companion
-### *Bilingual Technical Documentation & GitHub Repository Guide (فارسی | English)*
+### *Professional Industrial-Grade Field Logging Terminal for Geological Surveying & Exploration*
+
+[![Android Build CI](https://github.com/farzadf/geofield-pro/actions/workflows/android.yml/badge.svg)](https://github.com/farzadf/geofield-pro/actions/workflows/android.yml)
+![Kotlin Version](https://img.shields.io/badge/Kotlin-1.9.0-blue.svg)
+![Jetpack Compose](https://img.shields.io/badge/Compose-M3-green.svg)
+![Database](https://img.shields.io/badge/Database-Room_SQLite-orange.svg)
+![Version](https://img.shields.io/badge/App_Version-1.1-red.svg)
 
 ---
 
-## 🇮🇷 راهنمای جامع و مستندات فنی پروژه (Persian Introduction)
-
-**GeoField Pro** یک اپلیکیشن موبایل صنعتی نسل جدید، با طراحی به سبک ابزارهای مهندسی اپل، مخصوص ثبت داده‌های زمین‌شناسی، معدن و اکتشاف صحرایی است. این نرم‌افزار برای کارکرد در شرایط سخت (نور مستقیم خورشید، گرد و غبار، و آفلاین مطلق) بهینه شده و به جای یک نرم‌افزار مصرفی معمولی، حس یک **ابزار اندازه‌گیری آزمایشگاهی دقیق** را به مهندس زمین‌شناس انتقال می‌دهد.
-
-### 🌟 ویژگی‌های کلیدی سیستم
-1. **طراحی صنعتی بهینه‌شده برای نور خورشید:** استفاده از کنتراست بالای رنگی (> 7:1) و تایپوگرافی واضح فونت‌های **Inter** و **IBM Plex Mono** جهت خوانش سریع مختصات در کسری از ثانیه زیر شدیدترین تابش‌های بیابانی.
-2. **سیستم موقعیت‌یابی آفلاین هوشمند:** نمایش لحظه‌ای مختصات دقیق جغرافیایی (WGS84) و تبدیل آنی به کدهای سیستم تصویر یوتی‌ام (**UTM Grid**)، همراه با پایش مداوم دقت خطای GPS با کدهای رنگی داینامیک.
-3. **ثبت جامع ساختارهای زمین‌شناسی:**
-   - **Lithology:** فرم‌های هوشمند انتخاب جنس و توصیف سنگ‌ها با کمترین نیاز به کیبورد.
-   - **Alteration:** زون‌های دگرسانی با قابلیت انتخاب گزینه‌ای سریع.
-   - **Structural Readings:** اندازه‌گیری و ثبت شیب (Dip)، امتداد شیب (Dip Direction/Strike) به صورت دستی و با سنسور.
-   - **Samples:** لاگ نمونه‌های فیزیکی سنگ با برچسب‌گذاری شناسه بارکد مانند.
-4. **دوربین واقعیت افزوده و واترمارک اطلاعات مکانی (Geo-Referenced Camera):** دوربین داخلی هوشمند که هنگام ثبت تصاویر صحرایی، زاویه انحراف قطب‌نما (Azimuth)، زمان دقیق، موقعیت UTM، طول و عرض جغرافیایی را مستقیماً روی تصویر ذخیره کرده و به عنوان سند اکتشاف پکیج می‌کند.
-5. **تهیه گزارش در قالب اکسل چندبرگه اکسل (XLSX Compiler):** خروجی کاملاً آفلاین گزارشات منطبق با قالب‌های بین‌المللی اکتشاف برای بارگذاری مستقیم در دیتابیس‌های مرکزی معدن.
+###  معرفی اجمالی پروژه (Persian Abstract)
+**GeoField Pro** یک پایانانه دیجیتال ثبت داده‌های زمین‌شناسی صحرایی و معدنی بر پایه معماری مدرن اندروید است. این اپلیکیشن به صورت کاملاً آفلاین (Offline-First) طراحی گردیده و شرایط متداول محیط‌های اکتشافی سخت (نور شدید خورشید و مانیتورینگ متناوب ماهواره‌ها) را پوشش می‌دهد. در نسخه **۱.۱**، تمرکز فوق‌العاده‌ای بر بریدج‌سازی و صدور اطلاعات به محیط‌های دسکتاپ نظیر **ArcGIS**، **QGIS** و دیتابیس‌های مرکزی معدن گذاشته شده است.
 
 ---
 
-## 🇺🇸 Technical Specification Prompt & Architectural Overview (English)
+## ⚡ Key Updates & Advancements in Version 1.1
 
-`GeoField Pro` is engineered with an **offline-first MVVM design pattern** in pure **Kotlin and Jetpack Compose**. It is structured as a resilient, high-contrast, professional-grade logging terminal.
+The **v1.1 Release** of GeoField Pro bridges the gap between raw physical field data observation and professional office GIS post-processing pipelines.
+
+### 1. Robust GIS ZIP Package Exporter (`exportProjectZip`)
+The export stack has been expanded from a single spreadsheet to a comprehensive, structural **GIS ZIP Package**. This allows instantaneous synchronization with industry-standard geology environments:
+- **Relational Datasets (CSV Paths under `data/`):** Auto-generated, normalized, comma-separated datasets (`stations_dataset.csv`, `lithologies_dataset.csv`, `alterations_dataset.csv`, `structures_dataset.csv`, `samples_dataset.csv`) ready for drag-and-drop ingestion into **QGIS, ArcGIS, Leapfrog,** or custom database servers.
+- **Relational Field Assets Folder (`field_photos/`):** Matches the UUID mappings inside database sheets with actual physical geotagged photographs, saving hours of manual file mapping.
+- **Master Excel Book (`Geology_Logs_Workbook.xlsx`):** A multi-sheet master spreadsheet displaying hierarchical logs with calculated UTM transformations.
+
+### 2. High-Contrast Material 3 Export Selection Modal
+A responsive selection modal has been designed adhering to modern design layouts:
+- Offers intuitive selection between a quick **Excel Workbook (.xlsx)** download and the complete **GIS ZIP Package**.
+- Styled with dedicated Material Design 3 state indications, offering easy-to-use tap target layouts suitable for one-handed operation or rugged gloves.
+
+### 3. Native GitHub Actions Continuous Integration (`android.yml`)
+Integrated an automated cloud-based Gradle runner to guarantee every target commit and merge request compiles reliably on Java 17, validating build outputs and syntax errors proactively.
 
 ---
 
-## 📐 Design System & Color Tokens
-In strict alignment with the premium industrial UI design tokens, the application enforces high contrast ratios to guard against glare and heavy field dust.
+## 🌟 Core System Specifications
 
-| Design Token | Hex Code | System Allocation |
+### 📍 Multi-System Geolocation Engine (WGS84 & UTM Grid)
+- Tracks live spatial parameters, converting coordinates on-the-fly from ellipsoidal **WGS84 (Lat/Long)** to **UTM (Universal Transverse Mercator)** projected coordinate systems without requiring internet connectivity.
+- Direct UTM Zone calculation, easting, northing, and accuracy status indications using dynamic high-visibility indicators.
+
+### 🪨 Hierarchical Logging Architecture
+Provides highly structured forms to capture physical ground truths:
+- **Lithology:** Fast descriptor choices representing textures, classifications, colors, grain sizes, mineralization, and alteration properties.
+- **Alteration:** Quantitative zones categorizing intensities, associated minerals, host rock types, and relevant notes.
+- **Faults & Structures:** Precision strike/dip calculations and structure type tags (Joint, Vein, Fault plane tracking).
+- **Physical Samples:** Rapidly registers rock/core inventory samples to unique parent observation stations.
+
+### 📸 Geo-Referenced Augmented Camera Terminal
+- An integrated camera view draws orientation properties, WGS84 coordinates, UTM coordinates, and exact timestamps directly onto captured imagery.
+- Automatically packs, compresses, and references photo paths relative to logged geological segments.
+
+---
+
+## 📐 Design Tokens & Visual Hierarchy
+Optimized strictly for outdoor high-glare setups with high contrast ratios (> 7:1) using clear typography.
+
+| Token | Hex Value | Application Placement |
 |---|---|---|
-| **BACKGROUND** | `#F4F1E8` | Base application canvas representing natural field lithology tone. |
-| **SURFACE** | `#FFFFFF` | Structured cards, input fields, and distinct UI container backings. |
-| **PRIMARY_TEXT** | `#101010` | 100% contrast core readable text and metric values. |
-| **SECONDARY_TEXT** | `#4F545A` | Medium-contrast structural labels, metadata, and icons. |
-| **BORDER** | `#D8D2C6` | Clean framing lines to organize sections without creating visual noise. |
-
-### 🚨 Action Colors (Function-Based States)
-
-*   🔵 **PRIMARY_ACTION** (`#1E5EFF`): Utilized strictly for core high-level calls to action (e.g., *Add Station*, *Save Observation*, *Export Project*).
-*   🟢 **GPS_ACTIVE** (`#00A86B`): Indicates high precision location tracking and active coordinate logs.
-*   🟡 **DATA_WARNING** (`#FFB020`): Triggered by low satellite visibility, high elevation errors, or warnings.
-*   🔴 **DATA_ERROR** (`#FF3B30`): Urgent warnings such as lost connection, camera-sensor failure, or structural omissions.
-*   🟢 **SUCCESS** (`#2ECC71`): Provides reassurance on local DB persistence commits and Excel compiles.
+| **BACKGROUND** | `#F4F1E8` | High-readability canvas simulating natural field lithology sheets. |
+| **SURFACE** | `#FFFFFF` | Isolated UI items, interactive cards, structure menus. |
+| **PRIMARY_TEXT** | `#101010` | 100% Contrast level for metric titles, UTM data coordinates. |
+| **SECONDARY_TEXT**| `#4F545A` | Intermediate description annotations, metadata tags, indicators. |
+| **BORDER** | `#D8D2C6` | Clean framing outlines separating categories cleanly. |
 
 ---
 
-## 🛠️ Architecture & Core Components
+## 🛠️ Architecture & Core Pipeline
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│                     UI Layer                          │
-│     (Jetpack Compose - Inter / IBM Plex Mono Type)     │
+│                        UI Layer                        │
+│     (Jetpack Compose - Inter / IBM Plex Mono Fonts)    │
 └───────────┬────────────────────────────────┬───────────┘
             │                                │
             ▼                                ▼
 ┌───────────────────────┐        ┌───────────────────────┐
 │     MainViewModel     │◄───────┤    PhotoProcessor     │
-│  (StateFlow Flow engines)     │        │ (Exif/Watermark Draw) │
+│  (StateFlow Flux Core) │        │ (Exif/Watermark Draw) │
 └───────────┬───────────┘        └───────────────────────┘
             │
             ▼
@@ -68,91 +87,65 @@ In strict alignment with the premium industrial UI design tokens, the applicatio
 └────────────────────────────────────────────────────────┘
 ```
 
-### 1. Unified State Engine (`ViewModel.kt`)
-Holds immutable reactive flows representing geographic coordinate variations, live sensor data (orientation matrix for compass readings), active validation profiles, and local project schemas.
-
-### 2. High-Performance Spatial Image Matrix (`PhotoProcessor.kt`)
-Draws high-contrast instrumentation details directly on the canvas preview to export images embedded with EXIF headers and custom geological watermarks.
-
-### 3. Native Sensors Wrapper
-Subscribes to Android's `Sensor.TYPE_ROTATION_VECTOR` or combination `TYPE_ACCELEROMETER` + `TYPE_MAGNETIC_FIELD` to calculate real-time magnetic Azimuth (0° to 360°) and strike orientations.
-
-### 4. Seamless SQLite Core (`Database.kt`)
-Implements **Room Database Entity-Models** representing geological data relational structures.
-*   **Projects Schema:** `id`, `name`, `stationCount`, `createdAt`.
-*   **Stations Schema:** `id`, `projectId`, `code`, `latitude`, `longitude`, `utmZone`, `utmEasting`, `utmNorthing`, `accuracy`, `elevation`, `timestamp`.
-*   **Observations Schema:** `id`, `stationId`, `lithologyCode`, `lithologyDescription`, `alterationZone`, `structureType`, `measurementText` (Dip/Dip Direction), `hasSample`, `sampleCode`.
-
 ---
 
-## 📁 Repository Directory Structure
+## 📁 Repository Map
 
 ```
+├── .github
+│   └── workflows
+│       └── android.yml            # Automated CI Build Actions Pipeline (v1.1)
 ├── app
-│   ├── build.gradle.kts           # Module properties & compiler configurations
+│   ├── build.gradle.kts           # Gradle Module-level properties and dependency chains
 │   └── src
 │       └── main
-│           ├── AndroidManifest.xml # Hardware permissions (Location, Sensors, Camera)
+│           ├── AndroidManifest.xml # Core hardware permissions registers (Location, Camera, Sensors)
 │           ├── java
 │           │   └── com
 │           │       └── example
-│           │           ├── MainActivity.kt        # View / Navigation Controller & Compose UI Elements
-│           │           ├── ViewModel.kt           # Business Rules Coordinator
-│           │           ├── Database.kt            # Jetpack Room Local Storage Layer
-│           │           ├── PhotoProcessor.kt      # Image EXIF Watermarking Pipeline
-│           │           ├── UtmConverter.kt        # WGS84 Ellipsoid to UTM Coordinates Engine
-│           │           ├── XlsxWriter.kt          # Offline Excel Spreadsheet Compiler
+│           │           ├── MainActivity.kt        # Primary view structures, Dialog layers and Navigation
+│           │           ├── ViewModel.kt           # ViewModel, StateFlow flows, and ZIP exporter
+│           │           ├── Database.kt            # Room Persistent DB, Schemas, DAO interfaces
+│           │           ├── PhotoProcessor.kt      # Georeference Image Pipeline
+│           │           ├── UtmConverter.kt        # Ellipsoidal WGS84 to UTM Transverse Mercator
+│           │           ├── XlsxWriter.kt          # Offline XLSX Spreadsheet Builder
 │           │           └── ui
 │           │               └── theme
-│           │                   ├── Color.kt       # Industrial Color Tokens
-│           │                   ├── Theme.kt       # Material 3 Custom Theme Configuration
-│           │                   └── Type.kt        # Typography (IBM Plex Mono + Inter Scale)
+│           │                   ├── Color.kt       # Unified color palette definition
+│           │                   ├── Theme.kt       # Material 3 Custom palette injection
+│           │                   └── Type.kt        # Type tokens with monospace scale pairings
 ```
 
 ---
 
-## 🚀 Local Build & Deployment Guidelines
+## 🚀 Workstation Compilation & Setup
 
-To build and compile GeoField Pro on your workstation:
+To compile and verify the project locally:
 
 ### Prerequisites
-*   **Android Studio Ladybug (2024.2.1) or higher**
-*   **Java SE Development Kit (JDK) 17**
-*   **Grade 8.4+**
+* **Android Studio Ladybug (2024.2.1) or higher**
+* **Java Development Kit (JDK) 17**
+* **Gradle Build Tool 8.4+**
 
-### Step-by-Step Compilation
+### Compilation Steps
 
-1.  **Clone the Repository**
-    ```bash
-    git clone https://github.com/username/geofield-pro.git
-    cd geofield-pro
-    ```
+1. **Clone the Source Code**
+   ```bash
+   git clone https://github.com/farzadf/geofield-pro.git
+   cd geofield-pro
+   ```
 
-2.  **Add Your Environment Variables or Local Keys**
-    If implementing external mapping API layers, specify them in the workspace `.env` or project settings panel in Android Studio.
+2. **Run Dependency Synthesis & Local Compiles**
+   ```bash
+   gradle assembleDebug
+   ```
+   This compiles and packs the diagnostic, fully signed APK directly to `app/build/outputs/apk/debug/`.
 
-3.  **Run Compilation Checks using Command-Line**
-    ```bash
-    gradle assembleDebug
-    ```
-    This generates the diagnostic and testable APK under `app/build/outputs/apk/debug/`.
-
-4.  **Hardware Permissions Configuration**
-    Ensure your hardware device grants these critical runtime permissions:
-    *   `android.permission.ACCESS_FINE_LOCATION` (GPS Precision Lock)
-    *   `android.permission.CAMERA` (Geo-referenced Watermarked Imagery)
+3. **Required Hardware Permissions**
+   Verify your test environment allows runtime checks for:
+   * `ACCESS_FINE_LOCATION` (Required to compute projected coordinate metrics)
+   * `CAMERA` (Required for spatial overlay watermarked photography)
 
 ---
 
-## 📊 Industrial Excel Export Structure (XLSX Schema)
-
-The generated Excel output from `/XlsxWriter.kt` consists of highly structured, machine-readable tabs designed for direct integration in software like ArcMap, QGIS, Leapfrog, or MineSight:
-
-1.  **STATIONS TAB:** Core station coordinates, altitude, UTM components, precision ratings, logging times.
-2.  **LITHOLOGY & ALTERATION TAB:** Geologic units, primary minerals, alteration style, alteration intensity.
-3.  **STRUCTURES TAB:** Structural planes, fault descriptors, Dip angle, Dip Direction, Strike measurements.
-4.  **SAMPLES TAB:** Sample IDs, rock type descriptions, physical packaging details.
-
----
-
-*GeoField Pro is built for extreme conditions where reliability isn't a feature; it's a survival requirement. Engineered for geologists, by geologists.*
+*GeoField Pro is engineered with absolute resilience at its core. Built for extreme environments, delivering surveyor-grade accuracy wherever the exploration leads.*

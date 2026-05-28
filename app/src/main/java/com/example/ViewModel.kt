@@ -26,6 +26,8 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -535,118 +537,117 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
     fun exportProjectData(context: Context, projectId: Int) {
         viewModelScope.launch {
             try {
-                // Fetch all data synchronously
-                val stations = dao.getStationsForProjectSync(projectId)
-                val observations = dao.getObservationsForProjectSync(projectId)
-                val samples = dao.getSamplesForProjectSync(projectId)
+                // Perform database queries and formatting on Dispatchers.IO background thread
+                val shareData = withContext(Dispatchers.IO) {
+                    val stations = dao.getStationsForProjectSync(projectId)
+                    val observations = dao.getObservationsForProjectSync(projectId)
+                    val samples = dao.getSamplesForProjectSync(projectId)
 
-                // Get project details
-                val projectList = dao.getAllProjects()
-                val activeProj = stations.firstOrNull()?.let {
-                    // Let's find project details from stations or query
-                    null
-                } // safer is to query database once
-                
-                // Construct a quick lookup map of stationId to StationCode for observations and samples matching
-                val stationCodeMap = stations.associate { it.id to it.stationCode }
-                val obsCodeMap = observations.associate { it.id to (stationCodeMap[it.stationId] ?: "Unknown") }
-                val obsTypeMap = observations.associate { it.id to it.observationType }
+                    val stationCodeMap = stations.associate { it.id to it.stationCode }
+                    val obsCodeMap = observations.associate { it.id to (stationCodeMap[it.stationId] ?: "Unknown") }
+                    val obsTypeMap = observations.associate { it.id to it.observationType }
 
-                // Map database entries to XlsxWriter format
-                val stationRows = stations.map {
-                    val dateFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(it.createdAt))
-                    XlsxWriter.StationSheetData(
-                        stationCode = it.stationCode,
-                        prefix = it.prefix,
-                        latitude = it.latitude,
-                        longitude = it.longitude,
-                        elevation = it.elevation,
-                        accuracy = it.accuracy,
-                        utmEasting = it.utmEasting,
-                        utmNorthing = it.utmNorthing,
-                        utmZone = it.utmZone,
-                        createdAt = dateFormatted
+                    // Map database entries to XlsxWriter format
+                    val stationRows = stations.map {
+                        val dateFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(it.createdAt))
+                        XlsxWriter.StationSheetData(
+                            stationCode = it.stationCode,
+                            prefix = it.prefix,
+                            latitude = it.latitude,
+                            longitude = it.longitude,
+                            elevation = it.elevation,
+                            accuracy = it.accuracy,
+                            utmEasting = it.utmEasting,
+                            utmNorthing = it.utmNorthing,
+                            utmZone = it.utmZone,
+                            createdAt = dateFormatted
+                        )
+                    }
+
+                    val lithologyRows = observations.filter { it.observationType == "Lithology" }.map {
+                        val dateFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(it.createdAt))
+                        val hasSampleSync = dao.getSampleForObservationSync(it.id) != null
+                        XlsxWriter.LithologySheetData(
+                            stationCode = stationCodeMap[it.stationId] ?: "Unknown",
+                            timestamp = dateFormatted,
+                            lithologyType = it.lithologyType ?: "",
+                            texture = it.texture ?: "",
+                            color = it.color ?: "",
+                            grainSize = it.grainSize ?: "",
+                            alteration = it.lithologyAlteration ?: "",
+                            mineralization = it.lithologyMineralization ?: "",
+                            notes = it.notes ?: "",
+                            hasSample = if (hasSampleSync) "Yes" else "No",
+                            photos = it.photoPath ?: ""
+                        )
+                    }
+
+                    val alterationRows = observations.filter { it.observationType == "Alteration" }.map {
+                        val dateFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(it.createdAt))
+                        val hasSampleSync = dao.getSampleForObservationSync(it.id) != null
+                        XlsxWriter.AlterationSheetData(
+                            stationCode = stationCodeMap[it.stationId] ?: "Unknown",
+                            timestamp = dateFormatted,
+                            alterationType = it.alterationType ?: "",
+                            intensity = it.intensity ?: "",
+                            hostRock = it.hostRock ?: "",
+                            associatedMinerals = it.associatedMinerals ?: "",
+                            notes = it.notes ?: "",
+                            hasSample = if (hasSampleSync) "Yes" else "No",
+                            photos = it.photoPath ?: ""
+                        )
+                    }
+
+                    val faultRows = observations.filter { it.observationType == "Fault" || it.observationType == "Joint" || it.observationType == "Vein" || it.observationType == "Structure" }.map {
+                        val dateFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(it.createdAt))
+                        val hasSampleSync = dao.getSampleForObservationSync(it.id) != null
+                        XlsxWriter.FaultSheetData(
+                            stationCode = stationCodeMap[it.stationId] ?: "Unknown",
+                            timestamp = dateFormatted,
+                            structureType = it.observationType,
+                            strike = it.strike,
+                            dip = it.dip,
+                            movement = it.movement ?: it.veinMineralogy ?: "",
+                            width = it.width,
+                            notes = it.notes ?: "",
+                            hasSample = if (hasSampleSync) "Yes" else "No",
+                            photos = it.photoPath ?: ""
+                        )
+                    }
+
+                    val sampleRows = samples.map {
+                        XlsxWriter.SampleSheetData(
+                            stationCode = obsCodeMap[it.observationId] ?: "Unknown",
+                            observationType = obsTypeMap[it.observationId] ?: "General",
+                            sampleId = it.sampleCodeId,
+                            sampleType = it.sampleType,
+                            description = it.description ?: ""
+                        )
+                    }
+
+                    // File Creation
+                    val fileName = "Geology_Logs_Project_${projectId}.xlsx"
+                    val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
+                    if (!dir.exists()) {
+                        dir.mkdirs()
+                    }
+                    val file = File(dir, fileName)
+                    
+                    XlsxWriter.generateXlsxFile(
+                        file,
+                        stations = stationRows,
+                        lithology = lithologyRows,
+                        alteration = alterationRows,
+                        faults = faultRows,
+                        samples = sampleRows
                     )
+
+                    Pair(file, fileName)
                 }
 
-                val lithologyRows = observations.filter { it.observationType == "Lithology" }.map {
-                    val dateFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(it.createdAt))
-                    // Check if it has a sample
-                    val hasSampleSync = dao.getSampleForObservationSync(it.id) != null
-                    XlsxWriter.LithologySheetData(
-                        stationCode = stationCodeMap[it.stationId] ?: "Unknown",
-                        timestamp = dateFormatted,
-                        lithologyType = it.lithologyType ?: "",
-                        texture = it.texture ?: "",
-                        color = it.color ?: "",
-                        grainSize = it.grainSize ?: "",
-                        alteration = it.lithologyAlteration ?: "",
-                        mineralization = it.lithologyMineralization ?: "",
-                        notes = it.notes ?: "",
-                        hasSample = if (hasSampleSync) "Yes" else "No",
-                        photos = it.photoPath ?: ""
-                    )
-                }
+                val (file, fileName) = shareData
 
-                val alterationRows = observations.filter { it.observationType == "Alteration" }.map {
-                    val dateFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(it.createdAt))
-                    val hasSampleSync = dao.getSampleForObservationSync(it.id) != null
-                    XlsxWriter.AlterationSheetData(
-                        stationCode = stationCodeMap[it.stationId] ?: "Unknown",
-                        timestamp = dateFormatted,
-                        alterationType = it.alterationType ?: "",
-                        intensity = it.intensity ?: "",
-                        hostRock = it.hostRock ?: "",
-                        associatedMinerals = it.associatedMinerals ?: "",
-                        notes = it.notes ?: "",
-                        hasSample = if (hasSampleSync) "Yes" else "No",
-                        photos = it.photoPath ?: ""
-                    )
-                }
-
-                val faultRows = observations.filter { it.observationType == "Fault" || it.observationType == "Joint" || it.observationType == "Vein" || it.observationType == "Structure" }.map {
-                    val dateFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(it.createdAt))
-                    val hasSampleSync = dao.getSampleForObservationSync(it.id) != null
-                    // Combine geological structural readings
-                    XlsxWriter.FaultSheetData(
-                        stationCode = stationCodeMap[it.stationId] ?: "Unknown",
-                        timestamp = dateFormatted,
-                        structureType = it.observationType,
-                        strike = it.strike,
-                        dip = it.dip,
-                        movement = it.movement ?: it.veinMineralogy ?: "", // reuse movement/mineralogy
-                        width = it.width,
-                        notes = it.notes ?: "",
-                        hasSample = if (hasSampleSync) "Yes" else "No",
-                        photos = it.photoPath ?: ""
-                    )
-                }
-
-                val sampleRows = samples.map {
-                    XlsxWriter.SampleSheetData(
-                        stationCode = obsCodeMap[it.observationId] ?: "Unknown",
-                        observationType = obsTypeMap[it.observationId] ?: "General",
-                        sampleId = it.sampleCodeId,
-                        sampleType = it.sampleType,
-                        description = it.description ?: ""
-                    )
-                }
-
-                // File Creation
-                val fileName = "Geology_Logs_Project_${projectId}.xlsx"
-                val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
-                val file = File(dir, fileName)
-                
-                XlsxWriter.generateXlsxFile(
-                    file,
-                    stations = stationRows,
-                    lithology = lithologyRows,
-                    alteration = alterationRows,
-                    faults = faultRows,
-                    samples = sampleRows
-                )
-
-                // Share file offline via custom Intent FileProvider
+                // Share file offline via custom Intent FileProvider (must run on Main Thread)
                 val authority = "${context.packageName}.fileprovider"
                 val fileUri: Uri = FileProvider.getUriForFile(context, authority, file)
 
@@ -674,183 +675,193 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
     fun exportProjectZip(context: Context, projectId: Int) {
         viewModelScope.launch {
             try {
-                // Fetch all data synchronously
-                val stations = dao.getStationsForProjectSync(projectId)
-                val observations = dao.getObservationsForProjectSync(projectId)
-                val samples = dao.getSamplesForProjectSync(projectId)
+                // Perform heavy query, creation, and compression tasks inside Dispatchers.IO background thread
+                val shareData = withContext(Dispatchers.IO) {
+                    // Fetch all data synchronously
+                    val stations = dao.getStationsForProjectSync(projectId)
+                    val observations = dao.getObservationsForProjectSync(projectId)
+                    val samples = dao.getSamplesForProjectSync(projectId)
 
-                val stationCodeMap = stations.associate { it.id to it.stationCode }
-                val obsCodeMap = observations.associate { it.id to (stationCodeMap[it.stationId] ?: "Unknown") }
-                val obsTypeMap = observations.associate { it.id to it.observationType }
+                    val stationCodeMap = stations.associate { it.id to it.stationCode }
+                    val obsCodeMap = observations.associate { it.id to (stationCodeMap[it.stationId] ?: "Unknown") }
+                    val obsTypeMap = observations.associate { it.id to it.observationType }
 
-                // 1. Prepare standard spreadsheet file inside ZIP with clean relative photo references
-                val tempExcelFile = File.createTempFile("temp_export", ".xlsx", context.cacheDir)
-                
-                val excelStations = stations.map {
-                    val dateFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(it.createdAt))
-                    XlsxWriter.StationSheetData(
-                        stationCode = it.stationCode,
-                        prefix = it.prefix,
-                        latitude = it.latitude,
-                        longitude = it.longitude,
-                        elevation = it.elevation,
-                        accuracy = it.accuracy,
-                        utmEasting = it.utmEasting,
-                        utmNorthing = it.utmNorthing,
-                        utmZone = it.utmZone,
-                        createdAt = dateFormatted
+                    // 1. Prepare standard spreadsheet file inside ZIP with clean relative photo references
+                    val tempExcelFile = File.createTempFile("temp_export", ".xlsx", context.cacheDir)
+                    
+                    val excelStations = stations.map {
+                        val dateFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(it.createdAt))
+                        XlsxWriter.StationSheetData(
+                            stationCode = it.stationCode,
+                            prefix = it.prefix,
+                            latitude = it.latitude,
+                            longitude = it.longitude,
+                            elevation = it.elevation,
+                            accuracy = it.accuracy,
+                            utmEasting = it.utmEasting,
+                            utmNorthing = it.utmNorthing,
+                            utmZone = it.utmZone,
+                            createdAt = dateFormatted
+                        )
+                    }
+
+                    val excelLithology = observations.filter { it.observationType == "Lithology" }.map {
+                        val dateFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(it.createdAt))
+                        val hasSampleSync = dao.getSampleForObservationSync(it.id) != null
+                        val relativePhotos = it.photoPath?.split(",")?.filter { it.isNotBlank() }?.map { File(it).name }?.joinToString(", ") ?: ""
+                        XlsxWriter.LithologySheetData(
+                            stationCode = stationCodeMap[it.stationId] ?: "Unknown",
+                            timestamp = dateFormatted,
+                            lithologyType = it.lithologyType ?: "",
+                            texture = it.texture ?: "",
+                            color = it.color ?: "",
+                            grainSize = it.grainSize ?: "",
+                            alteration = it.lithologyAlteration ?: "",
+                            mineralization = it.lithologyMineralization ?: "",
+                            notes = it.notes ?: "",
+                            hasSample = if (hasSampleSync) "Yes" else "No",
+                            photos = relativePhotos
+                        )
+                    }
+
+                    val excelAlteration = observations.filter { it.observationType == "Alteration" }.map {
+                        val dateFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(it.createdAt))
+                        val hasSampleSync = dao.getSampleForObservationSync(it.id) != null
+                        val relativePhotos = it.photoPath?.split(",")?.filter { it.isNotBlank() }?.map { File(it).name }?.joinToString(", ") ?: ""
+                        XlsxWriter.AlterationSheetData(
+                            stationCode = stationCodeMap[it.stationId] ?: "Unknown",
+                            timestamp = dateFormatted,
+                            alterationType = it.alterationType ?: "",
+                            intensity = it.intensity ?: "",
+                            hostRock = it.hostRock ?: "",
+                            associatedMinerals = it.associatedMinerals ?: "",
+                            notes = it.notes ?: "",
+                            hasSample = if (hasSampleSync) "Yes" else "No",
+                            photos = relativePhotos
+                        )
+                    }
+
+                    val excelFaults = observations.filter { it.observationType == "Fault" || it.observationType == "Joint" || it.observationType == "Vein" || it.observationType == "Structure" }.map {
+                        val dateFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(it.createdAt))
+                        val hasSampleSync = dao.getSampleForObservationSync(it.id) != null
+                        val relativePhotos = it.photoPath?.split(",")?.filter { it.isNotBlank() }?.map { File(it).name }?.joinToString(", ") ?: ""
+                        XlsxWriter.FaultSheetData(
+                            stationCode = stationCodeMap[it.stationId] ?: "Unknown",
+                            timestamp = dateFormatted,
+                            structureType = it.observationType,
+                            strike = it.strike,
+                            dip = it.dip,
+                            movement = it.movement ?: it.veinMineralogy ?: "",
+                            width = it.width,
+                            notes = it.notes ?: "",
+                            hasSample = if (hasSampleSync) "Yes" else "No",
+                            photos = relativePhotos
+                        )
+                    }
+
+                    val excelSamples = samples.map {
+                        XlsxWriter.SampleSheetData(
+                            stationCode = obsCodeMap[it.observationId] ?: "Unknown",
+                            observationType = obsTypeMap[it.observationId] ?: "General",
+                            sampleId = it.sampleCodeId,
+                            sampleType = it.sampleType,
+                            description = it.description ?: ""
+                        )
+                    }
+
+                    XlsxWriter.generateXlsxFile(
+                        tempExcelFile,
+                        stations = excelStations,
+                        lithology = excelLithology,
+                        alteration = excelAlteration,
+                        faults = excelFaults,
+                        samples = excelSamples
                     )
-                }
 
-                val excelLithology = observations.filter { it.observationType == "Lithology" }.map {
-                    val dateFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(it.createdAt))
-                    val hasSampleSync = dao.getSampleForObservationSync(it.id) != null
-                    val relativePhotos = it.photoPath?.split(",")?.filter { it.isNotBlank() }?.map { File(it).name }?.joinToString(", ") ?: ""
-                    XlsxWriter.LithologySheetData(
-                        stationCode = stationCodeMap[it.stationId] ?: "Unknown",
-                        timestamp = dateFormatted,
-                        lithologyType = it.lithologyType ?: "",
-                        texture = it.texture ?: "",
-                        color = it.color ?: "",
-                        grainSize = it.grainSize ?: "",
-                        alteration = it.lithologyAlteration ?: "",
-                        mineralization = it.lithologyMineralization ?: "",
-                        notes = it.notes ?: "",
-                        hasSample = if (hasSampleSync) "Yes" else "No",
-                        photos = relativePhotos
-                    )
-                }
+                    // 2. Prepare final ZIP File
+                    val zipDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
+                    if (!zipDir.exists()) {
+                        zipDir.mkdirs()
+                    }
+                    val zipFileName = "GeoField_Project_${projectId}_GIS_Package.zip"
+                    val zipFile = File(zipDir, zipFileName)
 
-                val excelAlteration = observations.filter { it.observationType == "Alteration" }.map {
-                    val dateFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(it.createdAt))
-                    val hasSampleSync = dao.getSampleForObservationSync(it.id) != null
-                    val relativePhotos = it.photoPath?.split(",")?.filter { it.isNotBlank() }?.map { File(it).name }?.joinToString(", ") ?: ""
-                    XlsxWriter.AlterationSheetData(
-                        stationCode = stationCodeMap[it.stationId] ?: "Unknown",
-                        timestamp = dateFormatted,
-                        alterationType = it.alterationType ?: "",
-                        intensity = it.intensity ?: "",
-                        hostRock = it.hostRock ?: "",
-                        associatedMinerals = it.associatedMinerals ?: "",
-                        notes = it.notes ?: "",
-                        hasSample = if (hasSampleSync) "Yes" else "No",
-                        photos = relativePhotos
-                    )
-                }
+                    java.util.zip.ZipOutputStream(java.io.FileOutputStream(zipFile)).use { zos ->
+                        // Add workbook.xlsx
+                        zos.putNextEntry(java.util.zip.ZipEntry("Geology_Logs_Workbook.xlsx"))
+                        tempExcelFile.inputStream().use { it.copyTo(zos) }
+                        zos.closeEntry()
 
-                val excelFaults = observations.filter { it.observationType == "Fault" || it.observationType == "Joint" || it.observationType == "Vein" || it.observationType == "Structure" }.map {
-                    val dateFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date(it.createdAt))
-                    val hasSampleSync = dao.getSampleForObservationSync(it.id) != null
-                    val relativePhotos = it.photoPath?.split(",")?.filter { it.isNotBlank() }?.map { File(it).name }?.joinToString(", ") ?: ""
-                    XlsxWriter.FaultSheetData(
-                        stationCode = stationCodeMap[it.stationId] ?: "Unknown",
-                        timestamp = dateFormatted,
-                        structureType = it.observationType,
-                        strike = it.strike,
-                        dip = it.dip,
-                        movement = it.movement ?: it.veinMineralogy ?: "",
-                        width = it.width,
-                        notes = it.notes ?: "",
-                        hasSample = if (hasSampleSync) "Yes" else "No",
-                        photos = relativePhotos
-                    )
-                }
+                        // Add CSV: stations
+                        val stationCsv = toCsvString(
+                            listOf("Station Code", "Prefix", "Latitude", "Longitude", "Elevation (m)", "Accuracy (m)", "UTM Easting", "UTM Northing", "UTM Zone", "Created At"),
+                            excelStations.map { listOf(it.stationCode, it.prefix, it.latitude, it.longitude, it.elevation, it.accuracy, it.utmEasting, it.utmNorthing, it.utmZone, it.createdAt) }
+                        )
+                        zos.putNextEntry(java.util.zip.ZipEntry("data/stations_dataset.csv"))
+                        zos.write(stationCsv.toByteArray(java.nio.charset.StandardCharsets.UTF_8))
+                        zos.closeEntry()
 
-                val excelSamples = samples.map {
-                    XlsxWriter.SampleSheetData(
-                        stationCode = obsCodeMap[it.observationId] ?: "Unknown",
-                        observationType = obsTypeMap[it.observationId] ?: "General",
-                        sampleId = it.sampleCodeId,
-                        sampleType = it.sampleType,
-                        description = it.description ?: ""
-                    )
-                }
+                        // Add CSV: lithology
+                        val lithCsv = toCsvString(
+                            listOf("Station Code", "Timestamp", "Lithology Type", "Texture", "Color", "Grain Size", "Alteration", "Mineralization", "Notes", "Has Sample?", "Photos"),
+                            excelLithology.map { listOf(it.stationCode, it.timestamp, it.lithologyType, it.texture, it.color, it.grainSize, it.alteration, it.mineralization, it.notes, it.hasSample, it.photos) }
+                        )
+                        zos.putNextEntry(java.util.zip.ZipEntry("data/lithologies_dataset.csv"))
+                        zos.write(lithCsv.toByteArray(java.nio.charset.StandardCharsets.UTF_8))
+                        zos.closeEntry()
 
-                XlsxWriter.generateXlsxFile(
-                    tempExcelFile,
-                    stations = excelStations,
-                    lithology = excelLithology,
-                    alteration = excelAlteration,
-                    faults = excelFaults,
-                    samples = excelSamples
-                )
+                        // Add CSV: alteration
+                        val altCsv = toCsvString(
+                            listOf("Station Code", "Timestamp", "Alteration Type", "Intensity", "Host Rock", "Associated Minerals", "Notes", "Has Sample?", "Photos"),
+                            excelAlteration.map { listOf(it.stationCode, it.timestamp, it.alterationType, it.intensity, it.hostRock, it.associatedMinerals, it.notes, it.hasSample, it.photos) }
+                        )
+                        zos.putNextEntry(java.util.zip.ZipEntry("data/alterations_dataset.csv"))
+                        zos.write(altCsv.toByteArray(java.nio.charset.StandardCharsets.UTF_8))
+                        zos.closeEntry()
 
-                // 2. Prepare final ZIP File
-                val zipDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
-                val zipFileName = "GeoField_Project_${projectId}_GIS_Package.zip"
-                val zipFile = File(zipDir, zipFileName)
+                        // Add CSV: structures/faults
+                        val faultCsv = toCsvString(
+                            listOf("Station Code", "Timestamp", "Structure Type", "Strike (deg)", "Dip (deg)", "Movement", "Width (cm)", "Notes", "Has Sample?", "Photos"),
+                            excelFaults.map { listOf(it.stationCode, it.timestamp, it.structureType, it.strike ?: "", it.dip ?: "", it.movement ?: "", it.width ?: "", it.notes ?: "", it.hasSample, it.photos) }
+                        )
+                        zos.putNextEntry(java.util.zip.ZipEntry("data/structures_dataset.csv"))
+                        zos.write(faultCsv.toByteArray(java.nio.charset.StandardCharsets.UTF_8))
+                        zos.closeEntry()
 
-                java.util.zip.ZipOutputStream(java.io.FileOutputStream(zipFile)).use { zos ->
-                    // Add workbook.xlsx
-                    zos.putNextEntry(java.util.zip.ZipEntry("Geology_Logs_Workbook.xlsx"))
-                    tempExcelFile.inputStream().use { it.copyTo(zos) }
-                    zos.closeEntry()
+                        // Add CSV: samples
+                        val sampleCsv = toCsvString(
+                            listOf("Station Code", "Observation Type", "Sample ID", "Sample Type", "Description"),
+                            excelSamples.map { listOf(it.stationCode, it.observationType, it.sampleId, it.sampleType, it.description) }
+                        )
+                        zos.putNextEntry(java.util.zip.ZipEntry("data/samples_dataset.csv"))
+                        zos.write(sampleCsv.toByteArray(java.nio.charset.StandardCharsets.UTF_8))
+                        zos.closeEntry()
 
-                    // Add CSV: stations
-                    val stationCsv = toCsvString(
-                        listOf("Station Code", "Prefix", "Latitude", "Longitude", "Elevation (m)", "Accuracy (m)", "UTM Easting", "UTM Northing", "UTM Zone", "Created At"),
-                        excelStations.map { listOf(it.stationCode, it.prefix, it.latitude, it.longitude, it.elevation, it.accuracy, it.utmEasting, it.utmNorthing, it.utmZone, it.createdAt) }
-                    )
-                    zos.putNextEntry(java.util.zip.ZipEntry("data/stations_dataset.csv"))
-                    zos.write(stationCsv.toByteArray(java.nio.charset.StandardCharsets.UTF_8))
-                    zos.closeEntry()
+                        // Copy photo files into the ZIP archive under field_photos/
+                        val allLocalPhotoUrls = observations.mapNotNull { it.photoPath }
+                            .flatMap { it.split(",") }
+                            .filter { it.isNotBlank() }
+                            .distinct()
 
-                    // Add CSV: lithology
-                    val lithCsv = toCsvString(
-                        listOf("Station Code", "Timestamp", "Lithology Type", "Texture", "Color", "Grain Size", "Alteration", "Mineralization", "Notes", "Has Sample?", "Photos"),
-                        excelLithology.map { listOf(it.stationCode, it.timestamp, it.lithologyType, it.texture, it.color, it.grainSize, it.alteration, it.mineralization, it.notes, it.hasSample, it.photos) }
-                    )
-                    zos.putNextEntry(java.util.zip.ZipEntry("data/lithologies_dataset.csv"))
-                    zos.write(lithCsv.toByteArray(java.nio.charset.StandardCharsets.UTF_8))
-                    zos.closeEntry()
-
-                    // Add CSV: alteration
-                    val altCsv = toCsvString(
-                        listOf("Station Code", "Timestamp", "Alteration Type", "Intensity", "Host Rock", "Associated Minerals", "Notes", "Has Sample?", "Photos"),
-                        excelAlteration.map { listOf(it.stationCode, it.timestamp, it.alterationType, it.intensity, it.hostRock, it.associatedMinerals, it.notes, it.hasSample, it.photos) }
-                    )
-                    zos.putNextEntry(java.util.zip.ZipEntry("data/alterations_dataset.csv"))
-                    zos.write(altCsv.toByteArray(java.nio.charset.StandardCharsets.UTF_8))
-                    zos.closeEntry()
-
-                    // Add CSV: structures/faults
-                    val faultCsv = toCsvString(
-                        listOf("Station Code", "Timestamp", "Structure Type", "Strike (deg)", "Dip (deg)", "Movement", "Width (cm)", "Notes", "Has Sample?", "Photos"),
-                        excelFaults.map { listOf(it.stationCode, it.timestamp, it.structureType, it.strike ?: "", it.dip ?: "", it.movement ?: "", it.width ?: "", it.notes ?: "", it.hasSample, it.photos) }
-                    )
-                    zos.putNextEntry(java.util.zip.ZipEntry("data/structures_dataset.csv"))
-                    zos.write(faultCsv.toByteArray(java.nio.charset.StandardCharsets.UTF_8))
-                    zos.closeEntry()
-
-                    // Add CSV: samples
-                    val sampleCsv = toCsvString(
-                        listOf("Station Code", "Observation Type", "Sample ID", "Sample Type", "Description"),
-                        excelSamples.map { listOf(it.stationCode, it.observationType, it.sampleId, it.sampleType, it.description) }
-                    )
-                    zos.putNextEntry(java.util.zip.ZipEntry("data/samples_dataset.csv"))
-                    zos.write(sampleCsv.toByteArray(java.nio.charset.StandardCharsets.UTF_8))
-                    zos.closeEntry()
-
-                    // Copy photo files into the ZIP archive under field_photos/
-                    val allLocalPhotoUrls = observations.mapNotNull { it.photoPath }
-                        .flatMap { it.split(",") }
-                        .filter { it.isNotBlank() }
-                        .distinct()
-
-                    allLocalPhotoUrls.forEach { photoPathUrl ->
-                        val localPhotoFile = File(photoPathUrl)
-                        if (localPhotoFile.exists() && localPhotoFile.isFile) {
-                            zos.putNextEntry(java.util.zip.ZipEntry("field_photos/${localPhotoFile.name}"))
-                            localPhotoFile.inputStream().use { it.copyTo(zos) }
-                            zos.closeEntry()
+                        allLocalPhotoUrls.forEach { photoPathUrl ->
+                            val localPhotoFile = File(photoPathUrl)
+                            if (localPhotoFile.exists() && localPhotoFile.isFile) {
+                                zos.putNextEntry(java.util.zip.ZipEntry("field_photos/${localPhotoFile.name}"))
+                                localPhotoFile.inputStream().use { it.copyTo(zos) }
+                                zos.closeEntry()
+                            }
                         }
                     }
+
+                    // Delete temporary Excel file
+                    tempExcelFile.delete()
+
+                    Pair(zipFile, zipFileName)
                 }
 
-                // Delete temporary Excel file
-                tempExcelFile.delete()
+                val (zipFile, zipFileName) = shareData
 
-                // Share ZIP file offline via custom Intent FileProvider
+                // Share ZIP file offline via custom Intent FileProvider (must run on Main Thread)
                 val authority = "${context.packageName}.fileprovider"
                 val fileUri: Uri = FileProvider.getUriForFile(context, authority, zipFile)
 
