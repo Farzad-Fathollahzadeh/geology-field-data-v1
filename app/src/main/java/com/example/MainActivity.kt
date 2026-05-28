@@ -173,6 +173,7 @@ fun MainScreenContent(
     val observations by viewModel.activeStationObservations.collectAsStateWithLifecycle()
     val projectList by viewModel.projects.collectAsStateWithLifecycle()
 
+    var showExportDialog by remember { mutableStateOf(false) }
     var showSplash by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) {
         delay(450) // Crisp, lightning-fast boot sequence for optimal user response
@@ -267,10 +268,10 @@ fun MainScreenContent(
                                 val activeProjId = activeProject?.id
                                 if (activeProjId != null) {
                                     IconButton(
-                                        onClick = { viewModel.exportProjectData(context, activeProjId) },
+                                        onClick = { showExportDialog = true },
                                         modifier = Modifier.testTag("export_button")
                                     ) {
-                                        Icon(Icons.Default.Share, contentDescription = "Export Excel (.xlsx)")
+                                        Icon(Icons.Default.Share, contentDescription = "Export GIS Datasets")
                                     }
                                 }
                             }
@@ -410,6 +411,130 @@ fun MainScreenContent(
                         }
                     }
                 }
+            }
+        }
+
+        if (showExportDialog) {
+            val activeProjId = activeProject?.id
+            if (activeProjId != null) {
+                AlertDialog(
+                    onDismissRequest = { showExportDialog = false },
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = "Export Project Datasets",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            Text(
+                                text = "Choose the format to export your field data. All datasets are packaged offline and shared directly from internal storage.",
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            
+                            // Option 1: Excel Workbook
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        showExportDialog = false
+                                        viewModel.exportProjectData(context, activeProjId)
+                                    },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                ),
+                                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.TableChart,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Excel Workbook (.xlsx)",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "Multi-sheet spreadsheet format with structural tables.",
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Option 2: Complete GIS ZIP Package
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        showExportDialog = false
+                                        viewModel.exportProjectZip(context, activeProjId)
+                                    },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                ),
+                                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Archive,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Complete GIS ZIP Package",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "Bridges to QGIS/ArcGIS. Contains Excel workbook, separate Georeferenced CSV sheets, and all geotagged photos.",
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {},
+                    dismissButton = {
+                        TextButton(onClick = { showExportDialog = false }) {
+                            Text("CLOSE", fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    shape = RoundedCornerShape(20.dp)
+                )
             }
         }
     }
