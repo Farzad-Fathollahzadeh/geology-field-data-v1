@@ -86,6 +86,78 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// ==========================================
+// GEOLOGY SECTION BRANDING REPRESENTATIONS
+// ==========================================
+data class GeologyTypeInfo(
+    val name: String,
+    val persianName: String,
+    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val color: Color,
+    val description: String
+)
+
+fun getGeologyTypeInfo(type: String): GeologyTypeInfo {
+    return when (type.lowercase(Locale.ROOT).trim()) {
+        "lithology" -> GeologyTypeInfo(
+            name = "Lithology",
+            persianName = "سنگ‌شناسی (Lithology)",
+            icon = Icons.Default.Terrain,
+            color = Color(0xFF8D6E63), // Clay/Slate Brown (Earthy rock)
+            description = "جنس سنگ، بافت، رنگ و اندازه دانه‌ها"
+        )
+        "alteration" -> GeologyTypeInfo(
+            name = "Alteration",
+            persianName = "دگرسانی (Alteration)",
+            icon = Icons.Default.Waves, // Wavey alteration patterns
+            color = Color(0xFFEF6C00), // Hydrothermal terracotta orange
+            description = "شدت و نوع دگرسانی هیدروترمال و کانی‌های همراه"
+        )
+        "fault" -> GeologyTypeInfo(
+            name = "Fault",
+            persianName = "برداشت گسل (Fault)",
+            icon = Icons.Default.CompareArrows, // Shear sliding arrows
+            color = Color(0xFFD32F2F), // Tension fracture active red
+            description = "امتداد، شیب، نوع حرکت و ضخامت گسل"
+        )
+        "joint" -> GeologyTypeInfo(
+            name = "Joint",
+            persianName = "درزه (Joint)",
+            icon = Icons.Default.GridOn, // Fracture joint grid pattern
+            color = Color(0xFF455A64), // Basalt slate dark blue-grey
+            description = "فاصله‌داری و نوع درزه‌ها و شکستگی‌ها"
+        )
+        "vein" -> GeologyTypeInfo(
+            name = "Vein",
+            persianName = "رگه (Vein)",
+            icon = Icons.Default.Bolt, // High-energy mineral veins
+            color = Color(0xFFFFB300), // Quartz/Gold Vein Yellow
+            description = "کانی‌سازی رگه‌ای و ضخامت آن"
+        )
+        "structure" -> GeologyTypeInfo(
+            name = "Structure",
+            persianName = "ساختار (Structure)",
+            icon = Icons.Default.Menu, // Planar layering horizontal lines
+            color = Color(0xFF00796B), // Foliated Metamorphic Teal
+            description = "لایه‌بندی، شیب، امتداد و لولای چین‌خوردگی"
+        )
+        "mineralization" -> GeologyTypeInfo(
+            name = "Mineralization",
+            persianName = "کانی‌سازی (Mineralization)",
+            icon = Icons.Default.Diamond, // Precious ore minerals
+            color = Color(0xFFFF8F00), // Bronze/gold metallic kani
+            description = "تیپ و درصد تخمینی کانی‌سازی فلزی"
+        )
+        else -> GeologyTypeInfo(
+            name = type,
+            persianName = type,
+            icon = Icons.Default.Layers,
+            color = Color(0xFF78909C),
+            description = "برداشت اطلاعات زمین‌شناسی صحرایی"
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
 fun MainScreenContent(
@@ -417,7 +489,7 @@ fun GeoFieldSplashScreen() {
                 .padding(bottom = 32.dp)
         ) {
             Text(
-                text = "OFFLINE-FIRST FIELD DATA LOGGER",
+                text = "OFFLINE-FIRST FIELD DATA LOGGER • v1.1",
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -491,14 +563,26 @@ fun ProjectListScreen(
             }
         } else {
             Column(modifier = Modifier.fillMaxSize()) {
-                Text(
-                    text = "GEOLOGICAL MAPPING PROJECTS",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    letterSpacing = 1.sp,
-                    modifier = Modifier.padding(bottom = 12.dp, start = 4.dp)
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp, start = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "GEOLOGICAL MAPPING PROJECTS",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        letterSpacing = 1.sp
+                    )
+                    Text(
+                        text = "v1.1",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        letterSpacing = 0.5.sp
+                    )
+                }
 
                 LazyColumn(
                     modifier = Modifier.weight(1f),
@@ -697,86 +781,6 @@ fun CreateProjectScreen(
             }
         }
 
-        // COORD CONFIGURATION SYSTEM
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
-            ),
-            shape = RoundedCornerShape(20.dp),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Text(
-                    text = "PROJECTION SYSTEM LOCK",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    letterSpacing = 1.sp
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    val isAuto = utmZoneMode == "AUTO"
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(44.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (isAuto) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
-                            .clickable { utmZoneMode = "AUTO" },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("Auto UTM (GPS)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = if (isAuto) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    val isManual = utmZoneMode == "MANUAL"
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(44.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (isManual) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
-                            .clickable { utmZoneMode = "MANUAL" },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("Manual Override", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = if (isManual) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-
-                if (utmZoneMode == "MANUAL") {
-                    var expandedZones by remember { mutableStateOf(false) }
-                    val zonesList = listOf("11N", "32V", "38N", "39N", "40N", "50J", "54K", "55S")
-                    Box {
-                        OutlinedTextField(
-                            value = utmZoneManual,
-                            onValueChange = { utmZoneManual = it.uppercase() },
-                            label = { Text("Manual UTM Zone (e.g. 39N)") },
-                            trailingIcon = { IconButton(onClick = { expandedZones = true }) { Icon(Icons.Default.KeyboardArrowDown, null) } },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            singleLine = true
-                        )
-                        DropdownMenu(expanded = expandedZones, onDismissRequest = { expandedZones = false }) {
-                            zonesList.forEach { zone ->
-                                DropdownMenuItem(
-                                    text = { Text(zone, fontWeight = FontWeight.Bold) },
-                                    onClick = {
-                                        utmZoneManual = zone
-                                        expandedZones = false
-                                    }
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         Spacer(modifier = Modifier.weight(1f))
 
         Row(
@@ -886,91 +890,6 @@ fun ProjectDashboardScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 18.sp
                     )
-                }
-            }
-        }
-
-        // MAPS & PROJECTION GRID CONFIGURATION
-        var expandedZones by remember { mutableStateOf(false) }
-        val zonesList = listOf("11N", "32V", "38N", "39N", "40N", "50J", "54K", "55S")
-        
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(20.dp),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "PROJECTION COORDINATE SYSTEM LOCK",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
-                    letterSpacing = 1.sp
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    val isAuto = project.utmZoneMode == "AUTO"
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(44.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (isAuto) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
-                            .clickable {
-                                viewModel.updateProjectSettings(project.id, "AUTO", project.utmZoneManual)
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("Auto UTM (GPS)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = if (isAuto) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                    val isManual = project.utmZoneMode == "MANUAL"
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(44.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (isManual) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
-                            .clickable {
-                                viewModel.updateProjectSettings(project.id, "MANUAL", project.utmZoneManual)
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text("Manual Override", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = if (isManual) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-                
-                if (project.utmZoneMode == "MANUAL") {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Box {
-                        OutlinedButton(
-                            onClick = { expandedZones = true },
-                            modifier = Modifier.fillMaxWidth().height(48.dp),
-                            shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                        ) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text("Projection Zone Grid: ${project.utmZoneManual}", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                Icon(Icons.Default.KeyboardArrowDown, null)
-                            }
-                        }
-                        DropdownMenu(expanded = expandedZones, onDismissRequest = { expandedZones = false }) {
-                            zonesList.forEach { zone ->
-                                DropdownMenuItem(
-                                    text = { Text(zone, fontWeight = FontWeight.Bold) },
-                                    onClick = {
-                                        viewModel.updateProjectSettings(project.id, "MANUAL", zone)
-                                        expandedZones = false
-                                    }
-                                )
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -1123,6 +1042,7 @@ fun CreateStationScreen(
 ) {
     val context = LocalContext.current
     val gps by viewModel.gpsState.collectAsStateWithLifecycle()
+    val activeProject by viewModel.activeProject.collectAsStateWithLifecycle()
     
     val prefixes = listOf("LITH", "ALT", "FLT", "STR", "SMP")
     var selectedPrefix by remember { mutableStateOf("LITH") }
@@ -1421,6 +1341,104 @@ fun CreateStationScreen(
             }
         }
 
+        // COORD CONFIGURATION SYSTEM (Moved safely to station capture level to prevent project-level coordinate confusion)
+        activeProject?.let { project ->
+            var expandedZones by remember { mutableStateOf(false) }
+            val zonesList = listOf("11N", "32V", "38N", "39N", "40N", "50J", "54K", "55S")
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(20.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "COORDINATE PROJECTION SYSTEM",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        letterSpacing = 1.sp
+                    )
+                    
+                    Text(
+                        text = "Customize projection mode specifically for this station point:",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        val isAuto = project.utmZoneMode == "AUTO"
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(40.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isAuto) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+                                .clickable {
+                                    viewModel.updateProjectSettings(project.id, "AUTO", project.utmZoneManual)
+                                    if (gps.isCaptured && gps.source != "None") {
+                                        viewModel.setManualCoordinates(gps.latitude, gps.longitude, gps.elevation, gps.accuracy)
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Auto UTM (GPS)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = if (isAuto) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        val isManual = project.utmZoneMode == "MANUAL"
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(40.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isManual) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+                                .clickable {
+                                    viewModel.updateProjectSettings(project.id, "MANUAL", project.utmZoneManual)
+                                    if (gps.isCaptured && gps.source != "None") {
+                                        viewModel.setManualCoordinates(gps.latitude, gps.longitude, gps.elevation, gps.accuracy)
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Manual Override", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = if (isManual) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+
+                    if (project.utmZoneMode == "MANUAL") {
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(
+                                onClick = { expandedZones = true },
+                                modifier = Modifier.fillMaxWidth().height(48.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                            ) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Station UTM Zone: ${project.utmZoneManual}", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    Icon(Icons.Default.KeyboardArrowDown, null)
+                                }
+                            }
+                            DropdownMenu(expanded = expandedZones, onDismissRequest = { expandedZones = false }) {
+                                zonesList.forEach { zone ->
+                                    DropdownMenuItem(
+                                        text = { Text(zone, fontWeight = FontWeight.Bold) },
+                                        onClick = {
+                                            viewModel.updateProjectSettings(project.id, "MANUAL", zone)
+                                            if (gps.isCaptured && gps.source != "None") {
+                                                viewModel.setManualCoordinates(gps.latitude, gps.longitude, gps.elevation, gps.accuracy)
+                                            }
+                                            expandedZones = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.weight(1f))
 
         Row(
@@ -1626,6 +1644,7 @@ fun StationDetailScreen(
             ) {
                 items(observations) { obs ->
                     val isDark = isSystemInDarkTheme()
+                    val info = getGeologyTypeInfo(obs.observationType)
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(
@@ -1643,18 +1662,15 @@ fun StationDetailScreen(
                                 modifier = Modifier
                                     .size(48.dp)
                                     .clip(RoundedCornerShape(12.dp))
-                                    .background(if (isDark) Color(0xFF232620) else Color(0xFFF9F7F5))
-                                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp)),
+                                    .background(info.color.copy(alpha = 0.12f))
+                                    .border(1.dp, info.color.copy(alpha = 0.5f), RoundedCornerShape(12.dp)),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = when (obs.observationType) {
-                                        "Lithology" -> "🪨"
-                                        "Alteration" -> "🧪"
-                                        "Fault" -> "📐"
-                                        else -> "📝"
-                                    },
-                                    fontSize = 18.sp
+                                Icon(
+                                    imageVector = info.icon,
+                                    contentDescription = info.name,
+                                    tint = info.color,
+                                    modifier = Modifier.size(24.dp)
                                 )
                             }
 
@@ -1664,20 +1680,21 @@ fun StationDetailScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    val chipColor = when (obs.observationType) {
-                                        "Lithology" -> Color(0xFFC96A2B) // Copper orange
-                                        "Alteration" -> Color(0xFF00897B) // Teal
-                                        "Fault" -> Color(0xFFD81B60) // Magenta
-                                        else -> MaterialTheme.colorScheme.secondary
+                                    Column {
+                                        Text(
+                                            text = info.name.uppercase(Locale.getDefault()),
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = info.color,
+                                            letterSpacing = 1.sp
+                                        )
+                                        Text(
+                                            text = info.persianName,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Light,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+                                        )
                                     }
-                                    
-                                    Text(
-                                        text = obs.observationType.uppercase(Locale.getDefault()),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = chipColor,
-                                        letterSpacing = 1.sp
-                                    )
 
                                     IconButton(
                                         onClick = { onDeleteObservation(obs.id) },
@@ -1855,7 +1872,6 @@ fun AddObservationScreen(
     var isOverlayEnabled by remember { mutableStateOf(true) }
     var overlayPosition by remember { mutableStateOf("BOTTOM_LEFT") }
     var sightAzimuth by remember { mutableStateOf(180) }
-    var showCameraViewfinder by remember { mutableStateOf(false) }
     var activeViewerPhotoPath by remember { mutableStateOf<String?>(null) }
 
     val context = LocalContext.current
@@ -1985,6 +2001,7 @@ fun AddObservationScreen(
         // Select Observation type Dropdown
         var expandedTypes by remember { mutableStateOf(false) }
         Box(modifier = Modifier.fillMaxWidth()) {
+            val currentTypeInfo = getGeologyTypeInfo(obsType)
             OutlinedButton(
                 onClick = { expandedTypes = true },
                 modifier = Modifier
@@ -1992,24 +2009,27 @@ fun AddObservationScreen(
                     .height(56.dp)
                     .testTag("obs_type_dropdown_btn"),
                 shape = RoundedCornerShape(12.dp),
-                border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+                border = BorderStroke(1.5.dp, currentTypeInfo.color)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "TYPE - ${obsType.uppercase(Locale.getDefault())}",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.primary,
-                        letterSpacing = 0.5.sp
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(currentTypeInfo.icon, null, tint = currentTypeInfo.color, modifier = Modifier.size(22.dp))
+                        Text(
+                            text = "${obsType.uppercase(Locale.getDefault())} (${currentTypeInfo.persianName.substringBefore(" (")})",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = currentTypeInfo.color,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowDown, 
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
+                        tint = currentTypeInfo.color
                     )
                 }
             }
@@ -2019,8 +2039,17 @@ fun AddObservationScreen(
                 modifier = Modifier.fillMaxWidth(0.9f)
             ) {
                 obsTypes.forEach { type ->
+                    val typeInfo = getGeologyTypeInfo(type)
                     DropdownMenuItem(
-                        text = { Text(type, fontWeight = FontWeight.Bold) },
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Icon(typeInfo.icon, null, tint = typeInfo.color, modifier = Modifier.size(20.dp))
+                                Column {
+                                    Text(typeInfo.name, fontWeight = FontWeight.Bold, color = typeInfo.color, fontSize = 13.sp)
+                                    Text(typeInfo.description, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.7f))
+                                }
+                            }
+                        },
                         onClick = {
                             obsType = type
                             expandedTypes = false
@@ -2522,32 +2551,17 @@ fun AddObservationScreen(
                     }
                 }
 
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    // Camera / mock camera
-                    val targetObsType = obsType
-                    Button(
-                        onClick = {
-                            showCameraViewfinder = true
-                        },
-                        modifier = Modifier.weight(1.2f).height(44.dp),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Icon(Icons.Default.PhotoCamera, null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Capture Photo", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    // Gallery launcher
-                    OutlinedButton(
-                        onClick = { pickerLauncher.launch("image/*") },
-                        modifier = Modifier.weight(1f).height(44.dp),
-                        shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                    ) {
-                        Icon(Icons.Default.PhotoLibrary, null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Import Gallery", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
+                Button(
+                    onClick = { pickerLauncher.launch("image/*") },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Icon(Icons.Default.PhotoLibrary, null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Select Photo from Phone Storage (انتخاب عکس از حافظه گوشی)", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -2617,187 +2631,6 @@ fun AddObservationScreen(
                 Icon(Icons.Default.Done, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Save Observation", fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-
-    // Interactive Field Viewfinder HUD overlay
-    if (showCameraViewfinder) {
-        Dialog(
-            onDismissRequest = { showCameraViewfinder = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black)
-            ) {
-                // Viewfinder Simulated Outcrop Canvas representation
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(bottom = 120.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    // Rule-of-Thirds Gridlines
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val w = size.width
-                        val h = size.height
-
-                        // Grid lines
-                        drawLine(
-                            color = Color.White.copy(alpha = 0.25f),
-                            start = androidx.compose.ui.geometry.Offset(w / 3, 0f),
-                            end = androidx.compose.ui.geometry.Offset(w / 3, h),
-                            strokeWidth = 1.dp.toPx()
-                        )
-                        drawLine(
-                            color = Color.White.copy(alpha = 0.25f),
-                            start = androidx.compose.ui.geometry.Offset(2 * w / 3, 0f),
-                            end = androidx.compose.ui.geometry.Offset(2 * w / 3, h),
-                            strokeWidth = 1.dp.toPx()
-                        )
-                        drawLine(
-                            color = Color.White.copy(alpha = 0.25f),
-                            start = androidx.compose.ui.geometry.Offset(0f, h / 3),
-                            end = androidx.compose.ui.geometry.Offset(w, h / 3),
-                            strokeWidth = 1.dp.toPx()
-                        )
-                        drawLine(
-                            color = Color.White.copy(alpha = 0.25f),
-                            start = androidx.compose.ui.geometry.Offset(0f, 2 * h / 3),
-                            end = androidx.compose.ui.geometry.Offset(w, 2 * h / 3),
-                            strokeWidth = 1.dp.toPx()
-                        )
-                    }
-
-                    // Simulated Outcrop Background
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = "LIVE GEOLOGICAL OPTICS LENS",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF00A86B),
-                            letterSpacing = 1.5.sp
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        
-                        // Sleek Circular Aim Reticle with Crosshairs
-                        Box(
-                            modifier = Modifier
-                                .size(240.dp)
-                                .border(2.dp, Color.White.copy(0.40f), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Canvas(modifier = Modifier.fillMaxSize()) {
-                                val w = size.width
-                                val h = size.height
-                                drawCircle(Color(0xFF00A86B), radius = 4.dp.toPx())
-                                drawLine(Color.White.copy(0.3f), androidx.compose.ui.geometry.Offset(w / 2 - 40.dp.toPx(), h / 2), androidx.compose.ui.geometry.Offset(w / 2 + 40.dp.toPx(), h / 2), strokeWidth = 1.5.dp.toPx())
-                                drawLine(Color.White.copy(0.3f), androidx.compose.ui.geometry.Offset(w / 2, h / 2 - 40.dp.toPx()), androidx.compose.ui.geometry.Offset(w / 2, h / 2 + 40.dp.toPx()), strokeWidth = 1.5.dp.toPx())
-                            }
-                        }
-                    }
-
-                    // HUD telemetry indicators
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(20.dp)
-                    ) {
-                        Column(modifier = Modifier.align(Alignment.TopStart)) {
-                            Text("AZIMUTH SURVEY", fontSize = 10.sp, color = Color.Gray, fontWeight = FontWeight.SemiBold)
-                            Text("${sightAzimuth}° ${PhotoProcessor.getCompassDirection(sightAzimuth)}", fontSize = 20.sp, color = Color(0xFFFFB020), fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-                        }
-
-                        Column(modifier = Modifier.align(Alignment.TopEnd), horizontalAlignment = Alignment.End) {
-                            Text("SATELLITE POSITION", fontSize = 10.sp, color = Color.Gray, fontWeight = FontWeight.SemiBold)
-                            Text(stationCode, fontSize = 14.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                            Text("LAT/LON: Active Lock", fontSize = 10.sp, color = Color(0xFF00A86B), fontWeight = FontWeight.Bold)
-                        }
-
-                        Column(modifier = Modifier.align(Alignment.BottomStart)) {
-                            Text("CAMERA ATTITUDE", fontSize = 10.sp, color = Color.Gray, fontWeight = FontWeight.SemiBold)
-                            Text("PITCH: -1.2°", fontSize = 11.sp, color = Color.White, fontFamily = FontFamily.Monospace)
-                            Text("ROLL: +0.4°", fontSize = 11.sp, color = Color.White, fontFamily = FontFamily.Monospace)
-                        }
-
-                        Column(modifier = Modifier.align(Alignment.BottomEnd), horizontalAlignment = Alignment.End) {
-                            Text("WATERMARK STAMP", fontSize = 10.sp, color = Color.Gray, fontWeight = FontWeight.SemiBold)
-                            Text(if (isOverlayEnabled) "STAMP_ACTIVE" else "STAMP_MUTED", fontSize = 11.sp, color = if (isOverlayEnabled) Color(0xFF1E5EFF) else Color.Gray, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-
-                // Shutter controller strip (Bottom)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(120.dp)
-                        .background(Color(0xFF0F0F11))
-                        .align(Alignment.BottomCenter),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        TextButton(
-                            onClick = { showCameraViewfinder = false }
-                        ) {
-                            Text("CANCEL", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .size(72.dp)
-                                .clip(CircleShape)
-                                .background(Color.White)
-                                .clickable {
-                                    val mockBitmap = PhotoProcessor.generateMockOutcropBitmap(context, obsType)
-                                    val path = PhotoProcessor.saveAnnotatedImage(
-                                        context = context,
-                                        baseBitmap = mockBitmap,
-                                        stationCode = stationCode,
-                                        lat = station?.latitude ?: 0.0,
-                                        lon = station?.longitude ?: 0.0,
-                                        elevation = station?.elevation ?: 0.0,
-                                        utmZone = station?.utmZone ?: "39N",
-                                        utmEasting = station?.utmEasting ?: 0.0,
-                                        utmNorthing = station?.utmNorthing ?: 0.0,
-                                        azimuth = sightAzimuth,
-                                        timestamp = System.currentTimeMillis(),
-                                        settings = PhotoProcessor.OverlaySettings(isOverlayEnabled, overlayPosition)
-                                    )
-                                    if (path != null) {
-                                        attachedPhotoPathsList = attachedPhotoPathsList + path
-                                    }
-                                    showCameraViewfinder = false
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(62.dp)
-                                    .border(2.dp, Color(0xFF0F0F11), CircleShape)
-                                    .background(Color.White, CircleShape)
-                            )
-                        }
-
-                        Text(
-                            text = "WIDE LENS 1.0X",
-                            fontSize = 10.sp,
-                            color = Color(0xFFFFB020),
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                }
             }
         }
     }
