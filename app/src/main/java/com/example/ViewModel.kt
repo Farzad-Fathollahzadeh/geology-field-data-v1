@@ -78,6 +78,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
     val fontFamilySelection = MutableStateFlow(prefs.getString("font_family", "SansSerif") ?: "SansSerif")
     val gpsAccuracyMode = MutableStateFlow(prefs.getString("gps_accuracy_mode", "HIGH_ACCURACY") ?: "HIGH_ACCURACY")
     val themeSelection = MutableStateFlow(prefs.getString("theme_selection", "DARK") ?: "DARK")
+    val touchSizingProfile = MutableStateFlow(prefs.getString("touch_sizing_profile", "STANDARD") ?: "STANDARD")
 
     fun saveFontSizeMultiplier(multiplier: Float) {
         fontSizeMultiplier.value = multiplier
@@ -97,6 +98,11 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
     fun saveThemeSelection(theme: String) {
         themeSelection.value = theme
         prefs.edit().putString("theme_selection", theme).apply()
+    }
+
+    fun saveTouchSizingProfile(profile: String) {
+        touchSizingProfile.value = profile
+        prefs.edit().putString("touch_sizing_profile", profile).apply()
     }
 
     private val db = Room.databaseBuilder(

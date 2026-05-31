@@ -40,6 +40,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
@@ -52,7 +53,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.ui.theme.MyApplicationTheme
+import com.example.ui.theme.*
 import com.google.accompanist.permissions.*
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -69,19 +70,22 @@ class MainActivity : ComponentActivity() {
             val themeSelection by viewModel.themeSelection.collectAsStateWithLifecycle()
             val fontSizeMult by viewModel.fontSizeMultiplier.collectAsStateWithLifecycle()
             val fontFamilySel by viewModel.fontFamilySelection.collectAsStateWithLifecycle()
+            val touchSizingProfile by viewModel.touchSizingProfile.collectAsStateWithLifecycle()
 
             val isSystemDark = isSystemInDarkTheme()
             val darkThemeSetup = when (themeSelection) {
                 "DARK" -> true
                 "LIGHT" -> false
+                "OUTDOOR" -> false
                 else -> isSystemDark
             }
             
             MyApplicationTheme(
-                darkTheme = darkThemeSetup,
+                themeSelection = themeSelection,
                 dynamicColor = false,
                 fontSizeMultiplier = fontSizeMult,
-                fontFamilySel = fontFamilySel
+                fontFamilySel = fontFamilySel,
+                touchSizingProfile = touchSizingProfile
             ) {
                 // High contrast color scheme choice for sunlight exposure matching the Professional Polish palette
                 val backgroundColor = MaterialTheme.colorScheme.background
@@ -96,7 +100,7 @@ class MainActivity : ComponentActivity() {
                         viewModel = viewModel,
                         isDarkTheme = darkThemeSetup,
                         onToggleTheme = {
-                            val newTheme = if (darkThemeSetup) "LIGHT" else "DARK"
+                            val newTheme = if (themeSelection == "DARK") "LIGHT" else if (themeSelection == "LIGHT") "OUTDOOR" else "DARK"
                             viewModel.saveThemeSelection(newTheme)
                         }
                     )
@@ -2532,6 +2536,72 @@ fun StationDetailScreen(
     }
 }
 
+// ==========================================
+// SMART GEOLOGICAL AUTO-COMPLETE DICTIONARY FIELD
+// ==========================================
+@Composable
+fun SmartAutoCompleteTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    placeholder: String = "",
+    suggestions: List<String>,
+    modifier: Modifier = Modifier,
+    testTag: String = ""
+) {
+    var isFocused by remember { mutableStateOf(false) }
+
+    // Smart filtering: match suggestions containing typed text (ignoring case)
+    val filteredSuggestions = remember(value, suggestions) {
+        if (value.isBlank()) {
+            suggestions.take(4) // Show standard defaults when blank
+        } else {
+            suggestions.filter {
+                it.contains(value, ignoreCase = true) && !it.equals(value, ignoreCase = true)
+            }.take(5)
+        }
+    }
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            label = { Text(label) },
+            placeholder = if (placeholder.isNotEmpty()) { { Text(placeholder) } } else null,
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag(testTag)
+                .onFocusChanged { isFocused = it.isFocused },
+            singleLine = true,
+            shape = RoundedCornerShape(12.dp)
+        )
+
+        if (isFocused && filteredSuggestions.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(6.dp))
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 4.dp)
+            ) {
+                items(filteredSuggestions) { suggestion ->
+                    AssistChip(
+                        onClick = { onValueChange(suggestion) },
+                        label = {
+                            Text(
+                                text = suggestion,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
 // ==========================================================
 // 6. ADD OBSERVATION / DYNAMIC FORM SCREEN
 // ==========================================
@@ -2544,6 +2614,13 @@ fun AddObservationScreen(
     val stationCode = station?.stationCode ?: "SMP-001"
     var obsType by remember { mutableStateOf("Lithology") }
     var notes by remember { mutableStateOf("") }
+
+    // Smart Geological Auto-Complete Dictionaries
+    val lithologyDict = listOf("Granite", "Basalt", "Sandstone", "Shale", "Schist", "Gneiss", "Diorite", "Andesite", "Rhyolite", "Gabbro", "Limestone", "Quartzite", "Marble", "Claystone", "Tuff", "Pegmatite", "Siltstone", "Breccia", "Conglomerate", "Granodiorite", "Dacite", "Amphibolite", "Phyllite", "Slate", "Serpentinite")
+    val textureDict = listOf("Porphyritic", "Foliated", "Gneissic", "Aphanitic", "Phaneritic", "Glassy", "Vesicular", "Fragmental", "Pyroclastic", "Pegmatitic", "Granoblastic", "Schistose", "Massive", "Banded", "Crystalline", "Clastic", "Oolitic", "Brecciated", "Mylonitic")
+    val alterationDict = listOf("Potassic", "Propylitic", "Argillic", "Sericitic", "Silicification", "Weak Chlorite", "Epidote-chlorite", "Carbonatization", "Albitization", "Pyritization", "Hematitization", "Sodic", "Phyllic", "Advanced Argillic")
+    val mineralDict = listOf("Pyrite", "Chalcopyrite", "Quartz", "Feldspar", "Mica", "Biotite", "Muscovite", "Hornblende", "Olivine", "Pyroxene", "Calcite", "Dolomite", "Galena", "Sphalerite", "Bornite", "Magnetite", "Hematite", "Chrysocolla", "Malachite", "Azurite", "Sulfide")
+    val colorDict = listOf("Dark Grey", "Light Grey", "Reddish Brown", "Pinkish Grey", "Greenish", "Buff", "Tan", "White", "Black", "Yellowish Brown", "Olive Green")
     
     // Lithology State
     var lithType by remember { mutableStateOf("") }
@@ -2789,36 +2866,32 @@ fun AddObservationScreen(
                     }
                 }
 
-                OutlinedTextField(
+                SmartAutoCompleteTextField(
                     value = lithType,
                     onValueChange = { lithType = it },
-                    label = { Text("Rock / Lithology Type") },
-                    placeholder = { Text("e.g. Granodiorite, Amphibolite") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("lithology_type"),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Rock / Lithology Type",
+                    placeholder = "e.g. Granodiorite, Amphibolite",
+                    suggestions = lithologyDict,
+                    modifier = Modifier.fillMaxWidth(),
+                    testTag = "lithology_type"
                 )
 
-                OutlinedTextField(
+                SmartAutoCompleteTextField(
                     value = texture,
                     onValueChange = { texture = it },
-                    label = { Text("Texture / Fabric") },
-                    placeholder = { Text("e.g. Porphyritic, Foliated, Gneissic") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Texture / Fabric",
+                    placeholder = "e.g. Porphyritic, Foliated, Gneissic",
+                    suggestions = textureDict,
+                    modifier = Modifier.fillMaxWidth()
                 )
 
-                OutlinedTextField(
+                SmartAutoCompleteTextField(
                     value = color,
                     onValueChange = { color = it },
-                    label = { Text("Color") },
-                    placeholder = { Text("e.g. Grey-pink, Dark green") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Color",
+                    placeholder = "e.g. Grey-pink, Dark green",
+                    suggestions = colorDict,
+                    modifier = Modifier.fillMaxWidth()
                 )
 
                 // Grain Size Selector dropdown
@@ -2855,39 +2928,35 @@ fun AddObservationScreen(
                     }
                 }
 
-                OutlinedTextField(
+                SmartAutoCompleteTextField(
                     value = lithAlt,
                     onValueChange = { lithAlt = it },
-                    label = { Text("Alteration Style") },
-                    placeholder = { Text("e.g. Potassic, Propylitic, Weak Chlorite") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Alteration Style",
+                    placeholder = "e.g. Potassic, Propylitic, Weak Chlorite",
+                    suggestions = alterationDict,
+                    modifier = Modifier.fillMaxWidth()
                 )
 
-                OutlinedTextField(
+                SmartAutoCompleteTextField(
                     value = lithMin,
                     onValueChange = { lithMin = it },
-                    label = { Text("Mineralization Index") },
-                    placeholder = { Text("e.g. 2% Pyrite cubes, trace Chalcopyrite") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Mineralization Index",
+                    placeholder = "e.g. 2% Pyrite cubes, trace Chalcopyrite",
+                    suggestions = mineralDict,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
             "Alteration" -> {
                 Text("ALTERATION ZONE FORM", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, letterSpacing = 1.sp)
 
-                OutlinedTextField(
+                SmartAutoCompleteTextField(
                     value = altType,
                     onValueChange = { altType = it },
-                    label = { Text("Alteration Assembly") },
-                    placeholder = { Text("e.g. Quartz-Sericite-Pyrite (Phyllic)") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("alteration_type"),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Alteration Assembly",
+                    placeholder = "e.g. Quartz-Sericite-Pyrite (Phyllic)",
+                    suggestions = alterationDict,
+                    modifier = Modifier.fillMaxWidth(),
+                    testTag = "alteration_type"
                 )
 
                 // Intensity
@@ -7061,6 +7130,7 @@ fun SettingsScreen(
     val fontFamilySel by viewModel.fontFamilySelection.collectAsStateWithLifecycle()
     val gpsAccMode by viewModel.gpsAccuracyMode.collectAsStateWithLifecycle()
     val themeSel by viewModel.themeSelection.collectAsStateWithLifecycle()
+    val touchSizingProfile by viewModel.touchSizingProfile.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier
@@ -7294,10 +7364,10 @@ fun SettingsScreen(
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            val themes = listOf("DARK", "LIGHT", "SYSTEM")
-            val themeLabels = listOf("Cosmic Dark", "Readable Light", "System Default")
+            val themes = listOf("DARK", "LIGHT", "OUTDOOR", "SYSTEM")
+            val themeLabels = listOf("Cosmic Dark", "Light Mode", "Outdoor Contrast", "System")
 
             themes.forEachIndexed { idx, tSel ->
                 val isSelected = themeSel == tSel
@@ -7310,9 +7380,43 @@ fun SettingsScreen(
                     ),
                     border = BorderStroke(1.dp, if (isSelected) Color.Transparent else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
                     shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 4.dp)
+                    contentPadding = PaddingValues(horizontal = 2.dp)
                 ) {
-                    Text(themeLabels[idx], fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    Text(themeLabels[idx], fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                }
+            }
+        }
+
+        // Section: Customizable Touch Targets & Button Sizing Profile
+        Text(
+            text = "Tactical Sizing & Button Spacing",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(top = 12.dp)
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            val profiles = listOf("STANDARD", "LARGE", "GLOVE_FRIENDLY")
+            val profileLabels = listOf("Standard (Auto)", "Comfort (56dp)", "Glove Mode (64dp)")
+
+            profiles.forEachIndexed { idx, prof ->
+                val isSelected = touchSizingProfile == prof
+                Button(
+                    onClick = { viewModel.saveTouchSizingProfile(prof) },
+                    modifier = Modifier.weight(1f).height(44.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                        contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                    ),
+                    border = BorderStroke(1.dp, if (isSelected) Color.Transparent else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 2.dp)
+                ) {
+                    Text(profileLabels[idx], fontSize = 9.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                 }
             }
         }
