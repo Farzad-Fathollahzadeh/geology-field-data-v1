@@ -592,6 +592,18 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun updateStation(station: Station) {
+        viewModelScope.launch {
+            dao.insertStation(station)
+            // Trigger state refresh for observation & details UI observers
+            val currentId = activeStationId.value
+            if (currentId == station.id) {
+                activeStationId.value = null
+                activeStationId.value = currentId
+            }
+        }
+    }
+
     // Add general observation and link Sample if taken
     fun saveObservation(
         stationId: Int,
@@ -799,6 +811,9 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
 
                 val (file, fileName) = shareData
 
+                // Save to public Downloads directory for easy access across different devices and versions
+                saveFileToPublicDownloads(context, file, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
                 // Share file offline via custom Intent FileProvider (must run on Main Thread)
                 val authority = "${context.packageName}.fileprovider"
                 val fileUri: Uri = FileProvider.getUriForFile(context, authority, file)
@@ -814,7 +829,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                 chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(chooser)
                 
-                Toast.makeText(context, "Excel Log Generated: Downloads/${fileName}", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "Excel Log Saved to Public Downloads/GeoFieldPro folder!", Toast.LENGTH_LONG).show()
 
             } catch (e: Exception) {
                 Toast.makeText(context, "Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
@@ -1016,6 +1031,9 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
 
                 val (zipFile, zipFileName) = shareData
 
+                // Save to public Downloads directory for easy access across different devices and versions
+                saveFileToPublicDownloads(context, zipFile, "application/zip")
+
                 // Share ZIP file offline via custom Intent FileProvider (must run on Main Thread)
                 val authority = "${context.packageName}.fileprovider"
                 val fileUri: Uri = FileProvider.getUriForFile(context, authority, zipFile)
@@ -1031,7 +1049,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                 chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(chooser)
 
-                Toast.makeText(context, "ZIP GIS Package Saved: Downloads/${zipFileName}", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "GIS ZIP Archive Saved to Public Downloads/GeoFieldPro folder!", Toast.LENGTH_LONG).show()
 
             } catch (e: Exception) {
                 Toast.makeText(context, "Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
@@ -1255,10 +1273,10 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                         )
                     }
 
-                    // Create offline Excel file
+                    // Create offline Excel file inside safe app compartment
                     val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
                     val excelFileName = "GeoField_Logging_Export_$timestamp.xlsx"
-                    val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                    val downloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
                     val excelFile = File(downloadsDir, excelFileName)
 
                     XlsxWriter.generateLoggingXlsxFile(
@@ -1272,6 +1290,10 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                 }
 
                 val (excelFile, excelFileName) = shareData
+
+                // Save to public Downloads directory for easy access across different devices and versions
+                saveFileToPublicDownloads(context, excelFile, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
                 val authority = "${context.packageName}.fileprovider"
                 val fileUri: Uri = FileProvider.getUriForFile(context, authority, excelFile)
 
@@ -1286,7 +1308,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                 chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(chooser)
 
-                Toast.makeText(context, "Excel Logs Saved: Downloads/${excelFileName}", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "Excel Logs Saved to Public Downloads/GeoFieldPro folder!", Toast.LENGTH_LONG).show()
 
             } catch (e: Exception) {
                 Toast.makeText(context, "Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
@@ -1333,10 +1355,10 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                         )
                     )
 
-                    // Create final ZIP
+                    // Create final ZIP inside safe app compartment
                     val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
                     val zipFileName = "GeoField_CoreLogging_$timestamp.zip"
-                    val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                    val downloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
                     val zipFile = File(downloadsDir, zipFileName)
 
                     java.util.zip.ZipOutputStream(zipFile.outputStream()).use { zos ->
@@ -1363,6 +1385,10 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                 }
 
                 val (zipFile, zipFileName) = shareData
+
+                // Save to public Downloads directory for easy access across different devices and versions
+                saveFileToPublicDownloads(context, zipFile, "application/zip")
+
                 val authority = "${context.packageName}.fileprovider"
                 val fileUri: Uri = FileProvider.getUriForFile(context, authority, zipFile)
 
@@ -1377,7 +1403,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                 chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(chooser)
 
-                Toast.makeText(context, "Logging ZIP Saved: Downloads/${zipFileName}", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "Logging ZIP Saved to Public Downloads/GeoFieldPro folder!", Toast.LENGTH_LONG).show()
 
             } catch (e: Exception) {
                 Toast.makeText(context, "ZIP Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
@@ -1436,6 +1462,9 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                     }
                 }
 
+                // Save to public Downloads directory for easy access across different devices and versions
+                saveFileToPublicDownloads(context, file, "text/csv")
+
                 val authority = "${context.packageName}.fileprovider"
                 val fileUri: Uri = androidx.core.content.FileProvider.getUriForFile(context, authority, file)
 
@@ -1450,11 +1479,50 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                 chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(chooser)
 
-                Toast.makeText(context, "CSV Export Saved: Downloads/${fileName}", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "CSV Export Saved to Public Downloads/GeoFieldPro folder!", Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
                 Toast.makeText(context, "Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
                 e.printStackTrace()
             }
         }
+    }
+
+    private fun saveFileToPublicDownloads(context: Context, srcFile: File, mimeType: String): Uri? {
+        val resolver = context.contentResolver
+        val fileName = srcFile.name
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                val contentValues = android.content.ContentValues().apply {
+                    put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                    put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/GeoFieldPro")
+                }
+                val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                if (uri != null) {
+                    resolver.openOutputStream(uri)?.use { out ->
+                        srcFile.inputStream().use { input ->
+                            input.copyTo(out)
+                        }
+                    }
+                    return uri
+                }
+            } else {
+                val publicDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                val targetDir = File(publicDir, "GeoFieldPro")
+                if (!targetDir.exists()) {
+                    targetDir.mkdirs()
+                }
+                val targetFile = File(targetDir, fileName)
+                targetFile.outputStream().use { out ->
+                    srcFile.inputStream().use { input ->
+                        input.copyTo(out)
+                    }
+                }
+                return Uri.fromFile(targetFile)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return null
     }
 }

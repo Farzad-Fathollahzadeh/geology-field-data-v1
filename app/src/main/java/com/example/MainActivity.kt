@@ -47,6 +47,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -456,6 +457,9 @@ fun MainScreenContent(
                                 },
                                 onDeleteObservation = {
                                     viewModel.deleteObservation(it)
+                                },
+                                onUpdateStation = {
+                                    viewModel.updateStation(it)
                                 }
                             )
                         }
@@ -1503,22 +1507,57 @@ fun CreateStationScreen(
     val context = LocalContext.current
     val gps by viewModel.gpsState.collectAsStateWithLifecycle()
     val activeProject by viewModel.activeProject.collectAsStateWithLifecycle()
+    val stations by viewModel.activeProjectStations.collectAsStateWithLifecycle()
     
     val prefixes = listOf("LITH", "ALT", "FLT", "STR", "SMP")
     var selectedPrefix by remember { mutableStateOf("LITH") }
-    var generatedCode by remember { mutableStateOf("LITH-001") }
+    
+    var stationCodeInput by remember { mutableStateOf("") }
+    var isManuallyEdited by remember { mutableStateOf(false) }
+
+    // Sequential code auto-generation engine (10-year experienced professional pattern)
+    val autoSuggestedCode = remember(stations, selectedPrefix) {
+        val lastStation = stations.lastOrNull()
+        if (lastStation != null) {
+            val lastCode = lastStation.stationCode
+            val regex = Regex("^(.*?)([0-9]+)$")
+            val matchResult = regex.matchEntire(lastCode)
+            if (matchResult != null) {
+                val prefixPart = matchResult.groups[1]?.value ?: ""
+                val suffixStr = matchResult.groups[2]?.value ?: ""
+                val suffixInt = suffixStr.toIntOrNull() ?: 0
+                val nextSuffixInt = suffixInt + 1
+                val formattedSuffix = String.format(Locale.US, "%0${suffixStr.length}d", nextSuffixInt)
+                
+                // If the last station has a standard prefix (e.g. LITH, ALT), replace with selectedPrefix if it differs
+                val oldPrefixes = listOf("LITH", "ALT", "FLT", "STR", "SMP")
+                var newPrefixPart = prefixPart
+                for (p in oldPrefixes) {
+                    if (prefixPart.trim('-').startsWith(p)) {
+                        newPrefixPart = prefixPart.replaceFirst(p, selectedPrefix)
+                        break
+                    }
+                }
+                newPrefixPart + formattedSuffix
+            } else {
+                "$lastCode-01"
+            }
+        } else {
+            "$selectedPrefix-01"
+        }
+    }
+
+    // Update the input field with auto suggested code unless manually edited by user
+    LaunchedEffect(autoSuggestedCode) {
+        if (!isManuallyEdited) {
+            stationCodeInput = autoSuggestedCode
+        }
+    }
     
     // GPS request logic
     val locationPermissionState = rememberPermissionState(
         permission = Manifest.permission.ACCESS_FINE_LOCATION
     )
-
-    // Sync generated station code whenever prefix transitions
-    LaunchedEffect(selectedPrefix) {
-        viewModel.getNextStationCodeForPrefix(projectId, selectedPrefix) { code ->
-            generatedCode = code
-        }
-    }
 
     // Trigger auto GPS locating safely on screen enter
     LaunchedEffect(Unit) {
@@ -1538,11 +1577,79 @@ fun CreateStationScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            text = "Station Workflow: $generatedCode",
+            text = "Create Structural Station",
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground
         )
+
+        // STATION CODE / NAME EDITABLE CARD
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(20.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "STATION CODE / NAME (SEQUENTIAL AUTO-FILL)",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    letterSpacing = 1.sp
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = stationCodeInput,
+                    onValueChange = {
+                        stationCodeInput = it
+                        isManuallyEdited = true
+                    },
+                    label = { Text("Station identifier / code") },
+                    modifier = Modifier.fillMaxWidth().testTag("station_code_input_field"),
+                    singleLine = true,
+                    textStyle = TextStyle(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        fontFamily = FontFamily.Monospace
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    trailingIcon = {
+                        if (isManuallyEdited) {
+                            IconButton(
+                                onClick = {
+                                    isManuallyEdited = false
+                                    stationCodeInput = autoSuggestedCode
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = "Restore sequential auto-suggested code",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = "Sourced sequentially",
+                                tint = Color(0xFF00A86B),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                )
+                
+                if (isManuallyEdited) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Auto-sequence paused (edited manually). Click the sparkles icon above to restore sequence.",
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
 
         // Select Prefix Card
         Card(
@@ -1937,11 +2044,11 @@ fun CreateStationScreen(
 
             Button(
                 onClick = {
-                    if (gps.isCaptured) {
-                        viewModel.saveStation(projectId, generatedCode, selectedPrefix, onSaved)
+                    if (gps.isCaptured && stationCodeInput.isNotBlank()) {
+                        viewModel.saveStation(projectId, stationCodeInput, selectedPrefix, onSaved)
                     }
                 },
-                enabled = gps.isCaptured,
+                enabled = gps.isCaptured && stationCodeInput.isNotBlank(),
                 modifier = Modifier
                     .weight(1.2f)
                     .height(56.dp)
@@ -1964,9 +2071,114 @@ fun StationDetailScreen(
     station: Station?,
     observations: List<Observation>,
     onAddObservationClick: () -> Unit,
-    onDeleteObservation: (Int) -> Unit
+    onDeleteObservation: (Int) -> Unit,
+    onUpdateStation: (Station) -> Unit = {}
 ) {
     if (station == null) return
+
+    var showEditDialog by remember { mutableStateOf(false) }
+
+    if (showEditDialog) {
+        var editCode by remember { mutableStateOf(station.stationCode) }
+        var editLat by remember { mutableStateOf(station.latitude.toString()) }
+        var editLng by remember { mutableStateOf(station.longitude.toString()) }
+        var editElev by remember { mutableStateOf(station.elevation.toString()) }
+
+        AlertDialog(
+            onDismissRequest = { showEditDialog = false },
+            title = {
+                Text(
+                    "Edit Station Parameters",
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 18.sp
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        "Modify structural station metadata below. Latitude/longitude changes will automatically recalculate UTM coordinate projections.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    OutlinedTextField(
+                        value = editCode,
+                        onValueChange = { editCode = it },
+                        label = { Text("Station Code / Name") },
+                        modifier = Modifier.fillMaxWidth().testTag("edit_station_code_field"),
+                        singleLine = true,
+                        textStyle = TextStyle(fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = editLat,
+                        onValueChange = { editLat = it },
+                        label = { Text("Latitude") },
+                        modifier = Modifier.fillMaxWidth().testTag("edit_station_lat_field"),
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = editLng,
+                        onValueChange = { editLng = it },
+                        label = { Text("Longitude") },
+                        modifier = Modifier.fillMaxWidth().testTag("edit_station_lng_field"),
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = editElev,
+                        onValueChange = { editElev = it },
+                        label = { Text("Elevation (m)") },
+                        modifier = Modifier.fillMaxWidth().testTag("edit_station_elev_field"),
+                        singleLine = true,
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val latVal = editLat.toDoubleOrNull() ?: station.latitude
+                        val lngVal = editLng.toDoubleOrNull() ?: station.longitude
+                        val elevVal = editElev.toDoubleOrNull() ?: station.elevation
+
+                        // Auto recalculate UTM using geology converter helper (10-year senior dev pattern)
+                        val utm = UtmConverter.convertLatLngToUtm(latVal, lngVal, if (station.utmZone.isNotBlank()) station.utmZone else null)
+
+                        val updated = station.copy(
+                            stationCode = editCode,
+                            latitude = latVal,
+                            longitude = lngVal,
+                            elevation = elevVal,
+                            utmEasting = utm.easting,
+                            utmNorthing = utm.northing,
+                            utmZone = utm.zoneString
+                        )
+                        onUpdateStation(updated)
+                        showEditDialog = false
+                    },
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Save Changes", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEditDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 
     val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(station.createdAt))
 
@@ -1992,12 +2204,28 @@ fun StationDetailScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = station.stationCode,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = station.stationCode,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        IconButton(
+                            onClick = { showEditDialog = true },
+                            modifier = Modifier.size(24.dp).testTag("edit_station_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Edit Station Parameters",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
                     val accuracyColor = when {
                         station.accuracy < 5.0 -> Color(0xFF00A86B)        // GPS_ACTIVE
                         station.accuracy < 15.0 -> Color(0xFFFFB020)       // DATA_WARNING
@@ -4384,6 +4612,112 @@ fun BoreholeDashboardScreen(
             if (activeTab == 0) {
                 // CORE RUNS LOGGING VIEW
                 Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // Stratigraphic Core Column Visualizer Card
+                    if (runs.isNotEmpty()) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                        ) {
+                            Column(modifier = Modifier.padding(12.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "INTERACTIVE STRATIGRAPHIC CORE ENGINE",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        letterSpacing = 0.5.sp
+                                    )
+                                    Text(
+                                        text = "Interactive RQD Profiler",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(10.dp))
+                                // horizontal bar displaying stacked color runs based on depth
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(32.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(8.dp)),
+                                    horizontalArrangement = Arrangement.Start
+                                ) {
+                                    runs.forEach { run ->
+                                        val runLength = run.getRunLength()
+                                        val rqdPercent = run.getRqd()
+                                        val weight = if (runLength > 0.0) runLength.toFloat() else 1f
+                                        val color = if (rqdPercent < 25.0) Color(0xFFFF3B30) // Red
+                                                   else if (rqdPercent < 50.0) Color(0xFFFFB020) // Orange
+                                                   else if (rqdPercent < 75.0) Color(0xFF1E5EFF) // Slate Blue
+                                                   else Color(0xFF2ECC71) // Rich Green
+                                        
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(weight)
+                                                .fillMaxHeight()
+                                                .background(color)
+                                                .clickable { onEditRun(run.id) }
+                                                .border(0.5.dp, MaterialTheme.colorScheme.background.copy(alpha = 0.4f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "${run.fromDepth}-${run.toDepth}m",
+                                                fontSize = 8.sp,
+                                                fontWeight = FontWeight.Black,
+                                                color = Color.White,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                                // Legend Row
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Box(modifier = Modifier.size(8.dp).background(Color(0xFFFF3B30), RoundedCornerShape(2.dp)))
+                                            Text("V. Poor", fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Box(modifier = Modifier.size(8.dp).background(Color(0xFFFFB020), RoundedCornerShape(2.dp)))
+                                            Text("Poor", fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Box(modifier = Modifier.size(8.dp).background(Color(0xFF1E5EFF), RoundedCornerShape(2.dp)))
+                                            Text("Fair", fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Box(modifier = Modifier.size(8.dp).background(Color(0xFF2ECC71), RoundedCornerShape(2.dp)))
+                                            Text("Good/Exc", fontSize = 9.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
+                                    Text(
+                                        text = "${runs.size} intervals",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
