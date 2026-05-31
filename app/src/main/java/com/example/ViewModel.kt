@@ -17,6 +17,7 @@ import com.example.UtmConverter.convertLatLngToUtm
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -35,12 +36,22 @@ import java.util.Locale
 
 // Represents the screen backstack/routes for state-based navigation
 sealed interface Screen {
+    object Home : Screen
     object ProjectList : Screen
     object CreateProject : Screen
     data class ProjectDashboard(val projectId: Int) : Screen
     data class CreateStation(val projectId: Int) : Screen
     data class StationDetail(val stationId: Int) : Screen
     data class AddObservation(val stationId: Int) : Screen
+    
+    // Borehole logging section
+    object BoreholeList : Screen
+    object CreateBorehole : Screen
+    data class BoreholeDashboard(val boreholeId: Int) : Screen
+    data class CreateDailyLog(val boreholeId: Int) : Screen
+    data class CreateCoreRun(val boreholeId: Int, val runId: Int? = null) : Screen
+    object RockEngineering : Screen
+    object Settings : Screen
 }
 
 data class GpsData(
@@ -60,6 +71,34 @@ data class GpsData(
 
 class GeologyViewModel(application: Application) : AndroidViewModel(application) {
 
+    private val prefs = application.getSharedPreferences("geofield_premium_prefs", Context.MODE_PRIVATE)
+
+    // Live preference states accessible globally in UI
+    val fontSizeMultiplier = MutableStateFlow(prefs.getFloat("font_size_multiplier", 1.0f))
+    val fontFamilySelection = MutableStateFlow(prefs.getString("font_family", "SansSerif") ?: "SansSerif")
+    val gpsAccuracyMode = MutableStateFlow(prefs.getString("gps_accuracy_mode", "HIGH_ACCURACY") ?: "HIGH_ACCURACY")
+    val themeSelection = MutableStateFlow(prefs.getString("theme_selection", "DARK") ?: "DARK")
+
+    fun saveFontSizeMultiplier(multiplier: Float) {
+        fontSizeMultiplier.value = multiplier
+        prefs.edit().putFloat("font_size_multiplier", multiplier).apply()
+    }
+
+    fun saveFontFamily(family: String) {
+        fontFamilySelection.value = family
+        prefs.edit().putString("font_family", family).apply()
+    }
+
+    fun saveGpsAccuracyMode(mode: String) {
+        gpsAccuracyMode.value = mode
+        prefs.edit().putString("gps_accuracy_mode", mode).apply()
+    }
+
+    fun saveThemeSelection(theme: String) {
+        themeSelection.value = theme
+        prefs.edit().putString("theme_selection", theme).apply()
+    }
+
     private val db = Room.databaseBuilder(
         application,
         GeologyDatabase::class.java,
@@ -69,7 +108,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
     val dao = db.dao()
 
     // Screen navigation state
-    private val _currentScreen = MutableStateFlow<Screen>(Screen.ProjectList)
+    private val _currentScreen = MutableStateFlow<Screen>(Screen.Home)
     val currentScreen: StateFlow<Screen> = _currentScreen
 
     // Navigation helper with built-in state synchronization
@@ -99,6 +138,15 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                         setActiveProject(station.projectId)
                     }
                 }
+            }
+            is Screen.BoreholeDashboard -> {
+                setActiveBorehole(screen.boreholeId)
+            }
+            is Screen.CreateDailyLog -> {
+                setActiveBorehole(screen.boreholeId)
+            }
+            is Screen.CreateCoreRun -> {
+                setActiveBorehole(screen.boreholeId)
             }
             else -> {}
         }
@@ -147,6 +195,31 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
 
     fun setActiveStation(id: Int) {
         activeStationId.value = id
+    }
+
+    // --- Boreholes State Management ---
+    val boreholes: StateFlow<List<Borehole>> = dao.getAllBoreholes()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allWindowMappings: StateFlow<List<WindowMapping>> = dao.getAllWindowMappings()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val activeBoreholeId = MutableStateFlow<Int?>(null)
+
+    val activeBorehole: StateFlow<Borehole?> = activeBoreholeId.flatMapLatest { id ->
+        if (id != null) dao.getBoreholeById(id) else flowOf(null)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val activeBoreholeRuns: StateFlow<List<CoreRun>> = activeBoreholeId.flatMapLatest { id ->
+        if (id != null) dao.getCoreRunsForBorehole(id) else flowOf(emptyList())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val activeBoreholeDailyLogs: StateFlow<List<DailyDrillingLog>> = activeBoreholeId.flatMapLatest { id ->
+        if (id != null) dao.getDailyLogsForBorehole(id) else flowOf(emptyList())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    fun setActiveBorehole(id: Int) {
+        activeBoreholeId.value = id
     }
 
     // --- WRITE OPERATIONS ---
@@ -265,11 +338,65 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
             return
         }
 
+        val isHighAccuracy = gpsAccuracyMode.value == "HIGH_ACCURACY"
         val fusedLocationClient = LocationServices.getFusedLocationProviderClient(context)
+
+        // Battery saver: First attempt to retrieve cached location instantly with ZERO battery usage
+        if (!isHighAccuracy) {
+            try {
+                fusedLocationClient.lastLocation.addOnSuccessListener { cachedLoc ->
+                    if (cachedLoc != null && (System.currentTimeMillis() - cachedLoc.time) < 180000) { // Under 3 mins old
+                        val activeProj = activeProject.value
+                        val forcedZone = if (activeProj?.utmZoneMode == "MANUAL") activeProj.utmZoneManual else null
+                        val utm = convertLatLngToUtm(cachedLoc.latitude, cachedLoc.longitude, forcedZone)
+                        val elevAcc = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O && cachedLoc.hasVerticalAccuracy()) {
+                            cachedLoc.verticalAccuracyMeters.toDouble()
+                        } else {
+                            cachedLoc.accuracy.toDouble() * 1.5
+                        }
+                        _gpsState.update {
+                            it.copy(
+                                latitude = cachedLoc.latitude,
+                                longitude = cachedLoc.longitude,
+                                elevation = cachedLoc.altitude,
+                                accuracy = cachedLoc.accuracy.toDouble(),
+                                elevationAccuracy = elevAcc,
+                                utmEasting = utm.easting,
+                                utmNorthing = utm.northing,
+                                utmZone = utm.zoneString,
+                                isCaptured = true,
+                                isLocating = false,
+                                source = "GPS (Battery-Saver Instant Cache)"
+                            )
+                        }
+                        return@addOnSuccessListener
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore and proceed to fresh request
+            }
+        }
+
+        val priority = Priority.PRIORITY_HIGH_ACCURACY
+
         val cts = CancellationTokenSource()
 
+        if (!isHighAccuracy) {
+            // Rapid single-shot high-accuracy query (saves battery by searching up to 15s instead of indefinite)
+            viewModelScope.launch {
+                delay(15000)
+                cts.cancel()
+            }
+        } else {
+            // Absolute Micro-Precision: Allow full robust GNSS carrier phase satellite search up to 45 seconds
+            viewModelScope.launch {
+                delay(45000)
+                cts.cancel()
+            }
+        }
+
         fusedLocationClient.getCurrentLocation(
-            Priority.PRIORITY_HIGH_ACCURACY,
+            priority,
             cts.token
         ).addOnSuccessListener { location ->
             if (location != null) {
@@ -927,5 +1054,407 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
             return "\"" + field.replace("\"", "\"\"") + "\""
         }
         return field
+    }
+
+    // --- BOREHOLE METHODS & DATABASE WORKFLOWS ---
+    fun createBorehole(
+        name: String,
+        lat: Double,
+        lon: Double,
+        elev: Double,
+        acc: Double,
+        elevAcc: Double,
+        easting: Double,
+        northing: Double,
+        zone: String,
+        startDate: String,
+        azimuth: Double?
+    ) {
+        viewModelScope.launch {
+            val borehole = Borehole(
+                name = name,
+                latitude = lat,
+                longitude = lon,
+                elevation = elev,
+                accuracy = acc,
+                elevationAccuracy = elevAcc,
+                utmEasting = easting,
+                utmNorthing = northing,
+                utmZone = zone,
+                startDate = startDate,
+                azimuth = azimuth
+            )
+            val newId = dao.insertBorehole(borehole)
+            navigateTo(Screen.BoreholeDashboard(newId.toInt()))
+        }
+    }
+
+    fun deleteBorehole(id: Int) {
+        viewModelScope.launch {
+            dao.deleteBoreholeById(id)
+        }
+    }
+
+    fun saveWindowMapping(windowMapping: WindowMapping) {
+        viewModelScope.launch {
+            dao.insertWindowMapping(windowMapping)
+        }
+    }
+
+    fun deleteWindowMapping(id: Int) {
+        viewModelScope.launch {
+            dao.deleteWindowMappingById(id)
+        }
+    }
+
+    fun saveDailyLog(
+        logId: Int,
+        boreholeId: Int,
+        date: String,
+        depthDrilled: Double,
+        lithologySummary: String,
+        operationalNotes: String,
+        comments: String
+    ) {
+        viewModelScope.launch {
+            val log = DailyDrillingLog(
+                id = logId,
+                boreholeId = boreholeId,
+                date = date,
+                depthDrilled = depthDrilled,
+                lithologySummary = lithologySummary,
+                operationalNotes = operationalNotes,
+                comments = comments
+            )
+            dao.insertDailyLog(log)
+            navigateTo(Screen.BoreholeDashboard(boreholeId))
+        }
+    }
+
+    fun deleteDailyLog(id: Int, boreholeId: Int) {
+        viewModelScope.launch {
+            dao.deleteDailyLogById(id)
+        }
+    }
+
+    fun saveCoreRun(
+        runId: Int,
+        boreholeId: Int,
+        fromDepth: Double,
+        toDepth: Double,
+        piecesOver10Cm: Double,
+        recoveredLength: Double,
+        rockType: String,
+        lithologyDescription: String,
+        alterationType: String,
+        alterationIntensity: String,
+        mineralizationType: String,
+        mineralizationIntensity: String,
+        fractureFrequency: Double?,
+        veinDensity: Double?,
+        jointPresence: String?,
+        color: String,
+        texture: String,
+        grainSize: String,
+        notes: String
+    ) {
+        viewModelScope.launch {
+            val run = CoreRun(
+                id = runId,
+                boreholeId = boreholeId,
+                fromDepth = fromDepth,
+                toDepth = toDepth,
+                piecesOver10Cm = piecesOver10Cm,
+                recoveredLength = recoveredLength,
+                rockType = rockType,
+                lithologyDescription = lithologyDescription,
+                alterationType = alterationType,
+                alterationIntensity = alterationIntensity,
+                mineralizationType = mineralizationType,
+                mineralizationIntensity = mineralizationIntensity,
+                fractureFrequency = fractureFrequency,
+                veinDensity = veinDensity,
+                jointPresence = jointPresence,
+                color = color,
+                texture = texture,
+                grainSize = grainSize,
+                notes = notes
+            )
+            dao.insertCoreRun(run)
+            navigateTo(Screen.BoreholeDashboard(boreholeId))
+        }
+    }
+
+    fun deleteCoreRun(id: Int, boreholeId: Int) {
+        viewModelScope.launch {
+            dao.deleteCoreRunById(id)
+        }
+    }
+
+    // --- BOREHOLE MULTI-SHEET EXCEL EXPORT ---
+    fun exportBoreholeData(context: Context) {
+        viewModelScope.launch {
+            try {
+                val shareData = withContext(Dispatchers.IO) {
+                    val boreholesList = dao.getAllBoreholesSync()
+                    val coreRunsList = dao.getAllCoreRunsSync()
+                    val dailyLogsList = dao.getAllDailyLogsSync()
+
+                    val boreholeMap = boreholesList.associate { it.id to it.name }
+
+                    val excelBoreholes = boreholesList.map {
+                        XlsxWriter.BoreholeSheetData(
+                            name = it.name,
+                            latitude = it.latitude,
+                            longitude = it.longitude,
+                            elevation = it.elevation,
+                            accuracy = it.accuracy,
+                            utmEasting = it.utmEasting,
+                            utmNorthing = it.utmNorthing,
+                            utmZone = it.utmZone,
+                            startDate = it.startDate,
+                            azimuth = it.azimuth
+                        )
+                    }
+
+                    val excelDailyLogs = dailyLogsList.map {
+                        XlsxWriter.DailyLogSheetData(
+                            boreholeName = boreholeMap[it.boreholeId] ?: "BH-${it.boreholeId}",
+                            date = it.date,
+                            depthDrilled = it.depthDrilled,
+                            lithologySummary = it.lithologySummary,
+                            operationalNotes = it.operationalNotes,
+                            comments = it.comments
+                        )
+                    }
+
+                    val excelCoreRuns = coreRunsList.map {
+                        val runLen = it.getRunLength()
+                        XlsxWriter.CoreRunSheetData(
+                            boreholeName = boreholeMap[it.boreholeId] ?: "BH-${it.boreholeId}",
+                            fromDepth = it.fromDepth,
+                            toDepth = it.toDepth,
+                            lengthPiecesOver10Cm = it.piecesOver10Cm,
+                            recoveredLength = it.recoveredLength,
+                            runLength = runLen,
+                            rqd = it.getRqd(),
+                            coreRecovery = it.getCoreRecovery(),
+                            rockType = it.rockType,
+                            lithologyDescription = it.lithologyDescription,
+                            alterationType = it.alterationType,
+                            alterationIntensity = it.alterationIntensity,
+                            mineralizationType = it.mineralizationType,
+                            mineralizationIntensity = it.mineralizationIntensity,
+                            fractureFrequency = it.fractureFrequency,
+                            veinDensity = it.veinDensity,
+                            jointPresence = it.jointPresence,
+                            color = it.color,
+                            texture = it.texture,
+                            grainSize = it.grainSize,
+                            notes = it.notes
+                        )
+                    }
+
+                    // Create offline Excel file
+                    val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                    val excelFileName = "GeoField_Logging_Export_$timestamp.xlsx"
+                    val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                    val excelFile = File(downloadsDir, excelFileName)
+
+                    XlsxWriter.generateLoggingXlsxFile(
+                        file = excelFile,
+                        boreholes = excelBoreholes,
+                        dailyLogs = excelDailyLogs,
+                        coreRuns = excelCoreRuns
+                    )
+
+                    Pair(excelFile, excelFileName)
+                }
+
+                val (excelFile, excelFileName) = shareData
+                val authority = "${context.packageName}.fileprovider"
+                val fileUri: Uri = FileProvider.getUriForFile(context, authority, excelFile)
+
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    putExtra(Intent.EXTRA_STREAM, fileUri)
+                    putExtra(Intent.EXTRA_SUBJECT, "GeoField Borehole Export (Excel)")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+
+                val chooser = Intent.createChooser(intent, "Share Borehole/Core Logs (Excel)")
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(chooser)
+
+                Toast.makeText(context, "Excel Logs Saved: Downloads/${excelFileName}", Toast.LENGTH_LONG).show()
+
+            } catch (e: Exception) {
+                Toast.makeText(context, "Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                e.printStackTrace()
+            }
+        }
+    }
+
+    // --- BOREHOLE ZIPPED CSV EXPORT ---
+    fun exportBoreholeZip(context: Context) {
+        viewModelScope.launch {
+            try {
+                val shareData = withContext(Dispatchers.IO) {
+                    val boreholesList = dao.getAllBoreholesSync()
+                    val coreRunsList = dao.getAllCoreRunsSync()
+                    val dailyLogsList = dao.getAllDailyLogsSync()
+
+                    val boreholeMap = boreholesList.associate { it.id to it.name }
+
+                    // Create temp files for CSVs
+                    val tempBoreholes = File.createTempFile("boreholes", ".csv", context.cacheDir)
+                    val tempDailyLogs = File.createTempFile("daily_logs", ".csv", context.cacheDir)
+                    val tempCoreRuns = File.createTempFile("core_runs", ".csv", context.cacheDir)
+
+                    // Write CSV contents
+                    tempBoreholes.writeText(
+                        toCsvString(
+                            listOf("Borehole Name", "Latitude", "Longitude", "Elevation (m)", "Accuracy (m)", "UTM Easting (m)", "UTM Northing (m)", "UTM Zone", "Start Date", "Azimuth (°)"),
+                            boreholesList.map { listOf(it.name, it.latitude, it.longitude, it.elevation, it.accuracy, it.utmEasting, it.utmNorthing, it.utmZone, it.startDate, it.azimuth ?: "Vertical") }
+                        )
+                    )
+
+                    tempDailyLogs.writeText(
+                        toCsvString(
+                            listOf("Borehole Name", "Date", "Depth Drilled (m)", "Lithology Summary", "Operational Notes", "Comments"),
+                            dailyLogsList.map { listOf(boreholeMap[it.boreholeId] ?: "BH-${it.boreholeId}", it.date, it.depthDrilled, it.lithologySummary, it.operationalNotes, it.comments) }
+                        )
+                    )
+
+                    tempCoreRuns.writeText(
+                        toCsvString(
+                            listOf("Borehole Name", "From Depth (m)", "To Depth (m)", "Pieces > 10cm (m)", "Recovered Length (m)", "Run Length (m)", "RQD (%)", "Core Recovery (%)", "Rock Type", "Lithology Desc", "Alteration Type", "Alteration Intensity", "Mineralization Type", "Mineralization Intensity", "Fracture Freq (1/m)", "Vein Density (1/m)", "Joint Status", "Color", "Texture", "Grain Size", "Notes"),
+                            coreRunsList.map { listOf(boreholeMap[it.boreholeId] ?: "BH-${it.boreholeId}", it.fromDepth, it.toDepth, it.piecesOver10Cm, it.recoveredLength, it.getRunLength(), it.getRqd(), it.getCoreRecovery(), it.rockType, it.lithologyDescription, it.alterationType, it.alterationIntensity, it.mineralizationType, it.mineralizationIntensity, it.fractureFrequency ?: "", it.veinDensity ?: "", it.jointPresence ?: "None", it.color, it.texture, it.grainSize, it.notes) }
+                        )
+                    )
+
+                    // Create final ZIP
+                    val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                    val zipFileName = "GeoField_CoreLogging_$timestamp.zip"
+                    val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                    val zipFile = File(downloadsDir, zipFileName)
+
+                    java.util.zip.ZipOutputStream(zipFile.outputStream()).use { zos ->
+                        // Add CSVs
+                        zos.putNextEntry(java.util.zip.ZipEntry("boreholes.csv"))
+                        tempBoreholes.inputStream().use { it.copyTo(zos) }
+                        zos.closeEntry()
+
+                        zos.putNextEntry(java.util.zip.ZipEntry("daily_logs.csv"))
+                        tempDailyLogs.inputStream().use { it.copyTo(zos) }
+                        zos.closeEntry()
+
+                        zos.putNextEntry(java.util.zip.ZipEntry("core_runs.csv"))
+                        tempCoreRuns.inputStream().use { it.copyTo(zos) }
+                        zos.closeEntry()
+                    }
+
+                    // Delete temp CSV files
+                    tempBoreholes.delete()
+                    tempDailyLogs.delete()
+                    tempCoreRuns.delete()
+
+                    Pair(zipFile, zipFileName)
+                }
+
+                val (zipFile, zipFileName) = shareData
+                val authority = "${context.packageName}.fileprovider"
+                val fileUri: Uri = FileProvider.getUriForFile(context, authority, zipFile)
+
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/zip"
+                    putExtra(Intent.EXTRA_STREAM, fileUri)
+                    putExtra(Intent.EXTRA_SUBJECT, "GeoField Logging CSV ZIP Package")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+
+                val chooser = Intent.createChooser(intent, "Share Logging ZIP CSVs")
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(chooser)
+
+                Toast.makeText(context, "Logging ZIP Saved: Downloads/${zipFileName}", Toast.LENGTH_LONG).show()
+
+            } catch (e: Exception) {
+                Toast.makeText(context, "ZIP Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                e.printStackTrace()
+            }
+        }
+    }
+
+    fun exportWindowMappingsCsv(context: Context) {
+        viewModelScope.launch {
+            try {
+                val mappings = dao.getAllWindowMappingsSync()
+                if (mappings.isEmpty()) {
+                    Toast.makeText(context, "No window mapping data to export!", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
+
+                val dir = context.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
+                val fileName = "WINDOW_MAPPING_EXPORT_${System.currentTimeMillis()}.csv"
+                val file = java.io.File(dir, fileName)
+
+                withContext(Dispatchers.IO) {
+                    file.bufferedWriter().use { writer ->
+                        // Header
+                        writer.write("ID,Start_X,Start_Y,Start_Z,End_X,End_Y,End_Z,Lithology,Discontinuity_Type,Dip,Dip_Direction,Joint_Set_Numbers,Persistence,Termination,Spacing,Aperture,Surface_Shape,Surface_Roughness,Nature_Of_Filling,Wavelength,Wave_Amplitude,JRC,JCS,Weathering_Condition,Water_Flow,Sample_No,Photo_Path,Created_At\n")
+                        
+                        mappings.forEach { m ->
+                            val line = listOf(
+                                m.id,
+                                m.startX, m.startY, m.startZ,
+                                m.endX, m.endY, m.endZ,
+                                "\"${m.lithology.replace("\"", "\"\"")}\"",
+                                "\"${m.discontinuityType.replace("\"", "\"\"")}\"",
+                                m.dip,
+                                m.dipDirection,
+                                "\"${m.jointSetNumbers.replace("\"", "\"\"")}\"",
+                                "\"${m.persistence.replace("\"", "\"\"")}\"",
+                                "\"${m.termination.replace("\"", "\"\"")}\"",
+                                m.spacing,
+                                m.aperture,
+                                "\"${m.surfaceShape.replace("\"", "\"\"")}\"",
+                                "\"${m.surfaceRoughness.replace("\"", "\"\"")}\"",
+                                "\"${m.natureOfFilling.replace("\"", "\"\"")}\"",
+                                m.wavelength,
+                                m.waveAmplitude,
+                                m.jrc,
+                                m.jcs,
+                                "\"${m.weatheringCondition.replace("\"", "\"\"")}\"",
+                                "\"${m.waterFlow.replace("\"", "\"\"")}\"",
+                                "\"${m.sampleNo.replace("\"", "\"\"")}\"",
+                                "\"${(m.photoPath ?: "").replace("\"", "\"\"")}\"",
+                                m.createdAt
+                            ).joinToString(",")
+                            writer.write(line + "\n")
+                        }
+                    }
+                }
+
+                val authority = "${context.packageName}.fileprovider"
+                val fileUri: Uri = androidx.core.content.FileProvider.getUriForFile(context, authority, file)
+
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/csv"
+                    putExtra(Intent.EXTRA_STREAM, fileUri)
+                    putExtra(Intent.EXTRA_SUBJECT, "GeoField Window Mapping Export (CSV)")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+
+                val chooser = Intent.createChooser(intent, "Share Window Mapping (CSV)")
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(chooser)
+
+                Toast.makeText(context, "CSV Export Saved: Downloads/${fileName}", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                e.printStackTrace()
+            }
+        }
     }
 }

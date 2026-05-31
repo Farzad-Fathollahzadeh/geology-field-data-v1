@@ -71,6 +71,155 @@ object XlsxWriter {
         val description: String
     )
 
+    data class BoreholeSheetData(
+        val name: String,
+        val latitude: Double,
+        val longitude: Double,
+        val elevation: Double,
+        val accuracy: Double,
+        val utmEasting: Double,
+        val utmNorthing: Double,
+        val utmZone: String,
+        val startDate: String,
+        val azimuth: Double?
+    )
+
+    data class DailyLogSheetData(
+        val boreholeName: String,
+        val date: String,
+        val depthDrilled: Double,
+        val lithologySummary: String,
+        val operationalNotes: String,
+        val comments: String
+    )
+
+    data class CoreRunSheetData(
+        val boreholeName: String,
+        val fromDepth: Double,
+        val toDepth: Double,
+        val lengthPiecesOver10Cm: Double,
+        val recoveredLength: Double,
+        val runLength: Double,
+        val rqd: Double,
+        val coreRecovery: Double,
+        val rockType: String,
+        val lithologyDescription: String,
+        val alterationType: String,
+        val alterationIntensity: String,
+        val mineralizationType: String,
+        val mineralizationIntensity: String,
+        val fractureFrequency: Double?,
+        val veinDensity: Double?,
+        val jointPresence: String?,
+        val color: String,
+        val texture: String,
+        val grainSize: String,
+        val notes: String
+    )
+
+    fun generateLoggingXlsxFile(
+        file: File,
+        boreholes: List<BoreholeSheetData>,
+        dailyLogs: List<DailyLogSheetData>,
+        coreRuns: List<CoreRunSheetData>
+    ) {
+        ZipOutputStream(FileOutputStream(file)).use { zipOut ->
+            // 1. [Content_Types].xml
+            zipOut.putNextEntry(ZipEntry("[Content_Types].xml"))
+            val contentTypes = """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+                  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+                  <Default Extension="xml" ContentType="application/xml"/>
+                  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+                  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+                  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+                  <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+                  <Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+                </Types>
+            """.trimIndent()
+            zipOut.write(contentTypes.toByteArray(StandardCharsets.UTF_8))
+            zipOut.closeEntry()
+
+            // 2. _rels/.rels
+            zipOut.putNextEntry(ZipEntry("_rels/.rels"))
+            val rels = """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+                </Relationships>
+            """.trimIndent()
+            zipOut.write(rels.toByteArray(StandardCharsets.UTF_8))
+            zipOut.closeEntry()
+
+            // 3. xl/_rels/workbook.xml.rels
+            zipOut.putNextEntry(ZipEntry("xl/_rels/workbook.xml.rels"))
+            val workbookRels = """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+                  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
+                  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/>
+                  <Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+                </Relationships>
+            """.trimIndent()
+            zipOut.write(workbookRels.toByteArray(StandardCharsets.UTF_8))
+            zipOut.closeEntry()
+
+            // 4. xl/workbook.xml
+            zipOut.putNextEntry(ZipEntry("xl/workbook.xml"))
+            val workbook = """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+                  <sheets>
+                    <sheet name="Boreholes" sheetId="1" r:id="rId1"/>
+                    <sheet name="Daily Drilling Logs" sheetId="2" r:id="rId2"/>
+                    <sheet name="Core Runs" sheetId="3" r:id="rId3"/>
+                  </sheets>
+                </workbook>
+            """.trimIndent()
+            zipOut.write(workbook.toByteArray(StandardCharsets.UTF_8))
+            zipOut.closeEntry()
+
+            // 5. xl/styles.xml
+            zipOut.putNextEntry(ZipEntry("xl/styles.xml"))
+            val styles = """
+                <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+                <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+                  <fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>
+                  <fills count="1"><fill><patternFill patternType="none"/></fill></fills>
+                  <borders count="1"><border><left/><right/><top/><bottom/></border></borders>
+                  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
+                  <cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>
+                </styleSheet>
+            """.trimIndent()
+            zipOut.write(styles.toByteArray(StandardCharsets.UTF_8))
+            zipOut.closeEntry()
+
+            // 6. Worksheets
+            writeSheet(
+                zipOut,
+                "xl/worksheets/sheet1.xml",
+                listOf("Borehole Name", "Latitude", "Longitude", "Elevation (m)", "Accuracy (m)", "UTM Easting (m)", "UTM Northing (m)", "UTM Zone", "Start Date", "Azimuth (°)"),
+                boreholes.map { listOf(it.name, it.latitude, it.longitude, it.elevation, it.accuracy, it.utmEasting, it.utmNorthing, it.utmZone, it.startDate, it.azimuth ?: "Vertical") }
+            )
+
+            writeSheet(
+                zipOut,
+                "xl/worksheets/sheet2.xml",
+                listOf("Borehole Name", "Date", "Depth Drilled (m)", "Lithology Summary", "Operational Notes", "Comments"),
+                dailyLogs.map { listOf(it.boreholeName, it.date, it.depthDrilled, it.lithologySummary, it.operationalNotes, it.comments) }
+            )
+
+            writeSheet(
+                zipOut,
+                "xl/worksheets/sheet3.xml",
+                listOf("Borehole Name", "From Depth (m)", "To Depth (m)", "Pieces > 10cm (m)", "Recovered Length (m)", "Run Length (m)", "RQD (%)", "Core Recovery (%)", "Rock Type", "Lithology Desc", "Alteration Type", "Alteration Intensity", "Mineralization Type", "Mineralization Intensity", "Fracture Freq (1/m)", "Vein Density (1/m)", "Joint Status", "Color", "Texture", "Grain Size", "Notes"),
+                coreRuns.map { listOf(it.boreholeName, it.fromDepth, it.toDepth, it.lengthPiecesOver10Cm, it.recoveredLength, it.runLength, it.rqd, it.coreRecovery, it.rockType, it.lithologyDescription, it.alterationType, it.alterationIntensity, it.mineralizationType, it.mineralizationIntensity, it.fractureFrequency ?: "", it.veinDensity ?: "", it.jointPresence ?: "None", it.color, it.texture, it.grainSize, it.notes) }
+            )
+        }
+    }
+
     fun generateXlsxFile(
         file: File,
         stations: List<StationSheetData>,

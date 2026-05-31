@@ -13,6 +13,38 @@ import kotlinx.coroutines.flow.Flow
 
 // --- ENTITIES ---
 
+@Entity(tableName = "window_mappings")
+data class WindowMapping(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val startX: Double = 0.0,
+    val startY: Double = 0.0,
+    val startZ: Double = 0.0,
+    val endX: Double = 0.0,
+    val endY: Double = 0.0,
+    val endZ: Double = 0.0,
+    val lithology: String = "",
+    val discontinuityType: String = "",
+    val dip: Int = 0,
+    val dipDirection: Int = 0,
+    val jointSetNumbers: String = "",
+    val persistence: String = "",
+    val termination: String = "",
+    val spacing: Double = 0.0,
+    val aperture: Double = 0.0,
+    val surfaceShape: String = "",
+    val surfaceRoughness: String = "",
+    val natureOfFilling: String = "",
+    val wavelength: Double = 0.0,
+    val waveAmplitude: Double = 0.0,
+    val jrc: Double = 0.0,
+    val jcs: Double = 0.0,
+    val weatheringCondition: String = "", // Weathering condition
+    val waterFlow: String = "",
+    val sampleNo: String = "",
+    val photoPath: String? = null,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
 @Entity(tableName = "projects")
 data class Project(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
@@ -130,6 +162,96 @@ data class Sample(
     val photoPath: String?
 )
 
+@Entity(tableName = "boreholes")
+data class Borehole(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val name: String,
+    val latitude: Double,
+    val longitude: Double,
+    val elevation: Double,
+    val accuracy: Double,
+    val elevationAccuracy: Double = 0.0,
+    val utmEasting: Double,
+    val utmNorthing: Double,
+    val utmZone: String,
+    val startDate: String,
+    val azimuth: Double? = null,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "daily_drilling_logs",
+    foreignKeys = [
+        ForeignKey(
+            entity = Borehole::class,
+            parentColumns = ["id"],
+            childColumns = ["boreholeId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class DailyDrillingLog(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val boreholeId: Int,
+    val date: String,
+    val depthDrilled: Double, // meters/day
+    val lithologySummary: String,
+    val operationalNotes: String,
+    val comments: String
+)
+
+@Entity(
+    tableName = "core_runs",
+    foreignKeys = [
+        ForeignKey(
+            entity = Borehole::class,
+            parentColumns = ["id"],
+            childColumns = ["boreholeId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class CoreRun(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val boreholeId: Int,
+    val fromDepth: Double,
+    val toDepth: Double,
+    val piecesOver10Cm: Double,
+    val recoveredLength: Double,
+    
+    // Geology & Properties
+    val rockType: String,
+    val lithologyDescription: String,
+    val alterationType: String, // propylitic / argillic / silicic / potassic / phyllic
+    val alterationIntensity: String,
+    val mineralizationType: String,
+    val mineralizationIntensity: String,
+    val fractureFrequency: Double? = null,
+    val veinDensity: Double? = null,
+    val jointPresence: String? = null,
+    val color: String,
+    val texture: String,
+    val grainSize: String,
+    val notes: String,
+    val createdAt: Long = System.currentTimeMillis()
+) {
+    fun getRunLength(): Double = toDepth - fromDepth
+    
+    fun getRqd(): Double {
+        val len = getRunLength()
+        return if (len > 0.0) {
+            (piecesOver10Cm / len) * 100.0
+        } else 0.0
+    }
+
+    fun getCoreRecovery(): Double {
+        val len = getRunLength()
+        return if (len > 0.0) {
+            (recoveredLength / len) * 100.0
+        } else 0.0
+    }
+}
+
 
 // --- DAO ---
 
@@ -203,14 +325,85 @@ interface GeologyDao {
 
     @Query("SELECT * FROM samples WHERE observationId IN (SELECT id FROM observations WHERE stationId IN (SELECT id FROM stations WHERE projectId = :projectId)) ORDER BY id ASC")
     suspend fun getSamplesForProjectSync(projectId: Int): List<Sample>
+
+    // --- Boreholes DAO Functions ---
+    @Query("SELECT * FROM boreholes ORDER BY id DESC")
+    fun getAllBoreholes(): Flow<List<Borehole>>
+
+    @Query("SELECT * FROM boreholes WHERE id = :id")
+    fun getBoreholeById(id: Int): Flow<Borehole?>
+
+    @Query("SELECT * FROM boreholes WHERE id = :id")
+    suspend fun getBoreholeByIdSync(id: Int): Borehole?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBorehole(borehole: Borehole): Long
+
+    @Query("DELETE FROM boreholes WHERE id = :id")
+    suspend fun deleteBoreholeById(id: Int)
+
+    // --- Daily Drilling Logs ---
+    @Query("SELECT * FROM daily_drilling_logs WHERE boreholeId = :boreholeId ORDER BY date DESC")
+    fun getDailyLogsForBorehole(boreholeId: Int): Flow<List<DailyDrillingLog>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDailyLog(log: DailyDrillingLog): Long
+
+    @Query("DELETE FROM daily_drilling_logs WHERE id = :id")
+    suspend fun deleteDailyLogById(id: Int)
+
+    // --- Core Runs ---
+    @Query("SELECT * FROM core_runs WHERE boreholeId = :boreholeId ORDER BY fromDepth ASC")
+    fun getCoreRunsForBorehole(boreholeId: Int): Flow<List<CoreRun>>
+
+    @Query("SELECT * FROM core_runs WHERE id = :id")
+    suspend fun getCoreRunByIdOnce(id: Int): CoreRun?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCoreRun(run: CoreRun): Long
+
+    @Query("DELETE FROM core_runs WHERE id = :id")
+    suspend fun deleteCoreRunById(id: Int)
+
+    // --- Sync Export functions for Logging ---
+    @Query("SELECT * FROM boreholes ORDER BY id ASC")
+    suspend fun getAllBoreholesSync(): List<Borehole>
+
+    @Query("SELECT * FROM core_runs ORDER BY boreholeId ASC, fromDepth ASC")
+    suspend fun getAllCoreRunsSync(): List<CoreRun>
+
+    @Query("SELECT * FROM daily_drilling_logs ORDER BY boreholeId ASC, date DESC")
+    suspend fun getAllDailyLogsSync(): List<DailyDrillingLog>
+
+    // --- Window Mappings ---
+    @Query("SELECT * FROM window_mappings ORDER BY id DESC")
+    fun getAllWindowMappings(): Flow<List<WindowMapping>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertWindowMapping(windowMapping: WindowMapping): Long
+
+    @Query("DELETE FROM window_mappings WHERE id = :id")
+    suspend fun deleteWindowMappingById(id: Int)
+
+    @Query("SELECT * FROM window_mappings ORDER BY id DESC")
+    suspend fun getAllWindowMappingsSync(): List<WindowMapping>
 }
 
 
 // --- DATABASE ---
 
 @Database(
-    entities = [Project::class, Station::class, Observation::class, Sample::class],
-    version = 3,
+    entities = [
+        Project::class, 
+        Station::class, 
+        Observation::class, 
+        Sample::class,
+        Borehole::class,
+        DailyDrillingLog::class,
+        CoreRun::class,
+        WindowMapping::class
+    ],
+    version = 5,
     exportSchema = false
 )
 abstract class GeologyDatabase : RoomDatabase() {

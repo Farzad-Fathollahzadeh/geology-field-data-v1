@@ -53,6 +53,8 @@ private val LightColorScheme = lightColorScheme(
 fun MyApplicationTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
+    fontSizeMultiplier: Float = 1.0f,
+    fontFamilySel: String = "SansSerif",
     content: @Composable () -> Unit,
 ) {
     val colorScheme = when {
@@ -66,7 +68,7 @@ fun MyApplicationTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
+        typography = getDynamicTypography(fontSizeMultiplier, fontFamilySel),
         content = content
     )
 }
