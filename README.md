@@ -1,7 +1,6 @@
 # 🌍 GeoField Pro — Industrial Geological Field Companion
 ### *Professional Industrial-Grade Field Logging Terminal for Geological Surveying & Exploration*
 
-[![Android Build CI](https://github.com/farzadf/geofield-pro/actions/workflows/android.yml/badge.svg)](https://github.com/farzadf/geofield-pro/actions/workflows/android.yml)
 ![Kotlin Version](https://img.shields.io/badge/Kotlin-1.9.0-blue.svg)
 ![Jetpack Compose](https://img.shields.io/badge/Compose-M3-green.svg)
 ![Database](https://img.shields.io/badge/Database-Room_SQLite-orange.svg)
