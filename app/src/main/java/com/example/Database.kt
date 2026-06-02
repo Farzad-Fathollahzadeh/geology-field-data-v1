@@ -252,6 +252,28 @@ data class CoreRun(
     }
 }
 
+@Entity(tableName = "map_tracks")
+data class MapTrack(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val name: String,
+    val createdAt: Long = System.currentTimeMillis(),
+    val pointsJson: String, // String representation of points: "lat1,lon1;lat2,lon2;..."
+    val isRecording: Boolean = false
+)
+
+@Entity(tableName = "map_waypoints")
+data class MapWaypoint(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val name: String,
+    val description: String = "",
+    val latitude: Double,
+    val longitude: Double,
+    val elevation: Double = 0.0,
+    val accuracy: Double = 0.0,
+    val category: String = "General",
+    val createdAt: Long = System.currentTimeMillis()
+)
+
 
 // --- DAO ---
 
@@ -393,6 +415,32 @@ interface GeologyDao {
 
     @Query("SELECT * FROM observations ORDER BY id DESC")
     fun getAllObservations(): Flow<List<Observation>>
+
+    // --- Tracks ---
+    @Query("SELECT * FROM map_tracks ORDER BY id DESC")
+    fun getAllTracks(): Flow<List<MapTrack>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTrack(track: MapTrack): Long
+
+    @Query("DELETE FROM map_tracks WHERE id = :id")
+    suspend fun deleteTrackById(id: Int)
+
+    @Query("DELETE FROM map_tracks")
+    suspend fun deleteAllTracks()
+
+    // --- Waypoints ---
+    @Query("SELECT * FROM map_waypoints ORDER BY id DESC")
+    fun getAllWaypoints(): Flow<List<MapWaypoint>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertWaypoint(waypoint: MapWaypoint): Long
+
+    @Query("DELETE FROM map_waypoints WHERE id = :id")
+    suspend fun deleteWaypointById(id: Int)
+
+    @Query("DELETE FROM map_waypoints")
+    suspend fun deleteAllWaypoints()
 }
 
 
@@ -407,9 +455,11 @@ interface GeologyDao {
         Borehole::class,
         DailyDrillingLog::class,
         CoreRun::class,
-        WindowMapping::class
+        WindowMapping::class,
+        MapTrack::class,
+        MapWaypoint::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class GeologyDatabase : RoomDatabase() {

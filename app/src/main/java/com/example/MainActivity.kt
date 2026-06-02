@@ -432,6 +432,9 @@ fun MainScreenContent(
                                 onSelectRockEngineering = {
                                     viewModel.navigateTo(Screen.RockEngineering)
                                 },
+                                onSelectMapTracker = {
+                                    viewModel.navigateTo(Screen.StationOfflineMap)
+                                },
                                 projectsCount = projectList.size,
                                 boreholesCount = boreholes.size
                             )
@@ -3861,6 +3864,7 @@ fun HomeScreen(
     onSelectMapping: () -> Unit,
     onSelectLogging: () -> Unit,
     onSelectRockEngineering: () -> Unit,
+    onSelectMapTracker: () -> Unit,
     projectsCount: Int = 0,
     boreholesCount: Int = 0
 ) {
@@ -4263,6 +4267,67 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = "Access live interactive estimators for Rock Mass Rating (Bieniawski RMR 1989), Barton Q-System tunnel support index, and perform automated mathematical Strike & Dip conversions to Dip Direction.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 18.sp
+                )
+            }
+        }
+
+        // Module Card 4: GPS Tracker & Survey Map
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onSelectMapTracker() }
+                .testTag("module_map_tracker_card"),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Explore,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                    Icon(
+                        imageVector = Icons.Default.ArrowForward,
+                        contentDescription = "Open Module",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(
+                    text = "Module 4: GPS Tracker & Field Map",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "Offline Route Tracking, Custom Waypoints & GIS Overlays",
+                    fontSize = 11.sp,
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = "Record continuous survey track routes offline, register custom field waypoints (outcrops, boundaries, water bodies, hazards), toggle multi-layer GIS configurations, and display existing projects elements interactively.",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     lineHeight = 18.sp
@@ -8747,27 +8812,92 @@ fun StationOfflineMapScreen(
     val context = LocalContext.current
     val stations by viewModel.allStations.collectAsStateWithLifecycle(emptyList())
     val boreholes by viewModel.boreholes.collectAsStateWithLifecycle(emptyList())
+    val tracks by viewModel.allTracks.collectAsStateWithLifecycle(emptyList())
+    val waypoints by viewModel.allWaypoints.collectAsStateWithLifecycle(emptyList())
     val gpsState by viewModel.gpsState.collectAsStateWithLifecycle()
 
     // Layer status toggles
     var showStationsLayer by remember { mutableStateOf(true) }
     var showBoreholesLayer by remember { mutableStateOf(true) }
+    var showWaypointsLayer by remember { mutableStateOf(true) }
+    var showTracksLayer by remember { mutableStateOf(true) }
 
     // MapView reference for controller center actions
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
     var hasCentered by remember { mutableStateOf(false) }
     var userGpsMarker by remember { mutableStateOf<Marker?>(null) }
 
+    // Live Track Recording session states
+    var isRecording by remember { mutableStateOf(false) }
+    val activeTrackPoints = remember { mutableStateListOf<GeoPoint>() }
+    var showSaveTrackDialog by remember { mutableStateOf(false) }
+    var newTrackName by remember { mutableStateOf("") }
+
+    // Custom Waypoint generation dialog states
+    var showAddWaypointDialog by remember { mutableStateOf(false) }
+    var wpName by remember { mutableStateOf("") }
+    var wpDesc by remember { mutableStateOf("") }
+    var wpCategory by remember { mutableStateOf("Outcrop") }
+    var wpInputMode by remember { mutableStateOf("GPS") } // "GPS", "CENTER", "MANUAL"
+    var manualLatStr by remember { mutableStateOf("") }
+    var manualLonStr by remember { mutableStateOf("") }
+
+    // Survey History Manager Slide-up tab
+    var showHistoryHub by remember { mutableStateOf(false) }
+    var selectedHistoryTab by remember { mutableStateOf(0) } // 0 = Waypoints, 1 = Tracks
+
     // Clicked marker state
-    var selectedItemType by remember { mutableStateOf<String?>(null) } // "Station" or "Borehole"
+    var selectedItemType by remember { mutableStateOf<String?>(null) } // "Station", "Borehole", "Waypoint", "Track"
     var selectedItemId by remember { mutableStateOf<Int?>(null) }
     var selectedItemTitle by remember { mutableStateOf<String?>(null) }
     var selectedItemSub by remember { mutableStateOf<String?>(null) }
 
-    // Initialize osmdroid configuration synchronously before MapView compiles to prevent race conditions
+    // Cyclic color palette for geological tracks rendering
+    val trackColors = remember {
+        listOf(
+            android.graphics.Color.rgb(22, 160, 133),  // Teal
+            android.graphics.Color.rgb(155, 89, 182), // Purple
+            android.graphics.Color.rgb(41, 128, 185), // Blue
+            android.graphics.Color.rgb(230, 126, 34), // Orange
+            android.graphics.Color.rgb(241, 196, 15)  // Yellow
+        )
+    }
+
+    // Helper functions for points parsing & serialization
+    fun parsePoints(pointsJson: String): List<GeoPoint> {
+        if (pointsJson.isBlank()) return emptyList()
+        return pointsJson.split(";").mapNotNull {
+            val parts = it.split(",")
+            if (parts.size == 2) {
+                val lat = parts[0].toDoubleOrNull()
+                val lon = parts[1].toDoubleOrNull()
+                if (lat != null && lon != null) GeoPoint(lat, lon) else null
+            } else null
+        }
+    }
+
+    // Reactive Track Recording effect
+    LaunchedEffect(isRecording, gpsState.latitude, gpsState.longitude) {
+        if (isRecording) {
+            val myLat = gpsState.latitude
+            val myLon = gpsState.longitude
+            if (myLat != 0.0 && myLon != 0.0) {
+                val lastPt = activeTrackPoints.lastOrNull()
+                if (lastPt == null || lastPt.latitude != myLat || lastPt.longitude != myLon) {
+                    activeTrackPoints.add(GeoPoint(myLat, myLon))
+                }
+            }
+        }
+    }
+
+    // Initialize osmdroid configuration synchronously before MapView compiles to prevent race conditions & crashes
     remember {
-        org.osmdroid.config.Configuration.getInstance().userAgentValue = context.packageName
-        org.osmdroid.config.Configuration.getInstance().load(context, context.getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
+        val config = org.osmdroid.config.Configuration.getInstance()
+        config.userAgentValue = context.packageName
+        val basePath = context.cacheDir.absolutePath + "/osmdroid"
+        config.osmdroidBasePath = java.io.File(basePath)
+        config.osmdroidTileCache = java.io.File(basePath, "tiles")
+        config.load(context, context.getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
         true
     }
 
@@ -8791,12 +8921,15 @@ fun StationOfflineMapScreen(
         }
     }
 
-    // Performance Optimization: Update static overlays ONLY when layers or points dataset explicitly change
-    LaunchedEffect(mapViewRef, stations, boreholes, showStationsLayer, showBoreholesLayer) {
+    // Performance Optimization: Render overlays dynamically only when lists or layers alter
+    LaunchedEffect(
+        mapViewRef, stations, boreholes, tracks, waypoints, activeTrackPoints.size,
+        showStationsLayer, showBoreholesLayer, showWaypointsLayer, showTracksLayer
+    ) {
         val mapView = mapViewRef ?: return@LaunchedEffect
         mapView.overlays.clear()
 
-        // Render stations
+        // 1. Render field stations
         if (showStationsLayer) {
             stations.forEach { station ->
                 if (station.latitude != 0.0 && station.longitude != 0.0) {
@@ -8820,7 +8953,7 @@ fun StationOfflineMapScreen(
             }
         }
 
-        // Render boreholes
+        // 2. Render boreholes
         if (showBoreholesLayer) {
             boreholes.forEach { borehole ->
                 if (borehole.latitude != 0.0 && borehole.longitude != 0.0) {
@@ -8844,11 +8977,61 @@ fun StationOfflineMapScreen(
             }
         }
 
+        // 3. Render Custom Field Waypoints (Waypoints Layer)
+        if (showWaypointsLayer) {
+            waypoints.forEach { wp ->
+                if (wp.latitude != 0.0 && wp.longitude != 0.0) {
+                    val marker = Marker(mapView).apply {
+                        id = "waypoint_${wp.id}"
+                        position = GeoPoint(wp.latitude, wp.longitude)
+                        title = wp.name
+                        subDescription = "Category: ${wp.category}\nElev: ${wp.elevation}m • Accuracy: ${wp.accuracy}m\nNotes: ${wp.description}"
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                        setOnMarkerClickListener { m, _ ->
+                            selectedItemType = "Waypoint"
+                            selectedItemId = wp.id
+                            selectedItemTitle = wp.name
+                            selectedItemSub = "Category: [${wp.category}] • Accuracy: ${String.format(Locale.US, "%.1f", wp.accuracy)}m\nLatitude: ${String.format(Locale.US, "%.6f", wp.latitude)}°\nLongitude: ${String.format(Locale.US, "%.6f", wp.longitude)}°\nNotes: ${wp.description}"
+                            m.showInfoWindow()
+                            true
+                        }
+                    }
+                    mapView.overlays.add(marker)
+                }
+            }
+        }
+
+        // 4. Render Saved Geological Track Polylines
+        if (showTracksLayer) {
+            tracks.forEachIndexed { idx, track ->
+                val trackPts = parsePoints(track.pointsJson)
+                if (trackPts.isNotEmpty()) {
+                    val polyline = org.osmdroid.views.overlay.Polyline(mapView).apply {
+                        setPoints(trackPts)
+                        outlinePaint.color = trackColors[idx % trackColors.size]
+                        outlinePaint.strokeWidth = 5.0f
+                    }
+                    mapView.overlays.add(polyline)
+                }
+            }
+        }
+
+        // 5. Render Active Live Recording Polyline path
+        if (isRecording && activeTrackPoints.isNotEmpty()) {
+            val livePolyline = org.osmdroid.views.overlay.Polyline(mapView).apply {
+                setPoints(activeTrackPoints.toList())
+                outlinePaint.color = android.graphics.Color.rgb(231, 76, 60) // High visibility red
+                outlinePaint.strokeWidth = 7.0f
+                outlinePaint.strokeCap = android.graphics.Paint.Cap.ROUND
+            }
+            mapView.overlays.add(livePolyline)
+        }
+
         // Force recreation of tracking marker since the stack was cleared
         userGpsMarker = null
 
         // Auto center map on initial data load
-        if (!hasCentered && (stations.isNotEmpty() || boreholes.isNotEmpty())) {
+        if (!hasCentered) {
             val validStations = stations.filter { it.latitude != 0.0 && it.longitude != 0.0 }
             val validBoreholes = boreholes.filter { it.latitude != 0.0 && it.longitude != 0.0 }
             val centerPoint = if (validStations.isNotEmpty()) {
@@ -8872,7 +9055,7 @@ fun StationOfflineMapScreen(
         mapView.invalidate()
     }
 
-    // Dynamic Tracking Effect: Smooth real-time coordinate relocations with near-zero UI overhead
+    // Dynamic Tracking Effect: Smooth real-time coordinate updates
     LaunchedEffect(mapViewRef, gpsState.latitude, gpsState.longitude, gpsState.accuracy, gpsState.elevation, userGpsMarker) {
         val mapView = mapViewRef ?: return@LaunchedEffect
         val myLat = gpsState.latitude
@@ -8880,22 +9063,20 @@ fun StationOfflineMapScreen(
         if (myLat != 0.0 && myLon != 0.0) {
             val currentMarker = userGpsMarker
             if (currentMarker != null && mapView.overlays.contains(currentMarker)) {
-                // Highly performant in-place property updating
                 currentMarker.position = GeoPoint(myLat, myLon)
                 currentMarker.subDescription = "Accuracy: ${String.format(Locale.US, "%.1f", gpsState.accuracy)}m\nElev: ${gpsState.elevation}m"
                 mapView.invalidate()
             } else {
-                // Initialize modern location node marker on the overlay container
                 val newMarker = Marker(mapView).apply {
                     id = "user_gps_location"
                     position = GeoPoint(myLat, myLon)
-                    title = "MY GPS POSITION (Offline)"
+                    title = "My Real-Time Position"
                     subDescription = "Accuracy: ${String.format(Locale.US, "%.1f", gpsState.accuracy)}m\nElev: ${gpsState.elevation}m"
                     setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
                     setOnMarkerClickListener { m, _ ->
                         selectedItemType = "My GPS"
                         selectedItemId = -99
-                        selectedItemTitle = "Current Location"
+                        selectedItemTitle = "Active GNSS GPS Receiver"
                         selectedItemSub = "Latitude: ${String.format(Locale.US, "%.6f", myLat)}°\nLongitude: ${String.format(Locale.US, "%.6f", myLon)}°\nAccuracy: ${String.format(Locale.US, "%.1f", gpsState.accuracy)} meters\nElevation: ${gpsState.elevation} meters"
                         m.showInfoWindow()
                         true
@@ -8911,10 +9092,22 @@ fun StationOfflineMapScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Offline Map & Layers", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+                title = { Text("Offline GPS Tracker & Surveyor Map", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(
+                        onClick = { showHistoryHub = !showHistoryHub },
+                        modifier = Modifier.testTag("survey_history_hub_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.History, 
+                            contentDescription = "History Hub", 
+                            tint = if (showHistoryHub) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -8934,9 +9127,8 @@ fun StationOfflineMapScreen(
                         setTileSource(TileSourceFactory.MAPNIK)
                         setMultiTouchControls(true)
                         
-                        // Set standard configurations
                         val controller = controller
-                        controller.setZoom(7.5)
+                        controller.setZoom(8.5)
                         
                         val validStations = stations.filter { it.latitude != 0.0 && it.longitude != 0.0 }
                         val validBoreholes = boreholes.filter { it.latitude != 0.0 && it.longitude != 0.0 }
@@ -8956,16 +9148,45 @@ fun StationOfflineMapScreen(
                         mapViewRef = this
                     }
                 },
-                update = { _ ->
-                    // Performance Optimization: Update loop left intentionally empty, controlled entirely by reactive LaunchedEffect above.
-                },
+                update = { _ -> },
                 onRelease = { mapView ->
                     mapView.onPause()
                     mapView.onDetach()
                 }
             )
 
-            // Glassmorphic Layer Controls Cards Overlaid on Top Right of Map
+            // Dynamic Live Route Logging HUD Card
+            if (isRecording) {
+                Card(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(16.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFC0392B)),
+                    elevation = CardDefaults.cardElevation(4.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .background(Color.White, CircleShape)
+                        )
+                        Text(
+                            text = "RECORDING SURVEY ROUTE • ${activeTrackPoints.size} PTS LOGGED",
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            letterSpacing = 0.5.sp
+                        )
+                    }
+                }
+            }
+
+            // Layer Toggle HUD Card (Glassmorphic Top Right)
             Card(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
@@ -8973,72 +9194,150 @@ fun StationOfflineMapScreen(
                     .width(220.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)
                 ),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
             ) {
                 Column(
                     modifier = Modifier.padding(12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "MAP LAYER TOGGLES",
+                        text = "SURVEY LAYER SETTINGS",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFC96A2B),
-                        letterSpacing = 0.5.sp
+                        letterSpacing = 0.8.sp
                     )
                     
-                    HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                    HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
                     
+                    // Field Stations
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Icon(Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
-                            Text("Field Stations", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Icon(Icons.Default.LocationOn, null, modifier = Modifier.size(15.dp), tint = MaterialTheme.colorScheme.primary)
+                            Text("Field Stations", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                         Switch(
                             checked = showStationsLayer,
                             onCheckedChange = { showStationsLayer = it },
-                            modifier = Modifier.scale(0.7f)
+                            modifier = Modifier.scale(0.65f)
                         )
                     }
 
+                    // Boreholes
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Icon(Icons.Default.Architecture, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF0A84FF))
-                            Text("Boreholes", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Icon(Icons.Default.Architecture, null, modifier = Modifier.size(15.dp), tint = Color(0xFF0A84FF))
+                            Text("Boreholes", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                         Switch(
                             checked = showBoreholesLayer,
                             onCheckedChange = { showBoreholesLayer = it },
-                            modifier = Modifier.scale(0.7f)
+                            modifier = Modifier.scale(0.65f)
                         )
                     }
-                    
-                    Text(
-                        text = "• AlpineQuest-style tile caching active.",
-                        fontSize = 8.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+
+                    // Field Waypoints
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Default.AddLocation, null, modifier = Modifier.size(15.dp), tint = Color(0xFFE67E22))
+                            Text("Waypoints", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Switch(
+                            checked = showWaypointsLayer,
+                            onCheckedChange = { showWaypointsLayer = it },
+                            modifier = Modifier.scale(0.65f)
+                        )
+                    }
+
+                    // Track routes
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Default.Explore, null, modifier = Modifier.size(15.dp), tint = Color(0xFF2ECC71))
+                            Text("Tracks & Routes", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Switch(
+                            checked = showTracksLayer,
+                            onCheckedChange = { showTracksLayer = it },
+                            modifier = Modifier.scale(0.65f)
+                        )
+                    }
                 }
             }
 
-            // Floating Quick Action Buttons on right-center area
+            // GIS Controller Button Stack on Right-Center
             Column(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(end = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Locate Me Button
+                // Pin Point / Waypoint logger
+                FloatingActionButton(
+                    onClick = {
+                        wpName = "Waypoint ${waypoints.size + 1}"
+                        wpDesc = ""
+                        wpCategory = "Outcrop"
+                        wpInputMode = "GPS"
+                        manualLatStr = if (gpsState.latitude != 0.0) gpsState.latitude.toString() else ""
+                        manualLonStr = if (gpsState.longitude != 0.0) gpsState.longitude.toString() else ""
+                        showAddWaypointDialog = true
+                    },
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.size(48.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.AddLocation, contentDescription = "Add Custom Waypoint", modifier = Modifier.size(20.dp))
+                }
+
+                // Track recorder (Toggle Start/Stop)
+                FloatingActionButton(
+                    onClick = {
+                        if (!isRecording) {
+                            activeTrackPoints.clear()
+                            isRecording = true
+                            Toast.makeText(context, "GPS Route Recording Started", Toast.LENGTH_SHORT).show()
+                        } else {
+                            if (activeTrackPoints.isEmpty()) {
+                                isRecording = false
+                                Toast.makeText(context, "Route recording canceled (no coordinates points logged)", Toast.LENGTH_SHORT).show()
+                            } else {
+                                newTrackName = "Route Trace ${tracks.size + 1}"
+                                showSaveTrackDialog = true
+                            }
+                        }
+                    },
+                    containerColor = if (isRecording) Color(0xFFC0392B) else MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = if (isRecording) Color.White else MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(48.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isRecording) Icons.Default.Stop else Icons.Default.PlayArrow,
+                        contentDescription = "Toggle Track Recorder",
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+
+                // Locate Me
                 FloatingActionButton(
                     onClick = {
                         val lat = gpsState.latitude
@@ -9053,23 +9352,20 @@ fun StationOfflineMapScreen(
                             Toast.makeText(context, "Waiting for GPS signal / location permission", Toast.LENGTH_SHORT).show()
                         }
                     },
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(48.dp),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.MyLocation,
-                        contentDescription = "Locate Me",
-                        modifier = Modifier.size(20.dp)
-                    )
+                    Icon(Icons.Default.MyLocation, contentDescription = "Locate Me", modifier = Modifier.size(20.dp))
                 }
 
-                // Center All Points Button
+                // Fit Points
                 FloatingActionButton(
                     onClick = {
                         val validStations = stations.filter { it.latitude != 0.0 && it.longitude != 0.0 }
                         val validBoreholes = boreholes.filter { it.latitude != 0.0 && it.longitude != 0.0 }
+                        val validWps = waypoints.filter { it.latitude != 0.0 && it.longitude != 0.0 }
 
                         val centerPoint = if (validStations.isNotEmpty()) {
                             val avgLat = validStations.map { it.latitude }.average()
@@ -9079,6 +9375,10 @@ fun StationOfflineMapScreen(
                             val avgLat = validBoreholes.map { it.latitude }.average()
                             val avgLon = validBoreholes.map { it.longitude }.average()
                             GeoPoint(avgLat, avgLon)
+                        } else if (validWps.isNotEmpty()) {
+                            val avgLat = validWps.map { it.latitude }.average()
+                            val avgLon = validWps.map { it.longitude }.average()
+                            GeoPoint(avgLat, avgLon)
                         } else {
                             null
                         }
@@ -9086,26 +9386,177 @@ fun StationOfflineMapScreen(
                         if (centerPoint != null) {
                             mapViewRef?.let { map ->
                                 map.controller.animateTo(centerPoint)
-                                map.controller.setZoom(9.0)
+                                map.controller.setZoom(10.0)
                             }
                         } else {
-                            Toast.makeText(context, "No stations or boreholes recorded to center", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "No features recorded to compile fit alignment", Toast.LENGTH_SHORT).show()
                         }
                     },
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.size(48.dp),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.CenterFocusStrong,
-                        contentDescription = "Fit Project Points",
-                        modifier = Modifier.size(20.dp)
-                    )
+                    Icon(Icons.Default.CenterFocusStrong, contentDescription = "Fit Project Points", modifier = Modifier.size(20.dp))
                 }
             }
 
-            // Slide-up Details Overlay Card for Interactive Selections
+            // Waypoints & Tracks Survey History Drawer Card
+            if (showHistoryHub) {
+                Card(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(16.dp)
+                        .width(310.dp)
+                        .height(340.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                ) {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        // Hub Header
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Saved Survey Data Hub", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            IconButton(
+                                onClick = { showHistoryHub = false },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(Icons.Default.Close, null, modifier = Modifier.size(16.dp))
+                            }
+                        }
+
+                        // Tab Switchers
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            PresetChip(
+                                label = "WAYPOINTS (${waypoints.size})",
+                                isSelected = selectedHistoryTab == 0,
+                                onClick = { selectedHistoryTab = 0 }
+                            )
+                            PresetChip(
+                                label = "ROUTE TRACKS (${tracks.size})",
+                                isSelected = selectedHistoryTab == 1,
+                                onClick = { selectedHistoryTab = 1 }
+                            )
+                        }
+
+                        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                        if (selectedHistoryTab == 0) {
+                            // Waypoints scrolling list
+                            if (waypoints.isEmpty()) {
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text("No custom waypoints added.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            } else {
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentPadding = PaddingValues(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    items(waypoints.size) { index ->
+                                        val wp = waypoints[index]
+                                        Card(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)),
+                                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().clickable {
+                                                    mapViewRef?.let { map ->
+                                                        map.controller.animateTo(GeoPoint(wp.latitude, wp.longitude))
+                                                        map.controller.setZoom(15.0)
+                                                    }
+                                                    selectedItemType = "Waypoint"
+                                                    selectedItemId = wp.id
+                                                    selectedItemTitle = wp.name
+                                                    selectedItemSub = "Category: [${wp.category}] • Accuracy: ${wp.accuracy}m\nLatitude: ${wp.latitude}\nLongitude: ${wp.longitude}\nNotes: ${wp.description}"
+                                                }.padding(8.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(wp.name, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                                    Text("${wp.category} • Lat: ${String.format(Locale.US, "%.4f", wp.latitude)}, Lon: ${String.format(Locale.US, "%.4f", wp.longitude)}", fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                }
+                                                IconButton(
+                                                    onClick = { viewModel.deleteWaypoint(wp.id) },
+                                                    modifier = Modifier.size(24.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Delete, null, modifier = Modifier.size(16.dp), tint = Color(0xFFC0392B))
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // Tracks scrolling list
+                            if (tracks.isEmpty()) {
+                                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Text("No recorded tracks found.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            } else {
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentPadding = PaddingValues(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    items(tracks.size) { index ->
+                                        val trk = tracks[index]
+                                        val pts = parsePoints(trk.pointsJson)
+                                        Card(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)),
+                                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().clickable {
+                                                    val firstPt = pts.firstOrNull()
+                                                    if (firstPt != null) {
+                                                        mapViewRef?.let { map ->
+                                                            map.controller.animateTo(firstPt)
+                                                            map.controller.setZoom(14.0)
+                                                        }
+                                                        selectedItemType = "Track"
+                                                        selectedItemId = trk.id
+                                                        selectedItemTitle = trk.name
+                                                        selectedItemSub = "GPS Logged Route Path\nPoints Density: ${pts.size} GPS nodes\nTotal Nodes: ${pts.size}"
+                                                    }
+                                                }.padding(8.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(trk.name, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                                    Text("${pts.size} trace points collected", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                }
+                                                IconButton(
+                                                    onClick = { viewModel.deleteTrack(trk.id) },
+                                                    modifier = Modifier.size(24.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Delete, null, modifier = Modifier.size(16.dp), tint = Color(0xFFC0392B))
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Slide-up Details Interactive Overlay Card for clicked markers
             if (selectedItemType != null) {
                 Card(
                     modifier = Modifier
@@ -9113,9 +9564,7 @@ fun StationOfflineMapScreen(
                         .padding(16.dp)
                         .fillMaxWidth(),
                     shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surface
-                    ),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     border = BorderStroke(1.5.dp, Color(0xFFC96A2B).copy(alpha = 0.5f)),
                     elevation = CardDefaults.cardElevation(6.dp)
                 ) {
@@ -9132,7 +9581,7 @@ fun StationOfflineMapScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                val indicatorColor = if (selectedItemType == "Station") MaterialTheme.colorScheme.primary else Color(0xFF0A84FF)
+                                val indicatorColor = if (selectedItemType == "Station") MaterialTheme.colorScheme.primary else if (selectedItemType == "Borehole") Color(0xFF0A84FF) else Color(0xFFE67E22)
                                 Box(
                                     modifier = Modifier
                                         .size(10.dp)
@@ -9171,35 +9620,244 @@ fun StationOfflineMapScreen(
                             fontFamily = FontFamily.Monospace
                         )
 
-                        Spacer(modifier = Modifier.height(4.dp))
-
-                        Button(
-                            onClick = {
-                                val id = selectedItemId
-                                if (id != null) {
-                                    if (selectedItemType == "Station") {
-                                        viewModel.navigateTo(Screen.StationDetail(id))
-                                    } else {
-                                        viewModel.navigateTo(Screen.BoreholeDashboard(id))
+                        if (selectedItemType == "Station" || selectedItemType == "Borehole") {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Button(
+                                onClick = {
+                                    val id = selectedItemId
+                                    if (id != null) {
+                                        if (selectedItemType == "Station") {
+                                            viewModel.navigateTo(Screen.StationDetail(id))
+                                        } else {
+                                            viewModel.navigateTo(Screen.BoreholeDashboard(id))
+                                        }
                                     }
-                                }
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(48.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFFC96A2B)
-                            )
-                        ) {
-                            Icon(Icons.Default.Map, null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Open Details Screen", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(48.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC96A2B))
+                            ) {
+                                Icon(Icons.Default.Map, null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Open Details Screen", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    // A. DIALOG: Custom Waypoint Setup Dialog builder
+    if (showAddWaypointDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddWaypointDialog = false },
+            title = { Text("Log Field Survey Waypoint", fontSize = 16.sp, fontWeight = FontWeight.Black) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
+                    OutlinedTextField(
+                        value = wpName,
+                        onValueChange = { wpName = it },
+                        label = { Text("Waypoint Name") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+
+                    Text("Waypoint Category", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("Outcrop", "Contact", "Hazard", "Water", "General").forEach { cat ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(if (wpCategory == cat) Color(0xFFC96A2B) else MaterialTheme.colorScheme.surfaceVariant)
+                                    .clickable { wpCategory = cat }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                            ) {
+                                Text(cat, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = if (wpCategory == cat) Color.White else MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = wpDesc,
+                        onValueChange = { wpDesc = it },
+                        label = { Text("Field Description / Notes") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Text("Lock Coordinates Mode", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        PresetChip("GNSS GPS LOC", wpInputMode == "GPS") { wpInputMode = "GPS" }
+                        PresetChip("MAP CENTER", wpInputMode == "CENTER") { wpInputMode = "CENTER" }
+                        PresetChip("MANUAL OUT", wpInputMode == "MANUAL") { wpInputMode = "MANUAL" }
+                    }
+
+                    if (wpInputMode == "GPS") {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text("GNSS Coordinates Lock:", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                if (gpsState.latitude != 0.0) {
+                                    Text("Lat: ${String.format(Locale.US, "%.6f", gpsState.latitude)}°\nLon: ${String.format(Locale.US, "%.6f", gpsState.longitude)}° • ±${String.format(Locale.US, "%.1f", gpsState.accuracy)}m", fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                                } else {
+                                    Text("No GNSS satellite coordinate fix available yet. Manual mode suggested.", fontSize = 11.sp, color = Color(0xFFC0392B), fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    } else if (wpInputMode == "CENTER") {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                val centerGeo = mapViewRef?.mapCenter
+                                Text("Current Mapped Screen Center Coordinates:", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                if (centerGeo != null) {
+                                    Text("Lat: ${String.format(Locale.US, "%.6f", centerGeo.latitude)}°\nLon: ${String.format(Locale.US, "%.6f", centerGeo.longitude)}°", fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                                } else {
+                                    Text("32.4279°, 53.6880° (Default Base center)", fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedTextField(
+                                value = manualLatStr,
+                                onValueChange = { manualLatStr = it },
+                                label = { Text("Manual Latitude (Decimal)") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = manualLonStr,
+                                onValueChange = { manualLonStr = it },
+                                label = { Text("Manual Longitude (Decimal)") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        var latToSave = 0.0
+                        var lonToSave = 0.0
+                        var elevToSave = 0.0
+                        var accToSave = 0.0
+
+                        if (wpInputMode == "GPS") {
+                            latToSave = gpsState.latitude
+                            lonToSave = gpsState.longitude
+                            elevToSave = gpsState.elevation
+                            accToSave = gpsState.accuracy
+                        } else if (wpInputMode == "CENTER") {
+                            val mapCenter = mapViewRef?.mapCenter
+                            latToSave = mapCenter?.latitude ?: 32.4279
+                            lonToSave = mapCenter?.longitude ?: 53.6880
+                            elevToSave = 0.0
+                            accToSave = 10.0
+                        } else {
+                            latToSave = manualLatStr.toDoubleOrNull() ?: 0.0
+                            lonToSave = manualLonStr.toDoubleOrNull() ?: 0.0
+                            elevToSave = 0.0
+                            accToSave = 1.0
+                        }
+
+                        if (latToSave != 0.0 && lonToSave != 0.0) {
+                            val newWp = MapWaypoint(
+                                name = wpName,
+                                description = wpDesc,
+                                latitude = latToSave,
+                                longitude = lonToSave,
+                                elevation = elevToSave,
+                                accuracy = accToSave,
+                                category = wpCategory
+                            )
+                            viewModel.saveWaypoint(newWp)
+                            showAddWaypointDialog = false
+                            Toast.makeText(context, "Waypoint '$wpName' saved securely offline", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Cannot save waypoint with unmapped or empty (0,0) coordinates", Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC96A2B))
+                ) {
+                    Text("Save Waypoint")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddWaypointDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    // B. DIALOG: Custom Track/Route Save Dialog builder
+    if (showSaveTrackDialog) {
+        AlertDialog(
+            onDismissRequest = { showSaveTrackDialog = false },
+            title = { Text("Register Field Survey Route Track", fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Your survey navigation path is ready to be stored in the primary workspace trace registry.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    OutlinedTextField(
+                        value = newTrackName,
+                        onValueChange = { newTrackName = it },
+                        label = { Text("Route Track Name") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true
+                    )
+                    Text("${activeTrackPoints.size} logged coordinates vertices will compile into this path.", fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newTrackName.isNotBlank() && activeTrackPoints.isNotEmpty()) {
+                            val serializedPts = activeTrackPoints.joinToString(";") { "${it.latitude},${it.longitude}" }
+                            val newTrk = MapTrack(
+                                name = newTrackName,
+                                pointsJson = serializedPts,
+                                isRecording = false
+                            )
+                            viewModel.saveTrack(newTrk)
+                            isRecording = false
+                            activeTrackPoints.clear()
+                            showSaveTrackDialog = false
+                            Toast.makeText(context, "Route Trace '$newTrackName' registered securely", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC96A2B))
+                ) {
+                    Text("Save Route")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        isRecording = false
+                        activeTrackPoints.clear()
+                        showSaveTrackDialog = false
+                        Toast.makeText(context, "Route recording discarded", Toast.LENGTH_SHORT).show()
+                    }
+                ) {
+                    Text("Discard Track")
+                }
+            }
+        )
     }
 }
 

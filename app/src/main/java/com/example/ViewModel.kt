@@ -211,6 +211,12 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
     val allStations: StateFlow<List<Station>> = dao.getAllStations()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val allTracks: StateFlow<List<MapTrack>> = dao.getAllTracks()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allWaypoints: StateFlow<List<MapWaypoint>> = dao.getAllWaypoints()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val allObservations: StateFlow<List<Observation>> = dao.getAllObservations()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -1141,6 +1147,43 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
     fun deleteWindowMapping(id: Int) {
         viewModelScope.launch {
             dao.deleteWindowMappingById(id)
+        }
+    }
+
+    // --- Map Tracker Actions ---
+    fun saveTrack(track: MapTrack) {
+        viewModelScope.launch {
+            dao.insertTrack(track)
+        }
+    }
+
+    fun deleteTrack(id: Int) {
+        viewModelScope.launch {
+            dao.deleteTrackById(id)
+        }
+    }
+
+    fun clearAllTracks() {
+        viewModelScope.launch {
+            dao.deleteAllTracks()
+        }
+    }
+
+    fun saveWaypoint(waypoint: MapWaypoint) {
+        viewModelScope.launch {
+            dao.insertWaypoint(waypoint)
+        }
+    }
+
+    fun deleteWaypoint(id: Int) {
+        viewModelScope.launch {
+            dao.deleteWaypointById(id)
+        }
+    }
+
+    fun clearAllWaypoints() {
+        viewModelScope.launch {
+            dao.deleteAllWaypoints()
         }
     }
 
