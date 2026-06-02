@@ -52,6 +52,7 @@ sealed interface Screen {
     data class CreateCoreRun(val boreholeId: Int, val runId: Int? = null) : Screen
     object RockEngineering : Screen
     object Settings : Screen
+    object StationOfflineMap : Screen
 }
 
 data class GpsData(
@@ -205,6 +206,12 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
 
     // --- Boreholes State Management ---
     val boreholes: StateFlow<List<Borehole>> = dao.getAllBoreholes()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allStations: StateFlow<List<Station>> = dao.getAllStations()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allObservations: StateFlow<List<Observation>> = dao.getAllObservations()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val allWindowMappings: StateFlow<List<WindowMapping>> = dao.getAllWindowMappings()
@@ -1116,6 +1123,12 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
     fun deleteBorehole(id: Int) {
         viewModelScope.launch {
             dao.deleteBoreholeById(id)
+        }
+    }
+
+    fun updateBorehole(borehole: Borehole) {
+        viewModelScope.launch {
+            dao.insertBorehole(borehole)
         }
     }
 

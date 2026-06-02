@@ -21,6 +21,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.viewinterop.AndroidView
+import org.osmdroid.views.MapView
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.overlay.Marker
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -62,6 +67,13 @@ import android.widget.Toast
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.activity.result.launch
+import androidx.compose.foundation.horizontalScroll
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.content.Context
 
 class MainActivity : ComponentActivity() {
     private val viewModel: GeologyViewModel by viewModels()
@@ -232,6 +244,14 @@ fun MainScreenContent(
                 is Screen.CreateCoreRun -> viewModel.navigateTo(Screen.BoreholeDashboard(screen.boreholeId))
                 is Screen.RockEngineering -> viewModel.navigateTo(Screen.Home)
                 is Screen.Settings -> viewModel.navigateTo(Screen.Home)
+                is Screen.StationOfflineMap -> {
+                    val activeProjId = activeProject?.id
+                    if (activeProjId != null) {
+                        viewModel.navigateTo(Screen.ProjectDashboard(activeProjId))
+                    } else {
+                        viewModel.navigateTo(Screen.Home)
+                    }
+                }
                 else -> viewModel.navigateTo(Screen.Home)
             }
         }
@@ -252,6 +272,7 @@ fun MainScreenContent(
             is Screen.CreateCoreRun -> if (screen.runId != null) "Edit Core Run" else "Log Core Interval Run"
             is Screen.RockEngineering -> "Rock Engineering Utilities"
             is Screen.Settings -> "App Settings"
+            is Screen.StationOfflineMap -> "Offline Stations Map"
         }
 
         Scaffold(
@@ -294,6 +315,14 @@ fun MainScreenContent(
                                             is Screen.CreateCoreRun -> viewModel.navigateTo(Screen.BoreholeDashboard(screen.boreholeId))
                                             is Screen.RockEngineering -> viewModel.navigateTo(Screen.Home)
                                             is Screen.Settings -> viewModel.navigateTo(Screen.Home)
+                                            is Screen.StationOfflineMap -> {
+                                                val activeProjId = activeProject?.id
+                                                if (activeProjId != null) {
+                                                    viewModel.navigateTo(Screen.ProjectDashboard(activeProjId))
+                                                } else {
+                                                    viewModel.navigateTo(Screen.Home)
+                                                }
+                                            }
                                             else -> viewModel.navigateTo(Screen.Home)
                                         }
                                     },
@@ -571,6 +600,9 @@ fun MainScreenContent(
                                 },
                                 onExportZip = {
                                     viewModel.exportBoreholeZip(context)
+                                },
+                                onUpdateBorehole = { updatedBh ->
+                                    viewModel.updateBorehole(updatedBh)
                                 }
                             )
                         }
@@ -611,6 +643,19 @@ fun MainScreenContent(
                                 viewModel = viewModel,
                                 onBack = {
                                     viewModel.navigateTo(Screen.Home)
+                                }
+                            )
+                        }
+                        is Screen.StationOfflineMap -> {
+                            StationOfflineMapScreen(
+                                viewModel = viewModel,
+                                onBackClick = {
+                                    val activeProjId = activeProject?.id
+                                    if (activeProjId != null) {
+                                        viewModel.navigateTo(Screen.ProjectDashboard(activeProjId))
+                                    } else {
+                                        viewModel.navigateTo(Screen.Home)
+                                    }
                                 }
                             )
                         }
@@ -856,7 +901,7 @@ fun GeoFieldSplashScreen() {
                 .padding(bottom = 32.dp)
         ) {
             Text(
-                text = "OFFLINE-FIRST FIELD DATA LOGGER • v1.2",
+                text = "OFFLINE-FIRST FIELD DATA LOGGER • v2.1.1",
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
@@ -1593,21 +1638,43 @@ fun ProjectDashboardScreen(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-        Button(
-            onClick = onAddStationClick,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(58.dp)
-                .testTag("add_new_station_btn"),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            ),
-            shape = RoundedCornerShape(18.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Icon(Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(20.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("ADD NEW STATION", fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+            Button(
+                onClick = onAddStationClick,
+                modifier = Modifier
+                    .weight(1.3f)
+                    .height(58.dp)
+                    .testTag("add_new_station_btn"),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Icon(Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("ADD STATION", fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+            }
+
+            Button(
+                onClick = { viewModel.navigateTo(Screen.StationOfflineMap) },
+                modifier = Modifier
+                    .weight(1f)
+                    .height(58.dp)
+                    .testTag("offline_map_btn"),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFC96A2B),
+                    contentColor = Color.White
+                ),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Icon(Icons.Default.Map, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("OFFLINE MAP", fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+            }
         }
     }
 }
@@ -2778,6 +2845,64 @@ fun AddObservationScreen(
     var galleryMetadata by remember { mutableStateOf<PhotoProcessor.ImageMetadata?>(null) }
     var showGpsWarningDialog by remember { mutableStateOf(false) }
 
+    // Compass sensor live tracking
+    DisposableEffect(Unit) {
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as android.hardware.SensorManager
+        val rotationVectorSensor = sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_ROTATION_VECTOR)
+        val listener = object : android.hardware.SensorEventListener {
+            private val rotationMatrix = FloatArray(9)
+            private val orientationValues = FloatArray(3)
+
+            override fun onSensorChanged(event: android.hardware.SensorEvent?) {
+                if (event == null) return
+                if (event.sensor.type == android.hardware.Sensor.TYPE_ROTATION_VECTOR) {
+                    android.hardware.SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+                    android.hardware.SensorManager.getOrientation(rotationMatrix, orientationValues)
+                    val yawRadians = orientationValues[0]
+                    var yawDegrees = Math.toDegrees(yawRadians.toDouble()).toInt()
+                    if (yawDegrees < 0) {
+                        yawDegrees += 360
+                    }
+                    sightAzimuth = yawDegrees
+                }
+            }
+
+            override fun onAccuracyChanged(sensor: android.hardware.Sensor?, accuracy: Int) {}
+        }
+
+        if (rotationVectorSensor != null) {
+            sensorManager.registerListener(listener, rotationVectorSensor, android.hardware.SensorManager.SENSOR_DELAY_UI)
+        }
+        onDispose {
+            sensorManager.unregisterListener(listener)
+        }
+    }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap ->
+        if (bitmap != null) {
+            val path = PhotoProcessor.saveAnnotatedImage(
+                context = context,
+                baseBitmap = bitmap,
+                stationCode = stationCode,
+                lat = station?.latitude ?: 0.0,
+                lon = station?.longitude ?: 0.0,
+                elevation = station?.elevation ?: 0.0,
+                utmZone = station?.utmZone ?: "39N",
+                utmEasting = station?.utmEasting ?: 0.0,
+                utmNorthing = station?.utmNorthing ?: 0.0,
+                azimuth = sightAzimuth,
+                timestamp = System.currentTimeMillis(),
+                settings = PhotoProcessor.OverlaySettings(isOverlayEnabled, overlayPosition),
+                isCapturedInApp = true
+            )
+            if (path != null) {
+                attachedPhotoPathsList = attachedPhotoPathsList + path
+            }
+        }
+    }
+
     val pickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
@@ -2806,7 +2931,8 @@ fun AddObservationScreen(
                                 utmNorthing = station?.utmNorthing ?: 10000000.0,
                                 azimuth = sightAzimuth,
                                 timestamp = meta.timestamp ?: System.currentTimeMillis(),
-                                settings = PhotoProcessor.OverlaySettings(isOverlayEnabled, overlayPosition)
+                                settings = PhotoProcessor.OverlaySettings(isOverlayEnabled, overlayPosition),
+                                isCapturedInApp = false
                             )
                             if (path != null) {
                                 attachedPhotoPathsList = attachedPhotoPathsList + path
@@ -2848,7 +2974,8 @@ fun AddObservationScreen(
                                         utmNorthing = station?.utmNorthing ?: 0.0,
                                         azimuth = sightAzimuth,
                                         timestamp = meta?.timestamp ?: System.currentTimeMillis(),
-                                        settings = PhotoProcessor.OverlaySettings(isOverlayEnabled, overlayPosition)
+                                        settings = PhotoProcessor.OverlaySettings(isOverlayEnabled, overlayPosition),
+                                        isCapturedInApp = false
                                     )
                                     if (path != null) {
                                         attachedPhotoPathsList = attachedPhotoPathsList + path
@@ -3486,16 +3613,26 @@ fun AddObservationScreen(
                 }
 
                 Button(
-                    onClick = { pickerLauncher.launch("image/*") },
+                    onClick = { cameraLauncher.launch() },
                     modifier = Modifier.fillMaxWidth().height(48.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
+                        containerColor = Color(0xFFC96A2B)
                     )
+                ) {
+                    Icon(Icons.Default.PhotoCamera, null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Take Photo with In-App Camera", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+
+                OutlinedButton(
+                    onClick = { pickerLauncher.launch("image/*") },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
                     Icon(Icons.Default.PhotoLibrary, null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Select Photo from Device Storage", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text("Import Photo from Device Storage", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -4730,6 +4867,132 @@ fun CreateBoreholeScreen(
 }
 
 @Composable
+fun EditBoreholeDialog(
+    borehole: Borehole,
+    onDismiss: () -> Unit,
+    onSave: (Borehole) -> Unit
+) {
+    var name by remember { mutableStateOf(borehole.name) }
+    var lat by remember { mutableStateOf(borehole.latitude.toString()) }
+    var lon by remember { mutableStateOf(borehole.longitude.toString()) }
+    var elevation by remember { mutableStateOf(borehole.elevation.toString()) }
+    var accuracy by remember { mutableStateOf(borehole.accuracy.toString()) }
+    var utmEasting by remember { mutableStateOf(borehole.utmEasting.toString()) }
+    var utmNorthing by remember { mutableStateOf(borehole.utmNorthing.toString()) }
+    var utmZone by remember { mutableStateOf(borehole.utmZone) }
+    var azimuth by remember { mutableStateOf(borehole.azimuth?.toString() ?: "0.0") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit Borehole Collar Info", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Borehole Collar Name") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = lat,
+                        onValueChange = { lat = it },
+                        label = { Text("Latitude") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    OutlinedTextField(
+                        value = lon,
+                        onValueChange = { lon = it },
+                        label = { Text("Longitude") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = elevation,
+                        onValueChange = { elevation = it },
+                        label = { Text("Elevation (m)") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    OutlinedTextField(
+                        value = accuracy,
+                        onValueChange = { accuracy = it },
+                        label = { Text("GPS Accuracy (m)") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = utmEasting,
+                        onValueChange = { utmEasting = it },
+                        label = { Text("UTM Easting") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                    OutlinedTextField(
+                        value = utmNorthing,
+                        onValueChange = { utmNorthing = it },
+                        label = { Text("UTM Northing") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = utmZone,
+                        onValueChange = { utmZone = it },
+                        label = { Text("UTM Zone") },
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = azimuth,
+                        onValueChange = { azimuth = it },
+                        label = { Text("Azimuth (°)") },
+                        modifier = Modifier.weight(1f),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC96A2B)),
+                onClick = {
+                    val updatedBorehole = borehole.copy(
+                        name = name,
+                        latitude = lat.toDoubleOrNull() ?: borehole.latitude,
+                        longitude = lon.toDoubleOrNull() ?: borehole.longitude,
+                        elevation = elevation.toDoubleOrNull() ?: borehole.elevation,
+                        accuracy = accuracy.toDoubleOrNull() ?: borehole.accuracy,
+                        utmEasting = utmEasting.toDoubleOrNull() ?: borehole.utmEasting,
+                        utmNorthing = utmNorthing.toDoubleOrNull() ?: borehole.utmNorthing,
+                        utmZone = utmZone,
+                        azimuth = azimuth.toDoubleOrNull() ?: borehole.azimuth
+                    )
+                    onSave(updatedBorehole)
+                }
+            ) {
+                Text("Save Changes", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            OutlinedButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
 fun BoreholeDashboardScreen(
     borehole: Borehole?,
     runs: List<CoreRun>,
@@ -4740,15 +5003,28 @@ fun BoreholeDashboardScreen(
     onAddDailyLog: () -> Unit,
     onDeleteDailyLog: (logId: Int) -> Unit,
     onExportExcel: () -> Unit,
-    onExportZip: () -> Unit
+    onExportZip: () -> Unit,
+    onUpdateBorehole: (Borehole) -> Unit = {}
 ) {
     var activeTab by remember { mutableStateOf(0) } // 0 = Core Runs, 1 = Daily Drilling progress
+    var showEditBoreholeDialog by remember { mutableStateOf(false) }
     
     if (borehole == null) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
         }
         return
+    }
+
+    if (showEditBoreholeDialog) {
+        EditBoreholeDialog(
+            borehole = borehole,
+            onDismiss = { showEditBoreholeDialog = false },
+            onSave = { updated ->
+                onUpdateBorehole(updated)
+                showEditBoreholeDialog = false
+            }
+        )
     }
 
     Column(
@@ -4772,12 +5048,25 @@ fun BoreholeDashboardScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text(
-                            text = borehole.name,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = borehole.name,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            IconButton(
+                                onClick = { showEditBoreholeDialog = true },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Edit Borehole",
+                                    tint = Color(0xFFC96A2B),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
                         Text(
                             text = "COLLAR COORDINATE SYSTEMS (WGS84 UTM)",
                             fontSize = 9.sp,
@@ -5771,14 +6060,24 @@ fun RockEngineeringScreen(
     viewModel: GeologyViewModel,
     onBackClick: () -> Unit
 ) {
-    var selectedTab by remember { mutableStateOf(0) } // 0 = RMR, 1 = Q-System, 2 = Structure Converter, 3 = Window Mapping
+    var selectedTab by remember { mutableStateOf(0) } 
+    // State HOISTING for synchronized rock engineering calculations
+    var activeRmrValue by remember { mutableStateOf(58.0) }
+    var activeQValue by remember { mutableStateOf(4.5) }
+    var activeGsiValue by remember { mutableStateOf(55.0) }
+    var activeUcsValue by remember { mutableStateOf(120.0) }
+    var activeUcsRockName by remember { mutableStateOf("Granite") }
+    var activeMiValue by remember { mutableStateOf(32.0) }
+    var activeDValue by remember { mutableStateOf(0.0) } // Disturbance factor
+
+    val context = LocalContext.current
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // Tab Pills
+        // Tab Pills - Horizontal Scrollable Row to support expansion elegantly without layout stretching
         Surface(
             modifier = Modifier.fillMaxWidth(),
             tonalElevation = 4.dp,
@@ -5788,26 +6087,34 @@ fun RockEngineeringScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(12.dp)
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
                     .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                     .padding(4.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                val tabs = listOf("RMR Rating", "Barton Q-System", "Structural Dip", "Window Mapping")
+                val tabs = listOf(
+                    "Standard RMR", 
+                    "Barton Q-System", 
+                    "GSI & Hoek-Brown", 
+                    "UCS Database", 
+                    "Automated Report", 
+                    "Structural Dip", 
+                    "Window Mapping"
+                )
                 tabs.forEachIndexed { index, label ->
                     val isSelected = selectedTab == index
                     Box(
                         modifier = Modifier
-                            .weight(1f)
                             .clip(RoundedCornerShape(8.dp))
                             .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
                             .clickable { selectedTab = index }
-                            .padding(vertical = 10.dp),
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = label,
-                            fontSize = 12.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -5822,17 +6129,45 @@ fun RockEngineeringScreen(
                 .fillMaxWidth()
         ) {
             when (selectedTab) {
-                0 -> RmrCalculatorSection()
-                1 -> QSystemCalculatorSection()
-                2 -> StructuralConverterSection(viewModel)
-                3 -> WindowMappingSection(viewModel)
+                0 -> RmrCalculatorSection(onRmrCalculated = { activeRmrValue = it })
+                1 -> QSystemCalculatorSection(onQCalculated = { activeQValue = it })
+                2 -> GsiHoekBrownSection(
+                    gsi = activeGsiValue,
+                    onGsiChange = { activeGsiValue = it },
+                    ucs = activeUcsValue,
+                    onUcsChange = { activeUcsValue = it },
+                    mi = activeMiValue,
+                    onMiChange = { activeMiValue = it },
+                    d = activeDValue,
+                    onDChange = { activeDValue = it },
+                    rockName = activeUcsRockName
+                )
+                3 -> UcsDatabaseSection(
+                    onSelectRock = { name, ucsVal, miVal ->
+                        activeUcsRockName = name
+                        activeUcsValue = ucsVal
+                        activeMiValue = miVal
+                        Toast.makeText(context, "Applied typical $name data (UCS: $ucsVal MPa, mi: $miVal) to geomechanics section", Toast.LENGTH_SHORT).show()
+                    }
+                )
+                4 -> RockMassReportSection(
+                    rmr = activeRmrValue,
+                    q = activeQValue,
+                    gsi = activeGsiValue,
+                    ucs = activeUcsValue,
+                    rockName = activeUcsRockName,
+                    mi = activeMiValue,
+                    d = activeDValue
+                )
+                5 -> StructuralConverterSection(viewModel)
+                6 -> WindowMappingSection(viewModel)
             }
         }
     }
 }
 
 @Composable
-fun RmrCalculatorSection() {
+fun RmrCalculatorSection(onRmrCalculated: (Double) -> Unit = {}) {
     // Advanced RMR Method Modes
     var rmrMethodMode by remember { mutableStateOf(0) } // 0 = Standard RMR (1989), 1 = Improved RMR (Modern Modified)
     var feIndex by remember { mutableStateOf(1) } // Default: Smooth Blast (0.92)
@@ -5897,13 +6232,13 @@ fun RmrCalculatorSection() {
         OptionItem("Flowing water (severe dynamic piping)", 0)
     )
 
-    val excavationTypes = listOf("Tunnels & Mines (تونل)", "Foundations (پی)", "Slopes & Cliffs (ترانشه)")
+    val excavationTypes = listOf("Tunnels & Mines", "Foundations", "Slopes & Cliffs")
     val favorabilities = listOf(
-        OptionItem("Very Favorable (بسیار مساعد)", 0),
-        OptionItem("Favorable (مساعد)", 1),
-        OptionItem("Fair (متوسط)", 2),
-        OptionItem("Unfavorable (نامساعد)", 3),
-        OptionItem("Very Unfavorable (بسیار نامساعد)", 4)
+        OptionItem("Very Favorable", 0),
+        OptionItem("Favorable", 1),
+        OptionItem("Fair", 2),
+        OptionItem("Unfavorable", 3),
+        OptionItem("Very Unfavorable", 4)
     )
 
     val baseScore = strengths[selectedStrengthOption].score +
@@ -5957,6 +6292,10 @@ fun RmrCalculatorSection() {
 
     val totalScore = Math.round(totalScoreNum).toInt().coerceIn(0, 100)
 
+    LaunchedEffect(totalScoreNum) {
+        onRmrCalculated(totalScoreNum)
+    }
+
     // Serafim and Pereira (1983) Correlation for Em (GPa)
     val rockModulus = Math.pow(10.0, (totalScoreNum - 10.0) / 40.0)
 
@@ -6009,7 +6348,7 @@ fun RmrCalculatorSection() {
                 .padding(4.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            val modes = listOf("RMR89 Standard (سنتی)", "RMR Improved (بهبود یافته)")
+            val modes = listOf("RMR89 Standard", "RMR Improved (Modern)")
             modes.forEachIndexed { index, label ->
                 val isSelected = rmrMethodMode == index
                 Box(
@@ -6404,7 +6743,7 @@ fun ParameterSelectionRow(
 }
 
 @Composable
-fun QSystemCalculatorSection() {
+fun QSystemCalculatorSection(onQCalculated: (Double) -> Unit = {}) {
     var rqd by remember { mutableStateOf(75.0) }
     var jnSelected by remember { mutableStateOf(0) }
     var jrSelected by remember { mutableStateOf(0) }
@@ -6471,6 +6810,10 @@ fun QSystemCalculatorSection() {
     val esrLabels = listOf("Temp Opening (3.0)", "Mine/Water (1.6)", "Road Tunnel (1.0)", "Subway/Civil (0.8)")
 
     val qValue = (rqd / jnValues[jnSelected]) * (jrValues[jrSelected] / jaValues[jaSelected]) * (jwValues[jwSelected] / srfValues[srfSelected])
+
+    LaunchedEffect(qValue) {
+        onQCalculated(qValue)
+    }
 
     val (qClass, qColor) = when {
         qValue > 400.0 -> "Exceptionally Good Rock" to Color(0xFF00E676)
@@ -8392,6 +8735,972 @@ fun SettingsScreen(
         }
         
         Spacer(modifier = Modifier.height(30.dp))
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun StationOfflineMapScreen(
+    viewModel: GeologyViewModel,
+    onBackClick: () -> Unit
+) {
+    val context = LocalContext.current
+    val stations by viewModel.allStations.collectAsStateWithLifecycle(emptyList())
+    val boreholes by viewModel.boreholes.collectAsStateWithLifecycle(emptyList())
+    val gpsState by viewModel.gpsState.collectAsStateWithLifecycle()
+
+    // Layer status toggles
+    var showStationsLayer by remember { mutableStateOf(true) }
+    var showBoreholesLayer by remember { mutableStateOf(true) }
+
+    // MapView reference for controller center actions
+    var mapViewRef by remember { mutableStateOf<MapView?>(null) }
+    var hasCentered by remember { mutableStateOf(false) }
+    var userGpsMarker by remember { mutableStateOf<Marker?>(null) }
+
+    // Clicked marker state
+    var selectedItemType by remember { mutableStateOf<String?>(null) } // "Station" or "Borehole"
+    var selectedItemId by remember { mutableStateOf<Int?>(null) }
+    var selectedItemTitle by remember { mutableStateOf<String?>(null) }
+    var selectedItemSub by remember { mutableStateOf<String?>(null) }
+
+    // Initialize osmdroid configuration synchronously before MapView compiles to prevent race conditions
+    remember {
+        org.osmdroid.config.Configuration.getInstance().userAgentValue = context.packageName
+        org.osmdroid.config.Configuration.getInstance().load(context, context.getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
+        true
+    }
+
+    // Lifecycle observer for MapView to prevent thread & memory leaks
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, mapViewRef) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            when (event) {
+                androidx.lifecycle.Lifecycle.Event.ON_RESUME -> mapViewRef?.onResume()
+                androidx.lifecycle.Lifecycle.Event.ON_PAUSE -> {
+                    mapViewRef?.onPause()
+                }
+                else -> {}
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            mapViewRef?.onPause()
+            mapViewRef?.onDetach()
+        }
+    }
+
+    // Performance Optimization: Update static overlays ONLY when layers or points dataset explicitly change
+    LaunchedEffect(mapViewRef, stations, boreholes, showStationsLayer, showBoreholesLayer) {
+        val mapView = mapViewRef ?: return@LaunchedEffect
+        mapView.overlays.clear()
+
+        // Render stations
+        if (showStationsLayer) {
+            stations.forEach { station ->
+                if (station.latitude != 0.0 && station.longitude != 0.0) {
+                    val marker = Marker(mapView).apply {
+                        id = "station_${station.id}"
+                        position = GeoPoint(station.latitude, station.longitude)
+                        title = "Station: ${station.stationCode}"
+                        subDescription = "Elevation: ${station.elevation}m\nUTM Zone: ${station.utmZone}"
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                        setOnMarkerClickListener { m, _ ->
+                            selectedItemType = "Station"
+                            selectedItemId = station.id
+                            selectedItemTitle = station.stationCode
+                            selectedItemSub = "Elevation: ${station.elevation}m • Accuracy: ${station.accuracy}m\nUTM Zone: ${station.utmZone} (${station.utmEasting.toInt()}E, ${station.utmNorthing.toInt()}N)"
+                            m.showInfoWindow()
+                            true
+                        }
+                    }
+                    mapView.overlays.add(marker)
+                }
+            }
+        }
+
+        // Render boreholes
+        if (showBoreholesLayer) {
+            boreholes.forEach { borehole ->
+                if (borehole.latitude != 0.0 && borehole.longitude != 0.0) {
+                    val marker = Marker(mapView).apply {
+                        id = "borehole_${borehole.id}"
+                        position = GeoPoint(borehole.latitude, borehole.longitude)
+                        title = "Borehole: ${borehole.name}"
+                        subDescription = "UTM: ${borehole.utmEasting} E, ${borehole.utmNorthing} N\nAzimuth: ${borehole.azimuth ?: 0.0}°"
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                        setOnMarkerClickListener { m, _ ->
+                            selectedItemType = "Borehole"
+                            selectedItemId = borehole.id
+                            selectedItemTitle = borehole.name
+                            selectedItemSub = "Elevation: ${borehole.elevation}m • Azimuth: ${borehole.azimuth ?: 0.0}°\nUTM Zone: ${borehole.utmZone} (${borehole.utmEasting.toInt()}E, ${borehole.utmNorthing.toInt()}N)"
+                            m.showInfoWindow()
+                            true
+                        }
+                    }
+                    mapView.overlays.add(marker)
+                }
+            }
+        }
+
+        // Force recreation of tracking marker since the stack was cleared
+        userGpsMarker = null
+
+        // Auto center map on initial data load
+        if (!hasCentered && (stations.isNotEmpty() || boreholes.isNotEmpty())) {
+            val validStations = stations.filter { it.latitude != 0.0 && it.longitude != 0.0 }
+            val validBoreholes = boreholes.filter { it.latitude != 0.0 && it.longitude != 0.0 }
+            val centerPoint = if (validStations.isNotEmpty()) {
+                val avgLat = validStations.map { it.latitude }.average()
+                val avgLon = validStations.map { it.longitude }.average()
+                GeoPoint(avgLat, avgLon)
+            } else if (validBoreholes.isNotEmpty()) {
+                val avgLat = validBoreholes.map { it.latitude }.average()
+                val avgLon = validBoreholes.map { it.longitude }.average()
+                GeoPoint(avgLat, avgLon)
+            } else {
+                null
+            }
+            if (centerPoint != null) {
+                mapView.controller.setCenter(centerPoint)
+                mapView.controller.setZoom(10.0)
+                hasCentered = true
+            }
+        }
+
+        mapView.invalidate()
+    }
+
+    // Dynamic Tracking Effect: Smooth real-time coordinate relocations with near-zero UI overhead
+    LaunchedEffect(mapViewRef, gpsState.latitude, gpsState.longitude, gpsState.accuracy, gpsState.elevation, userGpsMarker) {
+        val mapView = mapViewRef ?: return@LaunchedEffect
+        val myLat = gpsState.latitude
+        val myLon = gpsState.longitude
+        if (myLat != 0.0 && myLon != 0.0) {
+            val currentMarker = userGpsMarker
+            if (currentMarker != null && mapView.overlays.contains(currentMarker)) {
+                // Highly performant in-place property updating
+                currentMarker.position = GeoPoint(myLat, myLon)
+                currentMarker.subDescription = "Accuracy: ${String.format(Locale.US, "%.1f", gpsState.accuracy)}m\nElev: ${gpsState.elevation}m"
+                mapView.invalidate()
+            } else {
+                // Initialize modern location node marker on the overlay container
+                val newMarker = Marker(mapView).apply {
+                    id = "user_gps_location"
+                    position = GeoPoint(myLat, myLon)
+                    title = "MY GPS POSITION (Offline)"
+                    subDescription = "Accuracy: ${String.format(Locale.US, "%.1f", gpsState.accuracy)}m\nElev: ${gpsState.elevation}m"
+                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                    setOnMarkerClickListener { m, _ ->
+                        selectedItemType = "My GPS"
+                        selectedItemId = -99
+                        selectedItemTitle = "Current Location"
+                        selectedItemSub = "Latitude: ${String.format(Locale.US, "%.6f", myLat)}°\nLongitude: ${String.format(Locale.US, "%.6f", myLon)}°\nAccuracy: ${String.format(Locale.US, "%.1f", gpsState.accuracy)} meters\nElevation: ${gpsState.elevation} meters"
+                        m.showInfoWindow()
+                        true
+                    }
+                }
+                mapView.overlays.add(newMarker)
+                userGpsMarker = newMarker
+                mapView.invalidate()
+            }
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Offline Map & Layers", fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+                navigationIcon = {
+                    IconButton(onClick = onBackClick) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+            )
+        }
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            // Android MapView Component
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { ctx ->
+                    MapView(ctx).apply {
+                        setTileSource(TileSourceFactory.MAPNIK)
+                        setMultiTouchControls(true)
+                        
+                        // Set standard configurations
+                        val controller = controller
+                        controller.setZoom(7.5)
+                        
+                        val validStations = stations.filter { it.latitude != 0.0 && it.longitude != 0.0 }
+                        val validBoreholes = boreholes.filter { it.latitude != 0.0 && it.longitude != 0.0 }
+
+                        val centerPoint = if (validStations.isNotEmpty()) {
+                            val avgLat = validStations.map { it.latitude }.average()
+                            val avgLon = validStations.map { it.longitude }.average()
+                            GeoPoint(avgLat, avgLon)
+                        } else if (validBoreholes.isNotEmpty()) {
+                            val avgLat = validBoreholes.map { it.latitude }.average()
+                            val avgLon = validBoreholes.map { it.longitude }.average()
+                            GeoPoint(avgLat, avgLon)
+                        } else {
+                            GeoPoint(32.4279, 53.6880) // General center
+                        }
+                        controller.setCenter(centerPoint)
+                        mapViewRef = this
+                    }
+                },
+                update = { _ ->
+                    // Performance Optimization: Update loop left intentionally empty, controlled entirely by reactive LaunchedEffect above.
+                },
+                onRelease = { mapView ->
+                    mapView.onPause()
+                    mapView.onDetach()
+                }
+            )
+
+            // Glassmorphic Layer Controls Cards Overlaid on Top Right of Map
+            Card(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp)
+                    .width(220.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f)
+                ),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "MAP LAYER TOGGLES",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFC96A2B),
+                        letterSpacing = 0.5.sp
+                    )
+                    
+                    HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                            Text("Field Stations", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Switch(
+                            checked = showStationsLayer,
+                            onCheckedChange = { showStationsLayer = it },
+                            modifier = Modifier.scale(0.7f)
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Default.Architecture, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF0A84FF))
+                            Text("Boreholes", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Switch(
+                            checked = showBoreholesLayer,
+                            onCheckedChange = { showBoreholesLayer = it },
+                            modifier = Modifier.scale(0.7f)
+                        )
+                    }
+                    
+                    Text(
+                        text = "• AlpineQuest-style tile caching active.",
+                        fontSize = 8.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Floating Quick Action Buttons on right-center area
+            Column(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Locate Me Button
+                FloatingActionButton(
+                    onClick = {
+                        val lat = gpsState.latitude
+                        val lon = gpsState.longitude
+                        if (lat != 0.0 && lon != 0.0) {
+                            mapViewRef?.let { map ->
+                                map.controller.animateTo(GeoPoint(lat, lon))
+                                map.controller.setZoom(15.0)
+                            }
+                            Toast.makeText(context, "Centering map on offline GPS location", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Waiting for GPS signal / location permission", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(48.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MyLocation,
+                        contentDescription = "Locate Me",
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                // Center All Points Button
+                FloatingActionButton(
+                    onClick = {
+                        val validStations = stations.filter { it.latitude != 0.0 && it.longitude != 0.0 }
+                        val validBoreholes = boreholes.filter { it.latitude != 0.0 && it.longitude != 0.0 }
+
+                        val centerPoint = if (validStations.isNotEmpty()) {
+                            val avgLat = validStations.map { it.latitude }.average()
+                            val avgLon = validStations.map { it.longitude }.average()
+                            GeoPoint(avgLat, avgLon)
+                        } else if (validBoreholes.isNotEmpty()) {
+                            val avgLat = validBoreholes.map { it.latitude }.average()
+                            val avgLon = validBoreholes.map { it.longitude }.average()
+                            GeoPoint(avgLat, avgLon)
+                        } else {
+                            null
+                        }
+
+                        if (centerPoint != null) {
+                            mapViewRef?.let { map ->
+                                map.controller.animateTo(centerPoint)
+                                map.controller.setZoom(9.0)
+                            }
+                        } else {
+                            Toast.makeText(context, "No stations or boreholes recorded to center", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.size(48.dp),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CenterFocusStrong,
+                        contentDescription = "Fit Project Points",
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            // Slide-up Details Overlay Card for Interactive Selections
+            if (selectedItemType != null) {
+                Card(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(16.dp)
+                        .fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    border = BorderStroke(1.5.dp, Color(0xFFC96A2B).copy(alpha = 0.5f)),
+                    elevation = CardDefaults.cardElevation(6.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                val indicatorColor = if (selectedItemType == "Station") MaterialTheme.colorScheme.primary else Color(0xFF0A84FF)
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .background(indicatorColor, RoundedCornerShape(5.dp))
+                                )
+                                Text(
+                                    text = (selectedItemType ?: "").uppercase(Locale.US),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = indicatorColor
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    selectedItemType = null
+                                    selectedItemId = null
+                                },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(Icons.Default.Close, null, modifier = Modifier.size(16.dp))
+                            }
+                        }
+
+                        Text(
+                            text = selectedItemTitle ?: "",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        Text(
+                            text = selectedItemSub ?: "",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 15.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Button(
+                            onClick = {
+                                val id = selectedItemId
+                                if (id != null) {
+                                    if (selectedItemType == "Station") {
+                                        viewModel.navigateTo(Screen.StationDetail(id))
+                                    } else {
+                                        viewModel.navigateTo(Screen.BoreholeDashboard(id))
+                                    }
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFFC96A2B)
+                            )
+                        ) {
+                            Icon(Icons.Default.Map, null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Open Details Screen", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PresetChip(
+    label: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (isSelected) Color(0xFFC96A2B) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+fun GsiHoekBrownSection(
+    gsi: Double,
+    onGsiChange: (Double) -> Unit,
+    ucs: Double,
+    onUcsChange: (Double) -> Unit,
+    mi: Double,
+    onMiChange: (Double) -> Unit,
+    d: Double,
+    onDChange: (Double) -> Unit,
+    rockName: String
+) {
+    val mb = mi * Math.exp((gsi - 100) / (28 - 14 * d))
+    val s = Math.exp((gsi - 100) / (9 - 3 * d))
+    val a = 0.5 + (1.0 / 6.0) * (Math.exp(-gsi / 15.0) - Math.exp(-20.0 / 3.0))
+
+    val sig_cm = ucs * Math.pow(s, a)
+    val sig_t = if (mb > 0) -(s * ucs) / mb else 0.0
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "HOEK-BROWN ROCK MASS FAILURE ENGINE",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFC96A2B),
+                    letterSpacing = 1.sp
+                )
+                Text(
+                    text = "Active Reference Rock Type: $rockName",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Calculates rock mass strength parameters using Hoek-Brown (2002 Edition) criteria.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Column {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("Geological Strength Index (GSI)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("${gsi.toInt()}", fontSize = 12.sp, fontWeight = FontWeight.Black, color = Color(0xFFC96A2B))
+                    }
+                    Slider(
+                        value = gsi.toFloat(),
+                        onValueChange = { onGsiChange(it.toDouble()) },
+                        valueRange = 0f..100f,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(
+                            "Massive (85)" to 85.0,
+                            "Blocky (65)" to 65.0,
+                            "Very Blocky (50)" to 50.0,
+                            "Blocky/Seamy (35)" to 35.0,
+                            "Crushed (15)" to 15.0
+                        ).forEach { (lbl, valD) ->
+                            PresetChip(
+                                label = lbl,
+                                isSelected = Math.abs(gsi - valD) < 2.0,
+                                onClick = { onGsiChange(valD) }
+                            )
+                        }
+                    }
+                }
+
+                Column {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Compressive Strength of Intact Rock (σ_ci)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("${ucs.toInt()} MPa", fontSize = 12.sp, fontWeight = FontWeight.Black, color = Color(0xFFC96A2B))
+                    }
+                    Slider(
+                        value = ucs.toFloat(),
+                        onValueChange = { onUcsChange(it.toDouble()) },
+                        valueRange = 1f..350f,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                Column {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Intact Rock Parameter (m_i)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(String.format(Locale.US, "%.1f", mi), fontSize = 12.sp, fontWeight = FontWeight.Black, color = Color(0xFFC96A2B))
+                    }
+                    Slider(
+                        value = mi.toFloat(),
+                        onValueChange = { onMiChange(it.toDouble()) },
+                        valueRange = 1f..50f,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                Column {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("Blast/Excavation Disturbance Factor (D)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(String.format(Locale.US, "%.2f", d), fontSize = 12.sp, fontWeight = FontWeight.Black, color = Color(0xFFC96A2B))
+                    }
+                    Slider(
+                        value = d.toFloat(),
+                        onValueChange = { onDChange(it.toDouble()) },
+                        valueRange = 0f..1f,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(
+                            "Excellent TBM (0.0)" to 0.0,
+                            "Controlled Blasting (0.5)" to 0.5,
+                            "Normal Blasting (0.8)" to 0.8,
+                            "Heavy Disturbance (1.0)" to 1.0
+                        ).forEach { (lbl, valD) ->
+                            PresetChip(
+                                label = lbl,
+                                isSelected = Math.abs(d - valD) < 0.05,
+                                onClick = { onDChange(valD) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "GEOMECHANICAL PARAMETERS SUMMARY",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    letterSpacing = 0.5.sp
+                )
+
+                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("m_b", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(String.format(Locale.US, "%.4f", mb), fontSize = 14.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
+                    }
+                    Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("s (joints)", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(String.format(Locale.US, "%.5f", s), fontSize = 14.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
+                    }
+                    Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("exponent a", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(String.format(Locale.US, "%.4f", a), fontSize = 14.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
+                    }
+                }
+
+                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f))
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Mass Compressive Strength (σ_cm)", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(String.format(Locale.US, "%.3f MPa", sig_cm), fontSize = 15.sp, fontWeight = FontWeight.Black, color = Color(0xFFC96A2B))
+                        }
+                    }
+
+                    Card(
+                        modifier = Modifier.weight(1f),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f))
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Mass Tensile Strength (σ_t)", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(String.format(Locale.US, "%.3f MPa", sig_t), fontSize = 15.sp, fontWeight = FontWeight.Black, color = Color(0xFFC96A2B))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun UcsDatabaseSection(
+    onSelectRock: (name: String, ucsVal: Double, miVal: Double) -> Unit
+) {
+    data class RockSpec(val name: String, val group: String, val ucs: Double, val mi: Double)
+    val database = listOf(
+        RockSpec("Granite (Coarse)", "Igneous", 160.0, 32.0),
+        RockSpec("Basalt (Fine)", "Igneous", 220.0, 25.0),
+        RockSpec("Andesite", "Igneous", 140.0, 25.0),
+        RockSpec("Rhyolite", "Igneous", 180.0, 25.0),
+        RockSpec("Quartz Sandstone", "Sedimentary", 95.0, 19.0),
+        RockSpec("Limestone (Micritic)", "Sedimentary", 75.0, 12.0),
+        RockSpec("Shale / Mudstone", "Sedimentary", 35.0, 6.0),
+        RockSpec("Siltstone", "Sedimentary", 60.0, 7.0),
+        RockSpec("Quartzite", "Metamorphic", 230.0, 24.0),
+        RockSpec("Quartzite Gneiss", "Metamorphic", 130.0, 28.0),
+        RockSpec("Mica Schist", "Metamorphic", 55.0, 10.0),
+        RockSpec("Marble", "Metamorphic", 85.0, 9.0)
+    )
+
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedFilterGroup by remember { mutableStateOf("ALL") }
+
+    val filteredList = database.filter { spec ->
+        (selectedFilterGroup == "ALL" || spec.group.equals(selectedFilterGroup, ignoreCase = true)) &&
+        spec.name.contains(searchQuery, ignoreCase = true)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            label = { Text("Search Reference Rock Type") },
+            leadingIcon = { Icon(Icons.Default.Search, null) },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf("ALL", "Igneous", "Sedimentary", "Metamorphic").forEach { gp ->
+                val isSelected = selectedFilterGroup == gp
+                Button(
+                    onClick = { selectedFilterGroup = gp },
+                    modifier = Modifier.weight(1f).height(36.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                    ),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 4.dp)
+                ) {
+                    Text(gp, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(filteredList) { spec ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelectRock(spec.name, spec.ucs, spec.mi) },
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(spec.name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("Group: ${spec.group}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text("Typical UCS", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("${spec.ucs.toInt()} MPa", fontSize = 13.sp, fontWeight = FontWeight.Black, color = Color(0xFFC96A2B))
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text("Constant mi", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("${spec.mi.toInt()}", fontSize = 13.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RockMassReportSection(
+    rmr: Double,
+    q: Double,
+    gsi: Double,
+    ucs: Double,
+    rockName: String,
+    mi: Double,
+    d: Double
+) {
+    val gsiFromRmr = rmr - 5.0
+    val rmrFromQ = 9.0 * Math.log(Math.max(q, 0.001)) + 44.0
+
+    val emValue = if (ucs <= 100.0) {
+        (1.0 - d / 2.0) * Math.sqrt(ucs / 100.0) * Math.pow(10.0, (gsi - 10.0) / 40.0)
+    } else {
+        (1.0 - d / 2.0) * Math.pow(10.0, (gsi - 10.0) / 40.0)
+    }
+
+    val rmrClass = when {
+        rmr > 80 -> "I (Very Good Rock)"
+        rmr > 60 -> "II (Good Rock)"
+        rmr > 40 -> "III (Fair Rock)"
+        rmr > 20 -> "IV (Poor Rock)"
+        else -> "V (Very Poor Rock)"
+    }
+
+    val qClass = when {
+        q > 40 -> "Exceptionally / Extremely Good"
+        q > 10 -> "Good"
+        q > 4 -> "Fair"
+        q > 1 -> "Poor"
+        q > 0.1 -> "Very Poor"
+        else -> "Exceptionally Poor"
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFC96A2B))
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "AUTOMATIC ROCK MECHANICS SYNTHESIS REPORT",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White.copy(alpha = 0.85f),
+                    letterSpacing = 1.sp
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Engineering Geological Classification Summary",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Black,
+                    color = Color.White
+                )
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("1. INPUT VALUES OVERVIEW", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                HorizontalDivider(thickness = 0.5.dp)
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Active RMR Value", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(String.format(Locale.US, "%.1f", rmr), fontSize = 14.sp, fontWeight = FontWeight.Black)
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Active Q-System", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(String.format(Locale.US, "%.4f", q), fontSize = 14.sp, fontWeight = FontWeight.Black)
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("GSI", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${gsi.toInt()}", fontSize = 14.sp, fontWeight = FontWeight.Black)
+                    }
+                }
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Column(modifier = Modifier.weight(1.5f)) {
+                        Text("Lithology Context", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(rockName, fontSize = 13.sp, fontWeight = FontWeight.Black)
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Ucs of Intact", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${ucs.toInt()} MPa", fontSize = 13.sp, fontWeight = FontWeight.Black)
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Disturbance d", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(d.toString(), fontSize = 13.sp, fontWeight = FontWeight.Black)
+                    }
+                }
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("2. GEOMECHANISTIC CORRELATIONS", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                HorizontalDivider(thickness = 0.5.dp)
+
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("GSI Estimated from RMR (RMR89 - 5)", fontSize = 12.sp)
+                        Text(String.format(Locale.US, "%.1f", gsiFromRmr), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("RMR Estimated from Q (9*ln(Q) + 44)", fontSize = 12.sp)
+                        Text(String.format(Locale.US, "%.1f", rmrFromQ), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Rock Mass Deformation Modulus (E_m)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(String.format(Locale.US, "%.2f GPa", emValue), fontSize = 13.sp, fontWeight = FontWeight.Black, color = Color(0xFFC96A2B))
+                    }
+                }
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text("3. ENGINEERING SUPPORT EXCAVATION ADVICE", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                HorizontalDivider(thickness = 0.5.dp)
+
+                Text("RMR Rock Class: $rmrClass", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Text("Barton Q Class: $qClass", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                val supportAdvice = when {
+                    rmr > 60 -> "Rock mass is highly self-supporting. Unsupported spans can exceed several meters. Standard spot rock bolting (L=2.5m) and thin shotcrete sealing (50mm) is sufficient."
+                    rmr > 40 -> "Rock mass is moderately jointed or fair-grade. Systematic active rock bolting on a 1.5m to 2m grid, combined with 50-100mm fiber-reinforced shotcrete layer, is recommended for tunnel headings and underground caverns."
+                    else -> "Rock mass exhibits heavy shearing and is weak, classified as poor/very poor. Immediate support installation is mandatory. Apply heavy systematic steel active grid arch linings (H-sections), thick micro-silica shotcrete (150-200mm), and self-drilling friction forepoling shields."
+                }
+
+                Text(
+                    text = supportAdvice,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 16.sp,
+                    fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                )
+            }
+        }
     }
 }
 

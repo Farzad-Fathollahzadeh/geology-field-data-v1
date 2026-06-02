@@ -14,8 +14,8 @@ android {
     applicationId = "com.aistudio.geologylogger.whmxt"
     minSdk = 24
     targetSdk = 36
-    versionCode = 3
-    versionName = "1.2.1"
+    versionCode = 4
+    versionName = "2.1.1"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
@@ -91,6 +91,7 @@ dependencies {
   // implementation(libs.androidx.navigation.compose)
   implementation(libs.androidx.room.ktx)
   implementation(libs.androidx.room.runtime)
+  implementation(libs.osmdroid.android)
   implementation(libs.coil.compose)
   implementation(libs.converter.moshi)
   // implementation(libs.firebase.ai)

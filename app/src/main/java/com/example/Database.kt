@@ -387,6 +387,12 @@ interface GeologyDao {
 
     @Query("SELECT * FROM window_mappings ORDER BY id DESC")
     suspend fun getAllWindowMappingsSync(): List<WindowMapping>
+
+    @Query("SELECT * FROM stations ORDER BY id DESC")
+    fun getAllStations(): Flow<List<Station>>
+
+    @Query("SELECT * FROM observations ORDER BY id DESC")
+    fun getAllObservations(): Flow<List<Observation>>
 }
 
 

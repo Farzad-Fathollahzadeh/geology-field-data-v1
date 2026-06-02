@@ -5,20 +5,20 @@
 ![Kotlin Version](https://img.shields.io/badge/Kotlin-1.9.0-blue.svg)
 ![Jetpack Compose](https://img.shields.io/badge/Compose-M3-green.svg)
 ![Database](https://img.shields.io/badge/Database-Room_SQLite-orange.svg)
-![Version](https://img.shields.io/badge/App_Version-1.2.1-red.svg)
+![Version](https://img.shields.io/badge/App_Version-2.1.1-red.svg)
 
 ---
 
 ### Project Overview
-**GeoField Pro** is a robust, offline-first digital companion and field logging terminal built with modern Jetpack Compose for Android. It is engineered specifically for rugged exploration environments, high-glare sunlight situations, and continuous hardware power-saving operations during remote surveys. In version **1.2.1**, the platform has transitioned to a fully localized English workspace with advanced battery optimizations for micro-precision GNSS triangulation.
+**GeoField Pro** is a robust, offline-first digital companion and field logging terminal built with modern Jetpack Compose for Android. It is engineered specifically for rugged exploration environments, high-glare sunlight situations, and continuous hardware power-saving operations during remote surveys. In version **2.1.1**, the platform has transitioned to a fully localized English workspace with advanced battery optimizations for micro-precision GNSS triangulation.
 
 📢 **Official Telegram Channel:** [t.me/geofieldpro](https://t.me/geofieldpro)
 
 ---
 
-## ⚡ Key Updates & Advancements in Version 1.2.1 (Latest Updates)
+## ⚡ Key Updates & Advancements in Version 2.1.1 (Latest Updates)
 
-The **v1.2.1 Release** introduces substantial battery footprint savings, UI decluttering, and unified English localization to meet international geological survey standards:
+The **v2.1.1 Release** introduces substantial battery footprint savings, UI decluttering, and unified English localization to meet international geological survey standards:
 
 ### 1. Battery-Resilient GNSS Triangulation Strategy
 - **Enhanced Accuracy Preserved**: Overhauled the core geolocation pipeline. Even under battery-saver profile configurations, the app initiates high-accuracy carrier-phase triangulation to fetch spot readings under 2.5 meters.

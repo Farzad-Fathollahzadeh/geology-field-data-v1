@@ -106,7 +106,8 @@ object PhotoProcessor {
         azimuth: Int,
         timestamp: Long,
         settings: OverlaySettings,
-        isCustomPhoto: Boolean = false
+        isCustomPhoto: Boolean = false,
+        isCapturedInApp: Boolean = false
     ): String? {
         try {
             // Create mutable bitmap
@@ -182,13 +183,23 @@ object PhotoProcessor {
                 )
 
                 // Line 4: Azimuth Sight (DATA_WARNING style #FFB020)
-                textPaint.color = Color.parseColor("#FFB020")
-                canvas.drawText(
-                    "SIGHT_AZIMUTH: ${azimuth}° ${getCompassDirection(azimuth)} (TRUE SURVEY)",
-                    x + stripWidth + 18f,
-                    y + lineGap * 4.0f,
-                    textPaint
-                )
+                if (isCapturedInApp) {
+                    textPaint.color = Color.parseColor("#FFB020")
+                    canvas.drawText(
+                        "SIGHT_AZIMUTH: ${azimuth}° ${getCompassDirection(azimuth)} (TRUE SURVEY)",
+                        x + stripWidth + 18f,
+                        y + lineGap * 4.0f,
+                        textPaint
+                    )
+                } else {
+                    textPaint.color = Color.parseColor("#888888")
+                    canvas.drawText(
+                        "SIGHT_AZIMUTH: N/A (GALLERY IMPORT)",
+                        x + stripWidth + 18f,
+                        y + lineGap * 4.0f,
+                        textPaint
+                    )
+                }
 
                 // Line 5: Elevation and UTC Time
                 textPaint.color = Color.parseColor("#D8D2C6")
