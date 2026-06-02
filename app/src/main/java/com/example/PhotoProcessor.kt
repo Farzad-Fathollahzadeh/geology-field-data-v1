@@ -267,4 +267,237 @@ object PhotoProcessor {
 
         return bitmap
     }
+
+    // Generate a beautiful Rose polar diagram on Native Android Bitmap
+    fun drawRoseDiagramBitmap(strikes: List<Float>): Bitmap {
+        val size = 600
+        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        
+        // Dark slate/luxurious background
+        canvas.drawColor(Color.parseColor("#12141C"))
+        
+        val center = size / 2.0f
+        val radius = size / 2.0f - 40f
+        
+        // Setup paints
+        val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#343A4A")
+            style = Paint.Style.STROKE
+            strokeWidth = 2f
+        }
+        
+        val wedgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#500A84FF") // semi-transparent premium blue
+            style = Paint.Style.FILL
+        }
+        
+        val wedgeOutline = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#0A84FF") // neon blue border
+            style = Paint.Style.STROKE
+            strokeWidth = 3f
+        }
+        
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#A0A5B5")
+            textSize = 14f
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+        }
+        
+        // 1. Compute 10-degree bins frequency (18 bins in [0, 180))
+        val bins = IntArray(18)
+        for (strike in strikes) {
+            val normalized = (strike % 180 + 180) % 180
+            val binIndex = (normalized / 10).toInt().coerceIn(0, 17)
+            bins[binIndex]++
+        }
+        
+        val maxCount = (bins.maxOrNull() ?: 1).coerceAtLeast(1)
+        
+        // 2. Draw Concentric Grid Rings
+        val numRings = 4
+        for (i in 1..numRings) {
+            val r = radius * (i.toFloat() / numRings)
+            canvas.drawCircle(center, center, r, gridPaint)
+            
+            // Draw ring labels
+            val lblValue = (maxCount * (i.toFloat() / numRings)).toInt()
+            if (lblValue > 0) {
+                canvas.drawText("$lblValue", center + r + 4f, center + 5f, textPaint)
+            }
+        }
+        
+        // 3. Draw Axis Lines every 30 degrees
+        for (deg in 0 until 180 step 30) {
+            val rad = Math.toRadians(deg.toDouble() - 90.0)
+            val dx = radius * Math.cos(rad).toFloat()
+            val dy = radius * Math.sin(rad).toFloat()
+            canvas.drawLine(center - dx, center - dy, center + dx, center + dy, gridPaint)
+            
+            // Label angle (draw bidirectional labels)
+            val labelRad = Math.toRadians(deg.toDouble() - 90.0)
+            val lx = (radius + 20f) * Math.cos(labelRad).toFloat()
+            val ly = (radius + 20f) * Math.sin(labelRad).toFloat()
+            
+            canvas.drawText("$deg°", center + lx - 10f, center + ly + 5f, textPaint)
+            val degOpp = deg + 180
+            canvas.drawText("$degOpp°", center - lx - 15f, center - ly + 5f, textPaint)
+        }
+        
+        // 4. Draw Wedges
+        for (i in 0 until 18) {
+            val count = bins[i]
+            if (count > 0) {
+                val rWedge = radius * (count.toFloat() / maxCount)
+                val startAngle = i * 10f - 90f // compass offset, North is Up
+                val sweepAngle = 10f
+                
+                val rectF = android.graphics.RectF(center - rWedge, center - rWedge, center + rWedge, center + rWedge)
+                // Draw sector 1
+                canvas.drawArc(rectF, startAngle, sweepAngle, true, wedgePaint)
+                canvas.drawArc(rectF, startAngle, sweepAngle, true, wedgeOutline)
+                
+                // Draw sector 2 (Symmetric)
+                canvas.drawArc(rectF, startAngle + 180f, sweepAngle, true, wedgePaint)
+                canvas.drawArc(rectF, startAngle + 180f, sweepAngle, true, wedgeOutline)
+            }
+        }
+        
+        val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textSize = 18f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        canvas.drawText("STRUCTURAL ROSE DIAGRAM", center - 130f, center - radius - 15f, titlePaint)
+        
+        return bmp
+    }
+
+    // Generate PDF report including Rose Diagram
+    fun exportRoseDiagramPdf(
+        context: Context,
+        projectName: String,
+        strikes: List<Float>
+    ): String? {
+        val bitmap = drawRoseDiagramBitmap(strikes)
+        val fileDir = context.cacheDir
+        val pdfFile = File(fileDir, "Rose_Diagram_Report_${System.currentTimeMillis()}.pdf")
+        
+        val pdfDocument = android.graphics.pdf.PdfDocument()
+        val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, 1).create()
+        val page = pdfDocument.startPage(pageInfo)
+        val canvas = page.canvas
+        
+        // Draw background
+        val bgPaint = Paint().apply { color = Color.parseColor("#F9FAFC") }
+        canvas.drawRect(0f, 0f, 595f, 842f, bgPaint)
+        
+        // Draw header border & banner
+        val headerCapPaint = Paint().apply { color = Color.parseColor("#1E5EFF") }
+        canvas.drawRect(20f, 20f, 575f, 35f, headerCapPaint)
+        
+        val headerBgPaint = Paint().apply { color = Color.parseColor("#111625") }
+        canvas.drawRect(20f, 35f, 575f, 130f, headerBgPaint)
+        
+        // Header Text
+        val headerTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            textSize = 18f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        canvas.drawText("GEOLOGICAL DISCONTINUITY SURVEY REPORT", 35f, 75f, headerTextPaint)
+        
+        headerTextPaint.apply {
+            color = Color.parseColor("#A0A5B5")
+            textSize = 10f
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+        }
+        canvas.drawText("PROJECT: $projectName", 35f, 100f, headerTextPaint)
+        canvas.drawText("DATE: " + SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()), 35f, 115f, headerTextPaint)
+        
+        // Draw bitmap (scaled down to 360 x 360)
+        val destRect = Rect(117, 160, 477, 520)
+        canvas.drawBitmap(bitmap, null, destRect, null)
+        
+        // Flat frame around diagram
+        val framePaint = Paint().apply {
+            color = Color.parseColor("#CBD5E1")
+            style = Paint.Style.STROKE
+            strokeWidth = 2f
+        }
+        canvas.drawRect(115f, 158f, 479f, 522f, framePaint)
+        
+        // Technical Summary Section
+        val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#0F172A")
+            textSize = 13f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        }
+        
+        val descPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#475569")
+            textSize = 11f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        }
+        
+        val bulletPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#1E5EFF")
+            style = Paint.Style.FILL
+        }
+        
+        canvas.drawLine(20f, 550f, 575f, 550f, framePaint) // horizontal divider
+        
+        canvas.drawText("STATISTICAL GEOTECHNICAL ANALYSIS", 35f, 575f, labelPaint)
+        
+        canvas.drawCircle(40f, 600f, 4f, bulletPaint)
+        canvas.drawText("Total Joints/Faults mapped: " + strikes.size, 50f, 603f, descPaint)
+        
+        canvas.drawCircle(40f, 620f, 4f, bulletPaint)
+        val bins = IntArray(18)
+        for (s in strikes) {
+            val norm = (s % 180 + 180) % 180
+            val idx = (norm / 10).toInt().coerceIn(0, 17)
+            bins[idx]++
+        }
+        val peakBinIdx = bins.indices.maxByOrNull { bins[it] } ?: 0
+        val peakAngleRange = "${peakBinIdx * 10}° - ${(peakBinIdx + 1) * 10}°"
+        canvas.drawText("Primary Discontinuity Set Strike Trend (Peak): $peakAngleRange (N${(peakBinIdx * 10)}E)", 50f, 623f, descPaint)
+        
+        canvas.drawCircle(40f, 640f, 4f, bulletPaint)
+        canvas.drawText("Interpretation: Dominant shear structural trends with high mechanical persistence.", 50f, 643f, descPaint)
+        
+        // Plotted values
+        canvas.drawText("MANUAL STRIKE OBSERVATIONS LISTED:", 35f, 680f, labelPaint)
+        val strikesStr = strikes.map { "${it.toInt()}°" }.chunked(8).map { it.joinToString(", ") }
+        var rawY = 705f
+        for (line in strikesStr.take(3)) {
+            canvas.drawText(line, 35f, rawY, descPaint)
+            rawY += 15f
+        }
+        
+        // Footer banner
+        val footerBgPaint = Paint().apply { color = Color.parseColor("#E2E8F0") }
+        canvas.drawRect(20f, 790f, 575f, 815f, footerBgPaint)
+        
+        val footerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#64748B")
+            textSize = 9f
+            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+        }
+        canvas.drawText("REPORT COMPUTED VIA GEOFIELD PROFESSIONAL MILITARY-GRADE LOGGER SUITE v1.1", 30f, 806f, footerPaint)
+        
+        pdfDocument.finishPage(page)
+        
+        try {
+            FileOutputStream(pdfFile).use { out ->
+                pdfDocument.writeTo(out)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        } finally {
+            pdfDocument.close()
+        }
+        
+        return pdfFile.absolutePath
+    }
 }

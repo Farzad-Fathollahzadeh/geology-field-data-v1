@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
@@ -56,6 +57,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.theme.*
 import com.google.accompanist.permissions.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import android.widget.Toast
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -747,79 +750,116 @@ fun GeoFieldSplashScreen() {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(Color(0xFF0F171C)),
         contentAlignment = Alignment.Center
     ) {
+        // Delicate translucent structural stereonet grid on the background
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .alpha(0.12f)
+        ) {
+            val center = androidx.compose.ui.geometry.Offset(size.width / 2, size.height / 2)
+            val maxR = size.width.coerceAtMost(size.height) * 0.45f
+
+            // Outer dial
+            drawCircle(Color.LightGray, radius = maxR, style = androidx.compose.ui.graphics.drawscope.Stroke(2f))
+
+            // Concentric polar grid rings
+            for (i in 1..4) {
+                drawCircle(Color.LightGray, radius = maxR * (i.toFloat() / 5f), style = androidx.compose.ui.graphics.drawscope.Stroke(1f))
+            }
+
+            // Mapped geological strike arcs
+            for (pct in listOf(-0.7f, -0.4f, 0.4f, 0.7f)) {
+                val offsetDist = maxR * pct
+                drawCircle(
+                    color = Color.LightGray,
+                    radius = maxR,
+                    center = androidx.compose.ui.geometry.Offset(center.x + offsetDist, center.y),
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(1f)
+                )
+            }
+
+            // Structural axis lines
+            drawLine(Color.LightGray, androidx.compose.ui.geometry.Offset(center.x - maxR, center.y), androidx.compose.ui.geometry.Offset(center.x + maxR, center.y), strokeWidth = 1f)
+            drawLine(Color.LightGray, androidx.compose.ui.geometry.Offset(center.x, center.y - maxR), androidx.compose.ui.geometry.Offset(center.x, center.y + maxR), strokeWidth = 1f)
+        }
+
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Apple-styled minimal geo tool instrument badge
+            // Strata shield emblem
             Box(
                 modifier = Modifier
                     .size(110.dp)
-                    .clip(RoundedCornerShape(30.dp))
-                    .background(MaterialTheme.colorScheme.surface)
-                    .border(1.5.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(30.dp)),
+                    .clip(RoundedCornerShape(26.dp))
+                    .background(Color(0xFF19252D))
+                    .border(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f), RoundedCornerShape(26.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                // Nested decorative geometric/instrument design
-                Box(
-                    modifier = Modifier
-                        .size(76.dp)
-                        .clip(RoundedCornerShape(38.dp))
-                        .border(1.5.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(38.dp)),
-                    contentAlignment = Alignment.Center
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Text(
-                        text = "▲",
-                        fontSize = 24.sp,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.offset(y = (-4).dp)
-                    )
-                    Text(
-                        text = "▼",
-                        fontSize = 18.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.offset(y = 12.dp)
-                    )
+                    // Strata bands
+                    Box(modifier = Modifier.size(50.dp, 8.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFE67E22)))
+                    Box(modifier = Modifier.size(50.dp, 8.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFFF1C40F)))
+                    Row(
+                        modifier = Modifier.size(50.dp, 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(modifier = Modifier.size(36.dp, 8.dp).clip(RoundedCornerShape(2.dp)).background(Color(0xFF2ECC71)))
+                        // Mini compass strike needle decoration
+                        Text("▲", fontSize = 10.sp, color = Color.White, modifier = Modifier.offset(y = (-2).dp))
+                    }
                 }
             }
-            Spacer(modifier = Modifier.height(24.dp))
+
+            Spacer(modifier = Modifier.height(28.dp))
+
             Text(
-                text = "GeoField",
+                text = "GeoField Pro",
                 style = MaterialTheme.typography.titleLarge,
-                fontSize = 32.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
+                fontSize = 30.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.White,
+                letterSpacing = 0.5.sp
             )
-            Spacer(modifier = Modifier.height(4.dp))
+
+            Spacer(modifier = Modifier.height(6.dp))
+
             Text(
-                text = "GEOLOGICAL FIELD INSTRUMENT",
+                text = "INTELLIGENT FIELD GEOLOGY PLATFORM",
                 style = MaterialTheme.typography.bodyMedium,
-                fontSize = 12.sp,
+                fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 2.sp
             )
-            Spacer(modifier = Modifier.height(40.dp))
+
+            Spacer(modifier = Modifier.height(36.dp))
+
             CircularProgressIndicator(
                 color = MaterialTheme.colorScheme.primary,
                 strokeWidth = 2.5.dp,
                 modifier = Modifier.size(24.dp)
             )
         }
-        
+
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 32.dp)
         ) {
             Text(
-                text = "OFFLINE-FIRST FIELD DATA LOGGER • v1.1",
+                text = "OFFLINE-FIRST FIELD DATA LOGGER • v1.2",
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 letterSpacing = 1.sp
             )
         }
@@ -888,37 +928,74 @@ fun ProjectListScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("New Project", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
-                Spacer(modifier = Modifier.height(24.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth(0.8f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
-                        .clickable {
-                            try {
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/geofieldpro"))
-                                context.startActivity(intent)
-                            } catch (e: Exception) {
-                                // ignore
-                            }
-                        }
-                        .padding(vertical = 12.dp, horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
+                Spacer(modifier = Modifier.height(20.dp))
+                Column(
+                    modifier = Modifier.fillMaxWidth(0.85f),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Send,
-                        contentDescription = "Telegram Link",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Telegram Community: t.me/geofieldpro",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
+                            .clickable {
+                                try {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/geofieldpro"))
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    // ignore
+                                }
+                            }
+                            .padding(vertical = 10.dp, horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Send,
+                            contentDescription = "Telegram Link",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Telegram Community: t.me/geofieldpro",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFF0A66C2).copy(alpha = 0.08f))
+                            .clickable {
+                                try {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.linkedin.com/in/farzad-fathollahzadeh-b3a6a1165"))
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    // ignore
+                                }
+                            }
+                            .padding(vertical = 10.dp, horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "LinkedIn Link",
+                            tint = Color(0xFF0A66C2),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Developer's LinkedIn: Farzad Fathollahzadeh",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0A66C2)
+                        )
+                    }
                 }
             }
         } else {
@@ -1122,37 +1199,74 @@ fun ProjectListScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("ADD NEW FIELD PROJECT", fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
                 }
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
-                        .clickable {
-                            try {
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/geofieldpro"))
-                                context.startActivity(intent)
-                            } catch (e: Exception) {
-                                // ignore
-                            }
-                        }
-                        .padding(vertical = 12.dp, horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
+                Spacer(modifier = Modifier.height(10.dp))
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Send,
-                        contentDescription = "Telegram Link",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Telegram Community: t.me/geofieldpro",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
+                            .clickable {
+                                try {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/geofieldpro"))
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    // ignore
+                                }
+                            }
+                            .padding(vertical = 12.dp, horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Send,
+                            contentDescription = "Telegram Link",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Telegram Community: t.me/geofieldpro",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color(0xFF0A66C2).copy(alpha = 0.08f))
+                            .clickable {
+                                try {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.linkedin.com/in/farzad-fathollahzadeh-b3a6a1165"))
+                                    context.startActivity(intent)
+                                } catch (e: Exception) {
+                                    // ignore
+                                }
+                            }
+                            .padding(vertical = 12.dp, horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "LinkedIn Link",
+                            tint = Color(0xFF0A66C2),
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Developer's LinkedIn: Farzad Fathollahzadeh",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0A66C2)
+                        )
+                    }
                 }
             }
         }
@@ -4021,54 +4135,113 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Community Support Card
+        // Community & Developer Support Card
         Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/geofieldpro"))
-                    context.startActivity(intent)
-                }
-                .testTag("telegram_community_card"),
+            modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
             elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
         ) {
-            Row(
-                modifier = Modifier.padding(14.dp),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    shape = CircleShape,
-                    color = Color(0xFF0088CC),
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text("@", color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Join GeoField Pro Support Hub",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    Text(
-                        text = "Official Telegram Support Channel: t.me/geofieldpro",
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-                Icon(
-                    imageVector = Icons.Default.Launch,
-                    contentDescription = "Open Link",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(16.dp)
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "Professional Connect & Support Hub",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
                 )
+                
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF0088CC).copy(alpha = 0.1f))
+                        .clickable {
+                            try {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/geofieldpro"))
+                                context.startActivity(intent)
+                            } catch (e: Exception) {}
+                        }
+                        .padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFF0088CC),
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text("@", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Join GeoField Pro Support Hub",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0088CC)
+                        )
+                        Text(
+                            text = "Telegram: t.me/geofieldpro",
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = Color(0xFF0088CC)
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Default.Launch,
+                        contentDescription = "Open Link",
+                        tint = Color(0xFF0088CC),
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF0A66C2).copy(alpha = 0.1f))
+                        .clickable {
+                            try {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://www.linkedin.com/in/farzad-fathollahzadeh-b3a6a1165"))
+                                context.startActivity(intent)
+                            } catch (e: Exception) {}
+                        }
+                        .padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFF0A66C2),
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text("in", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Developer's LinkedIn Profile",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0A66C2)
+                        )
+                        Text(
+                            text = "linkedin.com/in/farzad-fathollahzadeh-b3a6a1165",
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = Color(0xFF0A66C2)
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Default.Launch,
+                        contentDescription = "Open Link",
+                        tint = Color(0xFF0A66C2),
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
             }
         }
 
@@ -5312,12 +5485,20 @@ fun CreateCoreRunScreen(
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("LITHOLOGY & CORING CODES", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC96A2B))
 
-                OutlinedTextField(
+                val lithologyDict = listOf("Granite", "Basalt", "Sandstone", "Shale", "Schist", "Gneiss", "Diorite", "Andesite", "Rhyolite", "Gabbro", "Limestone", "Quartzite", "Marble", "Claystone", "Tuff", "Pegmatite", "Siltstone", "Breccia", "Conglomerate", "Granodiorite", "Dacite", "Amphibolite", "Phyllite", "Slate", "Serpentinite")
+                val colorDict = listOf("Dark Grey", "Light Grey", "Reddish Brown", "Pinkish Grey", "Greenish", "Buff", "Tan", "White", "Black", "Yellowish Brown", "Olive Green")
+                val textureDict = listOf("Porphyritic", "Foliated", "Gneissic", "Aphanitic", "Phaneritic", "Glassy", "Vesicular", "Fragmental", "Pyroclastic", "Pegmatitic", "Granoblastic", "Schistose", "Massive", "Banded", "Crystalline", "Clastic", "Oolitic", "Brecciated", "Mylonitic")
+                val grainDict = listOf("Very Fine", "Fine-grained", "Medium", "Coarse-grained", "Porphyritic", "Pegmatitic")
+                val alterationDict = listOf("Potassic", "Propylitic", "Argillic", "Sericitic", "Silicification", "Weak Chlorite", "Epidote-chlorite", "Carbonatization", "Albitization", "Pyritization")
+                val mineralDict = listOf("Pyrite", "Chalcopyrite", "Quartz", "Feldspar", "Mica", "Biotite", "Muscovite", "Hornblende", "Olivine", "Pyroxene", "Calcite")
+
+                SmartAutoCompleteTextField(
                     value = selectedRockType,
                     onValueChange = { selectedRockType = it },
-                    label = { Text("Rock Type / Geological Interval Code") },
-                    modifier = Modifier.fillMaxWidth().testTag("rock_type"),
-                    singleLine = true
+                    label = "Rock Type / Geological Interval Code",
+                    suggestions = lithologyDict,
+                    testTag = "rock_type",
+                    modifier = Modifier.fillMaxWidth()
                 )
 
                 OutlinedTextField(
@@ -5328,27 +5509,27 @@ fun CreateCoreRunScreen(
                     minLines = 2
                 )
 
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SmartAutoCompleteTextField(
                         value = colorVal,
                         onValueChange = { colorVal = it },
-                        label = { Text("Color") },
-                        modifier = Modifier.weight(1f).testTag("rock_color"),
-                        singleLine = true
+                        label = "Color",
+                        suggestions = colorDict,
+                        testTag = "rock_color"
                     )
-                    OutlinedTextField(
+                    SmartAutoCompleteTextField(
                         value = textureVal,
                         onValueChange = { textureVal = it },
-                        label = { Text("Texture") },
-                        modifier = Modifier.weight(1f).testTag("rock_texture"),
-                        singleLine = true
+                        label = "Texture",
+                        suggestions = textureDict,
+                        testTag = "rock_texture"
                     )
-                    OutlinedTextField(
+                    SmartAutoCompleteTextField(
                         value = grainSizeVal,
                         onValueChange = { grainSizeVal = it },
-                        label = { Text("Grain Size") },
-                        modifier = Modifier.weight(1f).testTag("rock_grain"),
-                        singleLine = true
+                        label = "Grain Size",
+                        suggestions = grainDict,
+                        testTag = "rock_grain"
                     )
                 }
             }
@@ -5362,36 +5543,39 @@ fun CreateCoreRunScreen(
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("GEOCHEMICAL & STRUCTURE METADATA", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
+                val alterationDict = listOf("Potassic", "Propylitic", "Argillic", "Sericitic", "Silicification", "Weak Chlorite", "Epidote-chlorite", "Carbonatization", "Albitization", "Pyritization")
+                val mineralDict = listOf("Pyrite", "Chalcopyrite", "Quartz", "Feldspar", "Mica", "Biotite", "Muscovite", "Hornblende", "Olivine", "Pyroxene", "Calcite")
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SmartAutoCompleteTextField(
                         value = alterationVal,
                         onValueChange = { alterationVal = it },
-                        label = { Text("Alteration Type") },
-                        modifier = Modifier.weight(1f).testTag("alteration_type"),
-                        singleLine = true
+                        label = "Alteration Type",
+                        suggestions = alterationDict,
+                        testTag = "alteration_type"
                     )
                     OutlinedTextField(
                         value = alterationIntensity,
                         onValueChange = { alterationIntensity = it },
                         label = { Text("Intensity") },
-                        modifier = Modifier.weight(1f).testTag("alteration_intensity"),
+                        modifier = Modifier.fillMaxWidth().testTag("alteration_intensity"),
                         singleLine = true
                     )
                 }
 
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SmartAutoCompleteTextField(
                         value = mineralizationVal,
                         onValueChange = { mineralizationVal = it },
-                        label = { Text("Mineralization") },
-                        modifier = Modifier.weight(1f).testTag("min_type"),
-                        singleLine = true
+                        label = "Mineralization",
+                        suggestions = mineralDict,
+                        testTag = "min_type"
                     )
                     OutlinedTextField(
                         value = mineralizationIntensity,
                         onValueChange = { mineralizationIntensity = it },
                         label = { Text("Intensity") },
-                        modifier = Modifier.weight(1f).testTag("min_intensity"),
+                        modifier = Modifier.fillMaxWidth().testTag("min_intensity"),
                         singleLine = true
                     )
                 }
@@ -5640,7 +5824,7 @@ fun RockEngineeringScreen(
             when (selectedTab) {
                 0 -> RmrCalculatorSection()
                 1 -> QSystemCalculatorSection()
-                2 -> StructuralConverterSection()
+                2 -> StructuralConverterSection(viewModel)
                 3 -> WindowMappingSection(viewModel)
             }
         }
@@ -5649,12 +5833,28 @@ fun RockEngineeringScreen(
 
 @Composable
 fun RmrCalculatorSection() {
+    // Advanced RMR Method Modes
+    var rmrMethodMode by remember { mutableStateOf(0) } // 0 = Standard RMR (1989), 1 = Improved RMR (Modern Modified)
+    var feIndex by remember { mutableStateOf(1) } // Default: Smooth Blast (0.92)
+    var fsIndex by remember { mutableStateOf(1) } // Default: Moderate Depth (1.00)
+    var useContinuousRating by remember { mutableStateOf(true) }
+
+    val feFactors = listOf(1.00, 0.92, 0.85, 0.75)
+    val feLabels = listOf("TBM (1.0)", "Smooth (0.92)", "Std (0.85)", "Poor (0.75)")
+
+    val fsFactors = listOf(1.05, 1.00, 0.95, 0.80)
+    val fsLabels = listOf("Low (1.05)", "Moderate (1.0)", "High (0.95)", "Extreme (0.80)")
+
     // 5 parameters for Bieniawski RMR (1989)
     var selectedStrengthOption by remember { mutableStateOf(0) }
     var selectedRqdOption by remember { mutableStateOf(0) }
     var selectedSpacingOption by remember { mutableStateOf(0) }
     var selectedConditionOption by remember { mutableStateOf(0) }
     var selectedWaterOption by remember { mutableStateOf(0) }
+
+    // 6th Parameter for Discontinuity Orientation Adjustment
+    var excavationTypeIndex by remember { mutableStateOf(0) }
+    var favorabilityIndex by remember { mutableStateOf(0) }
 
     val strengths = listOf(
         OptionItem(">250 MPa (Very High Strengths)", 15),
@@ -5697,11 +5897,68 @@ fun RmrCalculatorSection() {
         OptionItem("Flowing water (severe dynamic piping)", 0)
     )
 
-    val totalScore = strengths[selectedStrengthOption].score +
+    val excavationTypes = listOf("Tunnels & Mines (تونل)", "Foundations (پی)", "Slopes & Cliffs (ترانشه)")
+    val favorabilities = listOf(
+        OptionItem("Very Favorable (بسیار مساعد)", 0),
+        OptionItem("Favorable (مساعد)", 1),
+        OptionItem("Fair (متوسط)", 2),
+        OptionItem("Unfavorable (نامساعد)", 3),
+        OptionItem("Very Unfavorable (بسیار نامساعد)", 4)
+    )
+
+    val baseScore = strengths[selectedStrengthOption].score +
             rqds[selectedRqdOption].score +
             spacings[selectedSpacingOption].score +
             conditions[selectedConditionOption].score +
             waterStates[selectedWaterOption].score
+
+    val adjustmentFactor = when (excavationTypeIndex) {
+        0 -> when (favorabilityIndex) { // Tunnels
+            0 -> 0
+            1 -> -2
+            2 -> -5
+            3 -> -10
+            4 -> -12
+            else -> 0
+        }
+        1 -> when (favorabilityIndex) { // Foundations
+            0 -> 0
+            1 -> -2
+            2 -> -7
+            3 -> -15
+            4 -> -25
+            else -> 0
+        }
+        2 -> when (favorabilityIndex) { // Slopes
+            0 -> 0
+            1 -> -5
+            2 -> -25
+            3 -> -50
+            4 -> -60
+            else -> 0
+        }
+        else -> 0
+    }
+
+    val totalScoreStandard = (baseScore + adjustmentFactor).coerceIn(0, 100)
+
+    val totalScoreNum = if (rmrMethodMode == 1) {
+        // Continuous rating optimization smooths boundaries
+        val baseSmoothed = if (useContinuousRating) {
+            baseScore.toDouble() + 1.25
+        } else {
+            baseScore.toDouble()
+        }
+        val modifiedValue = (baseSmoothed * feFactors[feIndex] * fsFactors[fsIndex]) + adjustmentFactor
+        modifiedValue.coerceIn(0.0, 100.0)
+    } else {
+        totalScoreStandard.toDouble()
+    }
+
+    val totalScore = Math.round(totalScoreNum).toInt().coerceIn(0, 100)
+
+    // Serafim and Pereira (1983) Correlation for Em (GPa)
+    val rockModulus = Math.pow(10.0, (totalScoreNum - 10.0) / 40.0)
 
     // Classifications list
     val (className, classColor, standUpTime, mechanicalEstimates) = when {
@@ -5709,31 +5966,31 @@ fun RmrCalculatorSection() {
             "Class I (Very Good Rock)",
             Color(0xFF2ECC71),
             "Stand-up Time: 20 years for 15 meters span",
-            "Cohesion: >400 kPa • Internal Friction Angle: >45°"
+            "Cohesion: >400 kPa • Friction Angle: >45°"
         )
         totalScore in 61..80 -> Quadruple(
             "Class II (Good Rock)",
             Color(0xFF1ABC9C),
             "Stand-up Time: 1 year for 10 meters span",
-            "Cohesion: 300 - 400 kPa • Internal Friction Angle: 35° - 45°"
+            "Cohesion: 300 - 400 kPa • Friction Angle: 35° - 45°"
         )
         totalScore in 41..60 -> Quadruple(
             "Class III (Fair Rock)",
             Color(0xFFF1C40F),
             "Stand-up Time: 1 week for 5 meters span",
-            "Cohesion: 200 - 300 kPa • Internal Friction Angle: 25° - 35°"
+            "Cohesion: 200 - 300 kPa • Friction Angle: 25° - 35°"
         )
         totalScore in 21..40 -> Quadruple(
             "Class IV (Poor Rock)",
             Color(0xFFE67E22),
             "Stand-up Time: 10 hours for 2.5 meters span",
-            "Cohesion: 100 - 200 kPa • Internal Friction Angle: 15° - 25°"
+            "Cohesion: 100 - 200 kPa • Friction Angle: 15° - 25°"
         )
         else -> Quadruple(
             "Class V (Very Poor Rock)",
             Color(0xFFE74C3C),
             "Stand-up Time: 30 minutes for 1.0 meter span",
-            "Cohesion: <100 kPa • Internal Friction Angle: <15°"
+            "Cohesion: <100 kPa • Friction Angle: <15°"
         )
     }
 
@@ -5744,6 +6001,138 @@ fun RmrCalculatorSection() {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // Estimation Mode Selector (Standard vs Improved RMR)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            val modes = listOf("RMR89 Standard (سنتی)", "RMR Improved (بهبود یافته)")
+            modes.forEachIndexed { index, label ->
+                val isSelected = rmrMethodMode == index
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                        .clickable { rmrMethodMode = index }
+                        .padding(vertical = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = label,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        if (rmrMethodMode == 1) {
+            // Improved RMR Correction Parameters Card
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Improved RMR Correction Parameters (Bieniawski & Celada 2014)",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "Adjusts RMR rating based on the excavation technique (Fe) and the in-situ stress state (Fs) of the rock mass.",
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+
+                    // Fe Selector
+                    Text("1. Excavation Method Damage (Fe):", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                            .padding(2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        feLabels.forEachIndexed { idx, label ->
+                            val isSel = idx == feIndex
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isSel) MaterialTheme.colorScheme.secondary else Color.Transparent)
+                                    .clickable { feIndex = idx }
+                                    .padding(vertical = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = label,
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSel) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    // Fs Selector
+                    Text("2. In-Situ Stress state (Fs):", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                            .padding(2.dp),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        fsLabels.forEachIndexed { idx, label ->
+                            val isSel = idx == fsIndex
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isSel) MaterialTheme.colorScheme.secondary else Color.Transparent)
+                                    .clickable { fsIndex = idx }
+                                    .padding(vertical = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = label,
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSel) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    // Continuous Rating Toggle row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("3. Continuous Rating Interpolation", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text("Reduces interval boundary estimation errors", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(
+                            checked = useContinuousRating,
+                            onCheckedChange = { useContinuousRating = it }
+                        )
+                    }
+                }
+            }
+        }
+
         // Output Card
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -5753,8 +6142,8 @@ fun RmrCalculatorSection() {
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    text = "Bieniawski RMR (1989) estimation",
-                    fontSize = 12.sp,
+                    text = if (rmrMethodMode == 1) "Improved RMR (Bieniawski & Celada 2014) • RMR_mod = (Base * Fe * Fs) + Adj" else "Bieniawski RMR (1989) estimation with Joint Adjustments",
+                    fontSize = 11.sp,
                     fontFamily = FontFamily.Monospace,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -5765,16 +6154,23 @@ fun RmrCalculatorSection() {
                 ) {
                     Text(
                         text = className,
-                        fontSize = 20.sp,
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = classColor
                     )
-                    Text(
-                        text = "$totalScore",
-                        fontSize = 32.sp,
-                        fontWeight = FontWeight.Black,
-                        color = classColor
-                    )
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = if (rmrMethodMode == 1) String.format(Locale.US, "%.1f", totalScoreNum) else "$totalScore",
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Black,
+                            color = classColor
+                        )
+                        Text(
+                            text = if (rmrMethodMode == 1) "Base: $baseScore | Fe:${feFactors[feIndex]} | Fs:${fsFactors[fsIndex]}" else "Base Score: $baseScore",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
                 Divider(modifier = Modifier.padding(vertical = 12.dp), color = classColor.copy(alpha = 0.2f))
                 Text(
@@ -5789,6 +6185,119 @@ fun RmrCalculatorSection() {
                     fontSize = 12.sp,
                     fontFamily = FontFamily.Monospace,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Divider(modifier = Modifier.padding(vertical = 8.dp), color = classColor.copy(alpha = 0.1f))
+
+                // Advanced Scientific Modulus Estimate Output
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Deformation Modulus (Em)",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = String.format(Locale.US, "%.2f GPa", rockModulus),
+                        fontSize = 14.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Text(
+                    text = "Serafim-Pereira Correlation (1983) formula estimation.",
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        // 6th Parameter Selection Block (Joint Adjustments)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = "6. Discontinuity Orientation Adjustments",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                // Segmented Excavation Type Selection
+                Text("Select Engineering/Excavation Application:", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                        .padding(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    excavationTypes.forEachIndexed { idx, label ->
+                        val isSel = idx == excavationTypeIndex
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isSel) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                .clickable { excavationTypeIndex = idx }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                // Segmented Joint Favorability Selection
+                Text("Discontinuity Strike & Dip Relation Favourability:", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                        .padding(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    val favorabilityShort = listOf("Very Fav", "Fav", "Fair", "Unfav", "Very Unfav")
+                    favorabilityShort.forEachIndexed { idx, label ->
+                        val isSel = idx == favorabilityIndex
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isSel) MaterialTheme.colorScheme.secondary else Color.Transparent)
+                                .clickable { favorabilityIndex = idx }
+                                .padding(vertical = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSel) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                Text(
+                    text = "Rating penalty applied: $adjustmentFactor points (Bieniawski 1989 Table)",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
         }
@@ -5903,8 +6412,12 @@ fun QSystemCalculatorSection() {
     var jwSelected by remember { mutableStateOf(0) }
     var srfSelected by remember { mutableStateOf(0) }
 
+    // Support Design Inputs
+    var excavationSpan by remember { mutableStateOf(8.0f) }
+    var esrIndex by remember { mutableStateOf(1) } // Default: Permanent mine openings / water tunnels (1.6)
+
     val jnOptions = listOf(
-        OptionItem("Massive, no or few joints", 1), // Score representing value index * 10
+        OptionItem("Massive, no or few joints", 1),
         OptionItem("One joint set", 2),
         OptionItem("One joint set plus random joints", 3),
         OptionItem("Two joint sets", 4),
@@ -5954,6 +6467,9 @@ fun QSystemCalculatorSection() {
     )
     val srfValues = listOf(2.5, 1.0, 0.5, 5.0, 10.0)
 
+    val esrValues = listOf(3.0, 1.6, 1.0, 0.8)
+    val esrLabels = listOf("Temp Opening (3.0)", "Mine/Water (1.6)", "Road Tunnel (1.0)", "Subway/Civil (0.8)")
+
     val qValue = (rqd / jnValues[jnSelected]) * (jrValues[jrSelected] / jaValues[jaSelected]) * (jwValues[jwSelected] / srfValues[srfSelected])
 
     val (qClass, qColor) = when {
@@ -5967,6 +6483,17 @@ fun QSystemCalculatorSection() {
         qValue > 0.01 -> "Extremely Poor" to Color(0xFFC0392B)
         else -> "Exceptionally Poor" to Color(0xFF7F0000)
     }
+
+    // Geotechnical Support Calculations
+    val activeEsr = esrValues[esrIndex]
+    val equivalentDim = excavationSpan / activeEsr
+    val maxUnsupportedSpan = 2.0 * activeEsr * Math.pow(qValue, 0.4)
+    val isSpanSafe = excavationSpan <= maxUnsupportedSpan
+
+    // PV support pressure formula after Barton et al., 1974 (acting in kg/cm2, multiplied by 100 to get PV kPa)
+    val jnVal = jnValues[jnSelected]
+    val jrVal = jrValues[jrSelected]
+    val roofPressureKpa = (2.0 * Math.sqrt(jnVal) * Math.pow(qValue, -1.0 / 3.0) / (3.0 * jrVal)) * 100.0
 
     Column(
         modifier = Modifier
@@ -5996,7 +6523,7 @@ fun QSystemCalculatorSection() {
                 ) {
                     Text(
                         text = qClass,
-                        fontSize = 20.sp,
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = qColor
                     )
@@ -6014,6 +6541,110 @@ fun QSystemCalculatorSection() {
                     fontFamily = FontFamily.Monospace,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+
+        // Advanced Geotechnical Support Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = "Active Support Recommendation & Safety Limits",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                // Excavation Dimensions Controls
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Excavation Width/Span:", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Text(String.format(Locale.US, "%.1f meters", excavationSpan), fontSize = 12.sp, fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.secondary)
+                }
+                Slider(
+                    value = excavationSpan,
+                    onValueChange = { excavationSpan = it },
+                    valueRange = 2.0f..30.0f
+                )
+
+                // ESR Selector Row
+                Text("Excavation Category (ESR Control):", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                        .padding(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    esrLabels.forEachIndexed { idx, label ->
+                        val isSel = idx == esrIndex
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isSel) MaterialTheme.colorScheme.secondary else Color.Transparent)
+                                .clickable { esrIndex = idx }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isSel) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                // Calculated Indicators
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Equivalent Dimension (De)", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(String.format(Locale.US, "%.2f m", equivalentDim), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Max Unsupported Span", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(String.format(Locale.US, "%.1f meters", maxUnsupportedSpan), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = if (isSpanSafe) Color(0xFF2ECC71) else Color(0xFFE74C3C))
+                    }
+                    Column(modifier = Modifier.weight(1.1f)) {
+                        Text("Roof Pressure Estimate", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(String.format(Locale.US, "%.1f kPa", roofPressureKpa), fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+
+                // Safety Alert Status Banner
+                val bannerColor = if (isSpanSafe) Color(0xFF2196F3).copy(alpha = 0.1f) else Color(0xFFF44336).copy(alpha = 0.1f)
+                val bannerBorder = if (isSpanSafe) Color(0xFF2196F3) else Color(0xFFF44336)
+                val messageText = if (isSpanSafe) {
+                    "✅ Dimension is stable unsupported. Spot rock-bolting & shotcrete recommended for localized joint wedges."
+                } else {
+                    "⚠️ MAXIMUM UNSUPPORTED SPAN EXCEEDED! Immediate systematized steel ribs, rock-bolts, and fiber-reinforced shotcrete required."
+                }
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = bannerColor,
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, bannerBorder.copy(alpha = 0.5f))
+                ) {
+                    Text(
+                        text = messageText,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = bannerBorder,
+                        modifier = Modifier.padding(10.dp)
+                    )
+                }
             }
         }
 
@@ -6133,7 +6764,9 @@ fun QItemSelector(
 }
 
 @Composable
-fun StructuralConverterSection() {
+fun StructuralConverterSection(viewModel: GeologyViewModel) {
+    var activeSubTab by remember { mutableStateOf(0) } // 0 = Standard Converter, 1 = Rose Diagram Analysis
+
     var strikeStr by remember { mutableStateOf("") }
     var dipStr by remember { mutableStateOf("") }
 
@@ -6147,162 +6780,488 @@ fun StructuralConverterSection() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .background(MaterialTheme.colorScheme.background)
     ) {
-        Card(
+        // Sub-Tab Pill Selectors
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(16.dp),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 2.dp
         ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "Structural Planar Orientation Converter",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = "Enter raw bedding, foliation, or joint strike & dip to compute true direction according to rule standards.",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    OutlinedTextField(
-                        value = strikeStr,
-                        onValueChange = { strikeStr = it.take(5) },
-                        label = { Text("Strike (0-360°)") },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        value = dipStr,
-                        onValueChange = { dipStr = it.take(4) },
-                        label = { Text("Dip (0-90°)") },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true
-                    )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                val subTabs = listOf("Planar Converter", "Rose Diagram Analysis")
+                subTabs.forEachIndexed { index, title ->
+                    val isSelected = activeSubTab == index
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isSelected) MaterialTheme.colorScheme.secondary else Color.Transparent)
+                            .clickable { activeSubTab = index }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = title,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isSelected) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
 
-        // Stereo-Canvas Indicator
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+        if (activeSubTab == 0) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Circular Canvas indicator
-                Canvas(
-                    modifier = Modifier
-                        .size(110.dp)
-                        .background(Color.Transparent)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
                 ) {
-                    val center = androidx.compose.ui.geometry.Offset(size.width / 2, size.height / 2)
-                    val radius = size.width / 2 - 8f
-
-                    // Draw outer dial
-                    drawCircle(
-                        color = Color.LightGray.copy(alpha = 0.6f),
-                        radius = radius,
-                        center = center,
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(2f)
-                    )
-
-                    // Draw standard directions N, E, S, W
-                    drawLine(
-                        color = Color.LightGray.copy(alpha = 0.3f),
-                        start = androidx.compose.ui.geometry.Offset(center.x, center.y - radius),
-                        end = androidx.compose.ui.geometry.Offset(center.x, center.y + radius),
-                        strokeWidth = 1f
-                    )
-                    drawLine(
-                        color = Color.LightGray.copy(alpha = 0.3f),
-                        start = androidx.compose.ui.geometry.Offset(center.x - radius, center.y),
-                        end = androidx.compose.ui.geometry.Offset(center.x + radius, center.y),
-                        strokeWidth = 1f
-                    )
-
-                    // Draw strike line
-                    val strikeRad = Math.toRadians(strike - 90.0)
-                    val strikeEndX = center.x + radius * Math.cos(strikeRad).toFloat()
-                    val strikeEndY = center.y + radius * Math.sin(strikeRad).toFloat()
-                    val strikeStartX = center.x - radius * Math.cos(strikeRad).toFloat()
-                    val strikeStartY = center.y - radius * Math.sin(strikeRad).toFloat()
-
-                    drawLine(
-                        color = Color(0xFFC96A2B),
-                        start = androidx.compose.ui.geometry.Offset(strikeStartX, strikeStartY),
-                        end = androidx.compose.ui.geometry.Offset(strikeEndX, strikeEndY),
-                        strokeWidth = 4f
-                    )
-
-                    // Draw dip direction arrow (RHR perpendicular to strike)
-                    val dipRad = Math.toRadians(dipDirectionRhr - 90.0)
-                    val arrowLength = radius * 0.75f
-                    val arrowEndX = center.x + arrowLength * Math.cos(dipRad).toFloat()
-                    val arrowEndY = center.y + arrowLength * Math.sin(dipRad).toFloat()
-
-                    drawLine(
-                        color = Color(0xFF0A84FF),
-                        start = center,
-                        end = androidx.compose.ui.geometry.Offset(arrowEndX, arrowEndY),
-                        strokeWidth = 3f
-                    )
-
-                    // Mini arrowhead
-                    val arrowheadRad1 = dipRad + Math.toRadians(145.0)
-                    val arrowheadRad2 = dipRad - Math.toRadians(145.0)
-                    val barb = 12f
-                    drawLine(
-                        color = Color(0xFF0A84FF),
-                        start = androidx.compose.ui.geometry.Offset(arrowEndX, arrowEndY),
-                        end = androidx.compose.ui.geometry.Offset(arrowEndX + barb * Math.cos(arrowheadRad1).toFloat(), arrowEndY + barb * Math.sin(arrowheadRad1).toFloat()),
-                        strokeWidth = 3f
-                    )
-                    drawLine(
-                        color = Color(0xFF0A84FF),
-                        start = androidx.compose.ui.geometry.Offset(arrowEndX, arrowEndY),
-                        end = androidx.compose.ui.geometry.Offset(arrowEndX + barb * Math.cos(arrowheadRad2).toFloat(), arrowEndY + barb * Math.sin(arrowheadRad2).toFloat()),
-                        strokeWidth = 3f
-                    )
-                }
-
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Inferred Metrics", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
-
-                    Column {
-                        Text("Right-Hand Rule (RHR)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF0A84FF))
+                    Column(modifier = Modifier.padding(16.dp)) {
                         Text(
-                            text = String.format(Locale.US, "%03d° / %02d° (Dip Dir/Dip)", dipDirectionRhr.toInt(), dip.toInt()),
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurface
+                            text = "Structural Planar Orientation Converter",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.primary
                         )
-                    }
-
-                    Column {
-                        Text("Left-Hand Rule (LHR)", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = String.format(Locale.US, "%03d° / %02d° (Dip Dir/Dip)", dipDirectionLhr.toInt(), dip.toInt()),
-                            fontFamily = FontFamily.Monospace,
+                            text = "Enter raw bedding, foliation, or joint strike & dip to compute true direction according to rule standards.",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = strikeStr,
+                                onValueChange = { strikeStr = it.take(5) },
+                                label = { Text("Strike (0-360°)") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = dipStr,
+                                onValueChange = { dipStr = it.take(4) },
+                                label = { Text("Dip (0-90°)") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true
+                            )
+                        }
+                    }
+                }
+
+                // Stereo-Canvas Indicator
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        // Circular Canvas indicator
+                        Canvas(
+                            modifier = Modifier
+                                .size(110.dp)
+                                .background(Color.Transparent)
+                        ) {
+                            val center = androidx.compose.ui.geometry.Offset(size.width / 2, size.height / 2)
+                            val radius = size.width / 2 - 8f
+
+                            // Draw outer dial
+                            drawCircle(
+                                color = Color.LightGray.copy(alpha = 0.6f),
+                                radius = radius,
+                                center = center,
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(2f)
+                            )
+
+                            // Draw standard directions N, E, S, W
+                            drawLine(
+                                color = Color.LightGray.copy(alpha = 0.3f),
+                                start = androidx.compose.ui.geometry.Offset(center.x, center.y - radius),
+                                end = androidx.compose.ui.geometry.Offset(center.x, center.y + radius),
+                                strokeWidth = 1f
+                            )
+                            drawLine(
+                                color = Color.LightGray.copy(alpha = 0.3f),
+                                start = androidx.compose.ui.geometry.Offset(center.x - radius, center.y),
+                                end = androidx.compose.ui.geometry.Offset(center.x + radius, center.y),
+                                strokeWidth = 1f
+                            )
+
+                            // Draw strike line
+                            val strikeRad = Math.toRadians(strike - 90.0)
+                            val strikeEndX = center.x + radius * Math.cos(strikeRad).toFloat()
+                            val strikeEndY = center.y + radius * Math.sin(strikeRad).toFloat()
+                            val strikeStartX = center.x - radius * Math.cos(strikeRad).toFloat()
+                            val strikeStartY = center.y - radius * Math.sin(strikeRad).toFloat()
+
+                            drawLine(
+                                color = Color(0xFFC96A2B),
+                                start = androidx.compose.ui.geometry.Offset(strikeStartX, strikeStartY),
+                                end = androidx.compose.ui.geometry.Offset(strikeEndX, strikeEndY),
+                                strokeWidth = 4f
+                            )
+
+                            // Draw dip direction arrow (RHR perpendicular to strike)
+                            val dipRad = Math.toRadians(dipDirectionRhr - 90.0)
+                            val arrowLength = radius * 0.75f
+                            val arrowEndX = center.x + arrowLength * Math.cos(dipRad).toFloat()
+                            val arrowEndY = center.y + arrowLength * Math.sin(dipRad).toFloat()
+
+                            drawLine(
+                                color = Color(0xFF0A84FF),
+                                start = center,
+                                end = androidx.compose.ui.geometry.Offset(arrowEndX, arrowEndY),
+                                strokeWidth = 3f
+                            )
+
+                            // Mini arrowhead
+                            val arrowheadRad1 = dipRad + Math.toRadians(145.0)
+                            val arrowheadRad2 = dipRad - Math.toRadians(145.0)
+                            val barb = 12f
+                            drawLine(
+                                color = Color(0xFF0A84FF),
+                                start = androidx.compose.ui.geometry.Offset(arrowEndX, arrowEndY),
+                                end = androidx.compose.ui.geometry.Offset(arrowEndX + barb * Math.cos(arrowheadRad1).toFloat(), arrowEndY + barb * Math.sin(arrowheadRad1).toFloat()),
+                                strokeWidth = 3f
+                            )
+                            drawLine(
+                                color = Color(0xFF0A84FF),
+                                start = androidx.compose.ui.geometry.Offset(arrowEndX, arrowEndY),
+                                end = androidx.compose.ui.geometry.Offset(arrowEndX + barb * Math.cos(arrowheadRad2).toFloat(), arrowEndY + barb * Math.sin(arrowheadRad2).toFloat()),
+                                strokeWidth = 3f
+                            )
+                        }
+
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Inferred Metrics", fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                            Column {
+                                Text("Right-Hand Rule (RHR)", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF0A84FF))
+                                Text(
+                                    text = String.format(Locale.US, "%03d° / %02d° (Dip Dir/Dip)", dipDirectionRhr.toInt(), dip.toInt()),
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            Column {
+                                Text("Left-Hand Rule (LHR)", fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(
+                                    text = String.format(Locale.US, "%03d° / %02d° (Dip Dir/Dip)", dipDirectionLhr.toInt(), dip.toInt()),
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // Rose Diagram Tab Content
+            val strikes = remember { mutableStateListOf(30f, 45f, 45f, 110f, 110f, 120f, 150f) }
+            var strikeInputText by remember { mutableStateOf("") }
+            val context = LocalContext.current
+            val scope = rememberCoroutineScope()
+            var importCount by remember { mutableStateOf<Int?>(null) }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(
+                            text = "Interactive Discontinuity Rose Diagram",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "Analyze joint set patterns, strike frequencies in 10° clusters, and calculate peak orientations. Generate high-resolution PDF surveys.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedTextField(
+                                value = strikeInputText,
+                                onValueChange = { strikeInputText = it.filter { c -> c.isDigit() }.take(3) },
+                                label = { Text("Strike Pattern (0-360°)") },
+                                modifier = Modifier.weight(1f),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            )
+                            Button(
+                                onClick = {
+                                    val s = strikeInputText.toFloatOrNull()
+                                    if (s != null && s in 0f..360f) {
+                                        strikes.add(s)
+                                        strikeInputText = ""
+                                    }
+                                },
+                                modifier = Modifier.testTag("add_strike_button")
+                            ) {
+                                Text("+ Add")
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        try {
+                                            val activeProj = viewModel.activeProject.value
+                                            if (activeProj != null) {
+                                                val dbObs = viewModel.dao.getObservationsForProjectSync(activeProj.id)
+                                                val dbWm = viewModel.dao.getAllWindowMappingsSync()
+
+                                                val listFromObs = dbObs.filter {
+                                                    (it.observationType == "Fault" || it.observationType == "Joint" || it.observationType == "Structure" || it.observationType == "Vein") && it.strike != null
+                                                }.map { it.strike!!.toFloat() }
+
+                                                val listFromWm = dbWm.filter { it.dipDirection != null }.map {
+                                                    ((it.dipDirection!! - 90f + 360f) % 360f)
+                                                }
+
+                                                val totalImports = listFromObs + listFromWm
+                                                if (totalImports.isNotEmpty()) {
+                                                    strikes.clear()
+                                                    strikes.addAll(totalImports)
+                                                    importCount = totalImports.size
+                                                    Toast.makeText(context, "Successfully synced ${totalImports.size} structural points!", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    Toast.makeText(context, "No structural records found. Plotted default demo values.", Toast.LENGTH_LONG).show()
+                                                }
+                                            } else {
+                                                Toast.makeText(context, "Please configure/select an active project.", Toast.LENGTH_SHORT).show()
+                                            }
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Sync issue: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer),
+                                modifier = Modifier.weight(1f).testTag("import_structures_btn")
+                            ) {
+                                Icon(Icons.Filled.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Sync DB Joints", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            Button(
+                                onClick = { strikes.clear() },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer),
+                                modifier = Modifier.weight(0.7f).testTag("clear_strikes_btn")
+                            ) {
+                                Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Clear", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        if (importCount != null) {
+                            Text(
+                                text = "✨ Plotting $importCount structural orientations from active project database.",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+
+                // Dynamic Canvas Plot card
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Text(
+                            text = "SYMMETRICAL STRIKE WEDGE PLOT (10° Bins)",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            letterSpacing = 1.sp
+                        )
+
+                        Box(
+                            modifier = Modifier
+                                .size(240.dp)
+                                .background(Color.Transparent),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                val centerPx = androidx.compose.ui.geometry.Offset(size.width / 2, size.height / 2)
+                                val radiusPx = size.width / 2 - 20f
+
+                                val binsCount = IntArray(18)
+                                for (s in strikes) {
+                                    val norm = (s % 180 + 180) % 180
+                                    val idx = (norm / 10).toInt().coerceIn(0, 17)
+                                    binsCount[idx]++
+                                }
+                                val maxFreq = binsCount.maxOrNull()?.coerceAtLeast(1) ?: 1
+
+                                // Rings
+                                val rings = 4
+                                for (i in 1..rings) {
+                                    val r = radiusPx * (i.toFloat() / rings)
+                                    drawCircle(
+                                        color = Color.LightGray.copy(alpha = 0.3f),
+                                        radius = r,
+                                        center = centerPx,
+                                        style = androidx.compose.ui.graphics.drawscope.Stroke(1f)
+                                    )
+                                }
+
+                                // Axis rays every 30°
+                                for (deg in 0 until 180 step 30) {
+                                    val rad = Math.toRadians(deg.toDouble() - 90.0)
+                                    val dx = radiusPx * Math.cos(rad).toFloat()
+                                    val dy = radiusPx * Math.sin(rad).toFloat()
+                                    drawLine(
+                                        color = Color.LightGray.copy(alpha = 0.4f),
+                                        start = androidx.compose.ui.geometry.Offset(centerPx.x - dx, centerPx.y - dy),
+                                        end = androidx.compose.ui.geometry.Offset(centerPx.x + dx, centerPx.y + dy),
+                                        strokeWidth = 1f
+                                    )
+                                }
+
+                                // Wedges
+                                for (i in 0 until 18) {
+                                    val count = binsCount[i]
+                                    if (count > 0) {
+                                        val rWedge = radiusPx * (count.toFloat() / maxFreq)
+                                        val startAngle = i * 10f - 90f // compass N offset
+                                        val sweepAngle = 10f
+
+                                        val rect = androidx.compose.ui.geometry.Rect(centerPx.x - rWedge, centerPx.y - rWedge, centerPx.x + rWedge, centerPx.y + rWedge)
+
+                                        val path = androidx.compose.ui.graphics.Path().apply {
+                                            moveTo(centerPx.x, centerPx.y)
+                                            arcTo(rect, startAngle, sweepAngle, false)
+                                            close()
+                                        }
+                                        drawPath(path, Color(0xFF0A84FF).copy(alpha = 0.45f))
+                                        drawPath(path, Color(0xFF0A84FF), style = androidx.compose.ui.graphics.drawscope.Stroke(2f))
+
+                                        // Opposite symmetric sector
+                                        val oppPath = androidx.compose.ui.graphics.Path().apply {
+                                            moveTo(centerPx.x, centerPx.y)
+                                            arcTo(rect, startAngle + 180f, sweepAngle, false)
+                                            close()
+                                        }
+                                        drawPath(oppPath, Color(0xFF0A84FF).copy(alpha = 0.45f))
+                                        drawPath(oppPath, Color(0xFF0A84FF), style = androidx.compose.ui.graphics.drawscope.Stroke(2f))
+                                    }
+                                }
+
+                                // Direct ticks
+                                drawContext.canvas.nativeCanvas.apply {
+                                    val nativePaint = android.graphics.Paint().apply {
+                                        color = android.graphics.Color.GRAY
+                                        textSize = 10.dp.toPx()
+                                        typeface = android.graphics.Typeface.MONOSPACE
+                                    }
+                                    drawText("0°/360° N", centerPx.x - 22.dp.toPx(), centerPx.y - radiusPx - 5.dp.toPx(), nativePaint)
+                                    drawText("180° S", centerPx.x - 15.dp.toPx(), centerPx.y + radiusPx + 15.dp.toPx(), nativePaint)
+                                    drawText("90° E", centerPx.x + radiusPx + 5.dp.toPx(), centerPx.y + 4.dp.toPx(), nativePaint)
+                                    drawText("270° W", centerPx.x - radiusPx - 38.dp.toPx(), centerPx.y + 4.dp.toPx(), nativePaint)
+                                }
+                            }
+                        }
+
+                        // Listed strike tags
+                        Text("Active Mapped Trends (${strikes.size} points):", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            items(strikes) { strikeVal ->
+                                OutlinedCard(
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text("${strikeVal.toInt()}°", fontSize = 12.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                        Icon(
+                                            Icons.Filled.Close,
+                                            contentDescription = "Remove",
+                                            modifier = Modifier.size(14.dp).clickable { strikes.remove(strikeVal) },
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        Button(
+                            onClick = {
+                                viewModel.exportRoseDiagramFiles(context, strikes)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                            modifier = Modifier.fillMaxWidth().testTag("export_pdf_button")
+                        ) {
+                            Icon(Icons.Filled.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Export Professional PDF & Image", fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }

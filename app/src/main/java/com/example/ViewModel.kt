@@ -1531,4 +1531,55 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
         }
         return null
     }
+
+    fun exportRoseDiagramFiles(context: Context, strikes: List<Float>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // 1. Draw Rose Diagram Bitmap
+                val bmp = PhotoProcessor.drawRoseDiagramBitmap(strikes)
+                
+                // Save PNG temporarily
+                val tempPngFile = java.io.File(context.cacheDir, "Rose_Diagram_${System.currentTimeMillis()}.png")
+                java.io.FileOutputStream(tempPngFile).use { out ->
+                    bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, out)
+                }
+                
+                // 2. Export PDF
+                val pdfPath = PhotoProcessor.exportRoseDiagramPdf(context, activeProject.value?.name ?: "Unnamed Project", strikes)
+                val tempPdfFile = pdfPath?.let { java.io.File(it) }
+                
+                // 3. Save to Public downloads
+                val pngUri = saveFileToPublicDownloads(context, tempPngFile, "image/png")
+                val pdfUri = tempPdfFile?.let { saveFileToPublicDownloads(context, it, "application/pdf") }
+                
+                withContext(Dispatchers.Main) {
+                    if (pngUri != null && pdfUri != null && tempPdfFile != null) {
+                        Toast.makeText(context, "Rose Diagram Image & PDF Saved to Public Downloads/GeoFieldPro folder!", Toast.LENGTH_LONG).show()
+                        
+                        // Launch share sheet for PDF Document!
+                        val authority = "${context.packageName}.fileprovider"
+                        val pdfSharedUri = androidx.core.content.FileProvider.getUriForFile(context, authority, tempPdfFile)
+                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            type = "application/pdf"
+                            putExtra(Intent.EXTRA_STREAM, pdfSharedUri)
+                            putExtra(Intent.EXTRA_SUBJECT, "Geological Strike Rose Diagram Analysis Report")
+                            putExtra(Intent.EXTRA_TEXT, "Discontinuities Strike Rose Diagram Analysis Report. Logged with GeoFieldPro.")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        
+                        val chooser = Intent.createChooser(shareIntent, "Share Rose Diagram PDF Report")
+                        chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(chooser)
+                    } else {
+                        Toast.makeText(context, "Failed to save export files.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Export error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                }
+                e.printStackTrace()
+            }
+        }
+    }
 }
