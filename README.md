@@ -1,172 +1,21 @@
-# 🌍 GeoField Pro — Industrial Geological Field Companion
-### *Professional Industrial-Grade Field Logging Terminal for Geological Surveying & Exploration*
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
+</div>
 
-[![Android Build CI](https://github.com/farzadf/geofield-pro/actions/workflows/android.yml/badge.svg)](https://github.com/farzadf/geofield-pro/actions/workflows/android.yml)
-![Kotlin Version](https://img.shields.io/badge/Kotlin-1.9.0-blue.svg)
-![Jetpack Compose](https://img.shields.io/badge/Compose-M3-green.svg)
-![Database](https://img.shields.io/badge/Database-Room_SQLite-orange.svg)
-![Version](https://img.shields.io/badge/App_Version-2.1.1-red.svg)
+# Run and deploy your AI Studio app
 
----
+This contains everything you need to run your app locally.
 
-### Project Overview
-**GeoField Pro** is a robust, offline-first digital companion and field logging terminal built with modern Jetpack Compose for Android. It is engineered specifically for rugged exploration environments, high-glare sunlight situations, and continuous hardware power-saving operations during remote surveys. In version **2.1.1**, the platform has transitioned to a fully localized English workspace with advanced battery optimizations for micro-precision GNSS triangulation.
+View your app in AI Studio: https://ai.studio/apps/9033a0e4-9bd4-42fc-ab40-df21a280d8c3
 
-📢 **Official Telegram Channel:** [t.me/geofieldpro](https://t.me/geofieldpro)
+## Run Locally
 
----
+**Prerequisites:**  [Android Studio](https://developer.android.com/studio)
 
-## ⚡ Key Updates & Advancements in Version 2.1.1 (Latest Updates)
 
-The **v2.1.1 Release** introduces substantial battery footprint savings, UI decluttering, and unified English localization to meet international geological survey standards:
-
-### 1. Battery-Resilient GNSS Triangulation Strategy
-- **Enhanced Accuracy Preserved**: Overhauled the core geolocation pipeline. Even under battery-saver profile configurations, the app initiates high-accuracy carrier-phase triangulation to fetch spot readings under 2.5 meters.
-- **Fast Fast-Cancellation Engine**: If the hardware reports standard GPS coordinates and accuracy instantly, the satellite lock cancel timer proactively terminates continuous background polling, securing substantial physical hardware power savings.
-- **Micro-Precision Phase Tracking**: High-accuracy mode maintains robust GNSS carrier tracking with a relaxed, secure carrier block timeout up to 45 seconds to assure sub-meter convergence where sky visibility is limited.
-
-### 2. High-Contrast Sunlight Light Theme Optimization
-- **High-Contrast Canvas**: Redefined the light theme palette tokens based on extensive outdoor sunlight trials. Enhanced readability under bright solar glare by mapping background structures directly to a warm sand-colored ivory backdrop (`#F4F1E8`) paired with deep charcoal-black (`#101010`) typography.
-- **Reduced Card Footprint**: Deprecated heavy canvas animated topography overlays from the Home dashboard to conserve processing cycles and lower thermal and battery consumption on rugged field terminals.
-- **Refined Border & Edge Contrast**: Cleaned up lines, outlines, and buttons to use clear high-contrast borders and sharp semantic active pills.
-
-### 3. Unified Global English Localization
-- Cleanly ported every remaining bilingual or Farsi text segment across settings, logging forms, window mapping structural cards, and geotechnical dropdowns to standardized industrial English terms.
-
----
-
-## ⚡ Key Updates & Advancements in Version 1.1
-
-The **v1.1 Release** of GeoField Pro bridges the gap between raw physical field data observation and professional office GIS post-processing pipelines.
-
-### 1. Robust GIS ZIP Package Exporter (`exportProjectZip`)
-The export stack has been expanded from a single spreadsheet to a comprehensive, structural **GIS ZIP Package**. This allows instantaneous synchronization with industry-standard geology environments:
-- **Relational Datasets (CSV Paths under `data/`):** Auto-generated, normalized, comma-separated datasets (`stations_dataset.csv`, `lithologies_dataset.csv`, `alterations_dataset.csv`, `structures_dataset.csv`, `samples_dataset.csv`) ready for drag-and-drop ingestion into **QGIS, ArcGIS, Leapfrog,** or custom database servers.
-- **Relational Field Assets Folder (`field_photos/`):** Matches the UUID mappings inside database sheets with actual physical geotagged photographs, saving hours of manual file mapping.
-- **Master Excel Book (`Geology_Logs_Workbook.xlsx`):** A multi-sheet master spreadsheet displaying hierarchical logs with calculated UTM transformations.
-
-### 2. High-Contrast Material 3 Export Selection Modal
-A responsive selection modal has been designed adhering to modern design layouts:
-- Offers intuitive selection between a quick **Excel Workbook (.xlsx)** download and the complete **GIS ZIP Package**.
-- Styled with dedicated Material Design 3 state indications, offering easy-to-use tap target layouts suitable for one-handed operation or rugged gloves.
-
-### 3. Native GitHub Actions Continuous Integration (`android.yml`)
-Integrated an automated cloud-based Gradle runner to guarantee every target commit and merge request compiles reliably on Java 17, validating build outputs and syntax errors proactively.
-
----
-
-## 🌟 Core System Specifications
-
-### 📍 Multi-System Geolocation Engine (WGS84 & UTM Grid)
-- Tracks live spatial parameters, converting coordinates on-the-fly from ellipsoidal **WGS84 (Lat/Long)** to **UTM (Universal Transverse Mercator)** projected coordinate systems without requiring internet connectivity.
-- Direct UTM Zone calculation, easting, northing, and accuracy status indications using dynamic high-visibility indicators.
-
-### 🪨 Hierarchical Logging Architecture
-Provides highly structured forms to capture physical ground truths:
-- **Lithology:** Fast descriptor choices representing textures, classifications, colors, grain sizes, mineralization, and alteration properties.
-- **Alteration:** Quantitative zones categorizing intensities, associated minerals, host rock types, and relevant notes.
-- **Faults & Structures:** Precision strike/dip calculations and structure type tags (Joint, Vein, Fault plane tracking).
-- **Physical Samples:** Rapidly registers rock/core inventory samples to unique parent observation stations.
-
-### 📸 Geo-Referenced Augmented Camera Terminal
-- An integrated camera view draws orientation properties, WGS84 coordinates, UTM coordinates, and exact timestamps directly onto captured imagery.
-- Automatically packs, compresses, and references photo paths relative to logged geological segments.
-
----
-
-## 📐 Design Tokens & Visual Hierarchy
-Optimized strictly for outdoor high-glare setups with high contrast ratios (> 7:1) using clear typography.
-
-| Token | Hex Value | Application Placement |
-|---|---|---|
-| **BACKGROUND** | `#F4F1E8` | High-readability canvas simulating natural field lithology sheets. |
-| **SURFACE** | `#FFFFFF` | Isolated UI items, interactive cards, structure menus. |
-| **PRIMARY_TEXT** | `#101010` | 100% Contrast level for metric titles, UTM data coordinates. |
-| **SECONDARY_TEXT**| `#4F545A` | Intermediate description annotations, metadata tags, indicators. |
-| **BORDER** | `#D8D2C6` | Clean framing outlines separating categories cleanly. |
-
----
-
-## 🛠️ Architecture & Core Pipeline
-
-```
-┌────────────────────────────────────────────────────────┐
-│                        UI Layer                        │
-│     (Jetpack Compose - Inter / IBM Plex Mono Fonts)    │
-└───────────┬────────────────────────────────┬───────────┘
-            │                                │
-            ▼                                ▼
-┌───────────────────────┐        ┌───────────────────────┐
-│     MainViewModel     │◄───────┤    PhotoProcessor     │
-│  (StateFlow Flux Core) │        │ (Exif/Watermark Draw) │
-└───────────┬───────────┘        └───────────────────────┘
-            │
-            ▼
-┌────────────────────────────────────────────────────────┐
-│                    Repository                          │
-│       (GeoFieldDatabase Room SQLite Wrapper)          │
-└────────────────────────────────────────────────────────┘
-```
-
----
-
-## 📁 Repository Map
-
-```
-├── .github
-│   └── workflows
-│       └── android.yml            # Automated CI Build Actions Pipeline (v1.1)
-├── app
-│   ├── build.gradle.kts           # Gradle Module-level properties and dependency chains
-│   └── src
-│       └── main
-│           ├── AndroidManifest.xml # Core hardware permissions registers (Location, Camera, Sensors)
-│           ├── java
-│           │   └── com
-│           │       └── example
-│           │           ├── MainActivity.kt        # Primary view structures, Dialog layers and Navigation
-│           │           ├── ViewModel.kt           # ViewModel, StateFlow flows, and ZIP exporter
-│           │           ├── Database.kt            # Room Persistent DB, Schemas, DAO interfaces
-│           │           ├── PhotoProcessor.kt      # Georeference Image Pipeline
-│           │           ├── UtmConverter.kt        # Ellipsoidal WGS84 to UTM Transverse Mercator
-│           │           ├── XlsxWriter.kt          # Offline XLSX Spreadsheet Builder
-│           │           └── ui
-│           │               └── theme
-│           │                   ├── Color.kt       # Unified color palette definition
-│           │                   ├── Theme.kt       # Material 3 Custom palette injection
-│           │                   └── Type.kt        # Type tokens with monospace scale pairings
-```
-
----
-
-## 🚀 Workstation Compilation & Setup
-
-To compile and verify the project locally:
-
-### Prerequisites
-* **Android Studio Ladybug (2024.2.1) or higher**
-* **Java Development Kit (JDK) 17**
-* **Gradle Build Tool 8.4+**
-
-### Compilation Steps
-
-1. **Clone the Source Code**
-   ```bash
-   git clone https://github.com/farzadf/geofield-pro.git
-   cd geofield-pro
-   ```
-
-2. **Run Dependency Synthesis & Local Compiles**
-   ```bash
-   gradle assembleDebug
-   ```
-   This compiles and packs the diagnostic, fully signed APK directly to `app/build/outputs/apk/debug/`.
-
-3. **Required Hardware Permissions**
-   Verify your test environment allows runtime checks for:
-   * `ACCESS_FINE_LOCATION` (Required to compute projected coordinate metrics)
-   * `CAMERA` (Required for spatial overlay watermarked photography)
-
----
-
-*GeoField Pro is engineered with absolute resilience at its core. Built for extreme environments, delivering surveyor-grade accuracy wherever the exploration leads.*
+1. Open Android Studio
+2. Select **Open** and choose the directory containing this project
+3. Allow Android Studio to fix any incompatibilities as it imports the project.
+4. Create a file named `.env` in the project directory and set `GEMINI_API_KEY` in that file to your Gemini API key (see `.env.example` for an example)
+5. Remove this line from the app's `build.gradle.kts` file: `signingConfig = signingConfigs.getByName("debugConfig")`
+6. Run the app on an emulator or physical device

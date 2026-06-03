@@ -1,0 +1,39 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="128dp"
+    android:height="128dp"
+    android:viewportWidth="128"
+    android:viewportHeight="128">
+    <!-- Circular Background -->
+    <path
+        android:fillColor="#0D47A1"
+        android:pathData="M64,64m-58,0a58,58 0,1 1,116 0a58,58 0,1 1,-116 0" />
+    <path
+        android:fillColor="#1565C0"
+        android:pathData="M64,12a52,52 0,0 1,52 52a52,52 0,0 1,-52 52" />
+    <!-- Mountains symbolizing geology -->
+    <path
+        android:fillColor="#1E88E5"
+        android:pathData="M24,88 L52,48 L76,82 L96,62 L112,88 Z" />
+    <path
+        android:fillColor="#64B5F6"
+        android:pathData="M52,48 L64,68 L72,83 L24,88 Z" />
+    <!-- Geological Cross-Hairs / Compass dial -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="2"
+        android:pathData="M64,28 L64,100 M28,64 L100,64" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="1.5"
+        android:pathData="M64,64m-20,0a20,20 0,1 1,40 0a20,20 0,1 1,-40 0" />
+    <!-- Strike line needle in Copper/Orange -->
+    <path
+        android:fillColor="#FF6F00"
+        android:pathData="M64,36 L70,64 L64,72 L58,64 Z" />
+    <path
+        android:fillColor="#FFA000"
+        android:pathData="M64,36 L64,72 L58,64 Z" />
+    <path
+        android:fillColor="#CFD8DC"
+        android:pathData="M64,92 L70,64 L64,72 L58,64 Z" />
+</vector>
