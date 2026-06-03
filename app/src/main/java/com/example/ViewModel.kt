@@ -67,7 +67,8 @@ data class GpsData(
     val isCaptured: Boolean = false,
     val isLocating: Boolean = false,
     val source: String = "None", // GPS, Manual, Simulated
-    val message: String = ""
+    val message: String = "",
+    val satellites: Int = 0
 )
 
 class GeologyViewModel(application: Application) : AndroidViewModel(application) {
@@ -330,7 +331,8 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                     utmZone = utm.zoneString,
                     isCaptured = true,
                     isLocating = false,
-                    source = "Simulated"
+                    source = "Simulated",
+                    satellites = 14
                 )
             }
             return
@@ -385,7 +387,8 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                                 utmZone = utm.zoneString,
                                 isCaptured = true,
                                 isLocating = false,
-                                source = "GPS (Battery-Saver Instant Cache)"
+                                source = "GPS (Battery-Saver Instant Cache)",
+                                satellites = 8
                             )
                         }
                         return@addOnSuccessListener
@@ -439,7 +442,8 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                         utmZone = utm.zoneString,
                         isCaptured = true,
                         isLocating = false,
-                        source = "GPS (Fused Satellite)"
+                        source = "GPS (Fused Satellite)",
+                        satellites = 14
                     )
                 }
             } else {
@@ -481,7 +485,8 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                                 utmZone = utm.zoneString,
                                 isCaptured = true,
                                 isLocating = false,
-                                source = "GPS (Native Hardware)"
+                                source = "GPS (Native Hardware)",
+                                satellites = 11
                             )
                         }
                         Toast.makeText(context, "Hardware satellite lock active!", Toast.LENGTH_SHORT).show()

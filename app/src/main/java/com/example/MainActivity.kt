@@ -74,12 +74,32 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.content.Context
+import android.util.Xml
+import org.xmlpull.v1.XmlPullParser
+import java.io.InputStream
+import java.io.ByteArrayInputStream
+import java.io.File
+import java.util.zip.ZipInputStream
+import android.content.ContentResolver
 
 class MainActivity : ComponentActivity() {
     private val viewModel: GeologyViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Ensure osmdroid agent configuration is initialized early to prevent startup crashes
+        try {
+            val config = org.osmdroid.config.Configuration.getInstance()
+            config.userAgentValue = packageName
+            val basePath = cacheDir.absolutePath + "/osmdroid"
+            config.osmdroidBasePath = java.io.File(basePath)
+            config.osmdroidTileCache = java.io.File(basePath, "tiles")
+            config.load(this, getSharedPreferences("osmdroid", Context.MODE_PRIVATE))
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
         enableEdgeToEdge()
         setContent {
             val themeSelection by viewModel.themeSelection.collectAsStateWithLifecycle()
@@ -8815,15 +8835,70 @@ fun StationOfflineMapScreen(
     val tracks by viewModel.allTracks.collectAsStateWithLifecycle(emptyList())
     val waypoints by viewModel.allWaypoints.collectAsStateWithLifecycle(emptyList())
     val gpsState by viewModel.gpsState.collectAsStateWithLifecycle()
-
-    // Layer status toggles
-    var showStationsLayer by remember { mutableStateOf(true) }
-    var showBoreholesLayer by remember { mutableStateOf(true) }
-    var showWaypointsLayer by remember { mutableStateOf(true) }
-    var showTracksLayer by remember { mutableStateOf(true) }
+    val activeProject by viewModel.activeProject.collectAsStateWithLifecycle()
 
     // MapView reference for controller center actions
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
+
+    // Map KML properties & Settings dialog & Tile selection states
+    var showMapSettingsDialog by remember { mutableStateOf(false) }
+    val kmlWaypoints = remember { mutableStateListOf<KmlPoint>() }
+    val kmlLines = remember { mutableStateListOf<KmlLine>() }
+    var showKmlLayer by remember { mutableStateOf(true) }
+    var currentTileSourceIndex by remember { mutableStateOf(0) } // 0 = OSM, 1 = Satellite, 2 = Topographic
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                val contentResolver = context.contentResolver
+                val isKmz = uri.path?.endsWith(".kmz", ignoreCase = true) == true || 
+                            context.contentResolver.getType(uri)?.contains("kmz", ignoreCase = true) == true
+                
+                val inputStream = contentResolver.openInputStream(uri)
+                if (inputStream != null) {
+                    val (points, lines) = if (isKmz) {
+                        parseKmz(inputStream)
+                    } else {
+                        parseKml(inputStream)
+                    }
+                    
+                    if (points.isNotEmpty() || lines.isNotEmpty()) {
+                        kmlWaypoints.clear()
+                        kmlLines.clear()
+                        kmlWaypoints.addAll(points)
+                        kmlLines.addAll(lines)
+                        showKmlLayer = true
+                        
+                        Toast.makeText(context, "Loaded ${points.size} Points & ${lines.size} Lines from KML/KMZ", Toast.LENGTH_LONG).show()
+                        
+                        val firstPt = points.firstOrNull()?.let { GeoPoint(it.latitude, it.longitude) } ?: lines.firstOrNull()?.points?.firstOrNull()
+                        if (firstPt != null) {
+                            mapViewRef?.controller?.animateTo(firstPt)
+                            mapViewRef?.controller?.setZoom(12.0)
+                        }
+                    } else {
+                        Toast.makeText(context, "No compatible KML map/landmark points loaded.", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Import failed: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    // Layer status toggles & opacity levels (User-Friendly Professional GIS controls)
+    var showStationsLayer by remember { mutableStateOf(true) }
+    var stationsOpacity by remember { mutableStateOf(1.0f) }
+    var showBoreholesLayer by remember { mutableStateOf(true) }
+    var boreholesOpacity by remember { mutableStateOf(1.0f) }
+    var showWaypointsLayer by remember { mutableStateOf(true) }
+    var waypointsOpacity by remember { mutableStateOf(1.0f) }
+    var showTracksLayer by remember { mutableStateOf(true) }
+    var tracksOpacity by remember { mutableStateOf(1.0f) }
+    var kmlOpacity by remember { mutableStateOf(1.0f) }
+
     var hasCentered by remember { mutableStateOf(false) }
     var userGpsMarker by remember { mutableStateOf<Marker?>(null) }
 
@@ -8890,6 +8965,15 @@ fun StationOfflineMapScreen(
         }
     }
 
+    // Continuous real-time GPS receiver status updates
+    LaunchedEffect(Unit) {
+        while (true) {
+            val mode = if (viewModel.gpsState.value.source == "Simulated" || viewModel.gpsState.value.latitude == 0.0) "SIMULATE" else "GPS"
+            viewModel.captureLocation(context, mode)
+            delay(5000)
+        }
+    }
+
     // Initialize osmdroid configuration synchronously before MapView compiles to prevent race conditions & crashes
     remember {
         val config = org.osmdroid.config.Configuration.getInstance()
@@ -8921,158 +9005,171 @@ fun StationOfflineMapScreen(
         }
     }
 
-    // Performance Optimization: Render overlays dynamically only when lists or layers alter
+    // Unified Dynamic Overlay Renderer: Process everything safely on a single thread to guarantee crash-free mapping
     LaunchedEffect(
         mapViewRef, stations, boreholes, tracks, waypoints, activeTrackPoints.size,
-        showStationsLayer, showBoreholesLayer, showWaypointsLayer, showTracksLayer
+        showStationsLayer, showBoreholesLayer, showWaypointsLayer, showTracksLayer,
+        showKmlLayer, kmlWaypoints.size, kmlLines.size,
+        gpsState.latitude, gpsState.longitude, gpsState.accuracy, gpsState.elevation,
+        stationsOpacity, boreholesOpacity, waypointsOpacity, tracksOpacity, kmlOpacity
     ) {
         val mapView = mapViewRef ?: return@LaunchedEffect
-        mapView.overlays.clear()
+        val context = mapView.context
+        
+        synchronized(mapView.overlays) {
+            mapView.overlays.clear()
 
-        // 1. Render field stations
-        if (showStationsLayer) {
-            stations.forEach { station ->
-                if (station.latitude != 0.0 && station.longitude != 0.0) {
-                    val marker = Marker(mapView).apply {
-                        id = "station_${station.id}"
-                        position = GeoPoint(station.latitude, station.longitude)
-                        title = "Station: ${station.stationCode}"
-                        subDescription = "Elevation: ${station.elevation}m\nUTM Zone: ${station.utmZone}"
-                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                        setOnMarkerClickListener { m, _ ->
-                            selectedItemType = "Station"
-                            selectedItemId = station.id
-                            selectedItemTitle = station.stationCode
-                            selectedItemSub = "Elevation: ${station.elevation}m • Accuracy: ${station.accuracy}m\nUTM Zone: ${station.utmZone} (${station.utmEasting.toInt()}E, ${station.utmNorthing.toInt()}N)"
-                            m.showInfoWindow()
-                            true
+            // 1. Render field stations
+            if (showStationsLayer) {
+                stations.forEach { station ->
+                    if (station.latitude != 0.0 && station.longitude != 0.0) {
+                        val marker = Marker(mapView).apply {
+                            id = "station_${station.id}"
+                            position = GeoPoint(station.latitude, station.longitude)
+                            title = "Station: ${station.stationCode}"
+                            subDescription = "Elevation: ${station.elevation}m\nUTM Zone: ${station.utmZone}"
+                            icon = createCircleMarkerDrawable(context, android.graphics.Color.rgb(39, 174, 96), 16)
+                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                            alpha = stationsOpacity
+                            setOnMarkerClickListener { m, _ ->
+                                selectedItemType = "Station"
+                                selectedItemId = station.id
+                                selectedItemTitle = station.stationCode
+                                selectedItemSub = "Elevation: ${station.elevation}m • Accuracy: ${station.accuracy}m\nUTM Zone: ${station.utmZone} (${station.utmEasting.toInt()}E, ${station.utmNorthing.toInt()}N)"
+                                m.showInfoWindow()
+                                true
+                            }
                         }
+                        mapView.overlays.add(marker)
                     }
-                    mapView.overlays.add(marker)
                 }
             }
-        }
 
-        // 2. Render boreholes
-        if (showBoreholesLayer) {
-            boreholes.forEach { borehole ->
-                if (borehole.latitude != 0.0 && borehole.longitude != 0.0) {
-                    val marker = Marker(mapView).apply {
-                        id = "borehole_${borehole.id}"
-                        position = GeoPoint(borehole.latitude, borehole.longitude)
-                        title = "Borehole: ${borehole.name}"
-                        subDescription = "UTM: ${borehole.utmEasting} E, ${borehole.utmNorthing} N\nAzimuth: ${borehole.azimuth ?: 0.0}°"
-                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                        setOnMarkerClickListener { m, _ ->
-                            selectedItemType = "Borehole"
-                            selectedItemId = borehole.id
-                            selectedItemTitle = borehole.name
-                            selectedItemSub = "Elevation: ${borehole.elevation}m • Azimuth: ${borehole.azimuth ?: 0.0}°\nUTM Zone: ${borehole.utmZone} (${borehole.utmEasting.toInt()}E, ${borehole.utmNorthing.toInt()}N)"
-                            m.showInfoWindow()
-                            true
+            // 2. Render boreholes
+            if (showBoreholesLayer) {
+                boreholes.forEach { borehole ->
+                    if (borehole.latitude != 0.0 && borehole.longitude != 0.0) {
+                        val marker = Marker(mapView).apply {
+                            id = "borehole_${borehole.id}"
+                            position = GeoPoint(borehole.latitude, borehole.longitude)
+                            title = "Borehole: ${borehole.name}"
+                            subDescription = "UTM: ${borehole.utmEasting} E, ${borehole.utmNorthing} N\nAzimuth: ${borehole.azimuth ?: 0.0}°"
+                            icon = createCircleMarkerDrawable(context, android.graphics.Color.rgb(41, 128, 185), 16)
+                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                            alpha = boreholesOpacity
+                            setOnMarkerClickListener { m, _ ->
+                                selectedItemType = "Borehole"
+                                selectedItemId = borehole.id
+                                selectedItemTitle = borehole.name
+                                selectedItemSub = "Elevation: ${borehole.elevation}m • Azimuth: ${borehole.azimuth ?: 0.0}°\nUTM Zone: ${borehole.utmZone} (${borehole.utmEasting.toInt()}E, ${borehole.utmNorthing.toInt()}N)"
+                                m.showInfoWindow()
+                                true
+                            }
                         }
+                        mapView.overlays.add(marker)
                     }
-                    mapView.overlays.add(marker)
                 }
             }
-        }
 
-        // 3. Render Custom Field Waypoints (Waypoints Layer)
-        if (showWaypointsLayer) {
-            waypoints.forEach { wp ->
-                if (wp.latitude != 0.0 && wp.longitude != 0.0) {
+            // 3. Render Custom Field Waypoints (Waypoints Layer)
+            if (showWaypointsLayer) {
+                waypoints.forEach { wp ->
+                    if (wp.latitude != 0.0 && wp.longitude != 0.0) {
+                        val marker = Marker(mapView).apply {
+                            id = "waypoint_${wp.id}"
+                            position = GeoPoint(wp.latitude, wp.longitude)
+                            title = wp.name
+                            subDescription = "Category: ${wp.category}\nElev: ${wp.elevation}m • Accuracy: ${wp.accuracy}m\nNotes: ${wp.description}"
+                            icon = createCircleMarkerDrawable(context, android.graphics.Color.rgb(230, 126, 34), 14)
+                            setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                            alpha = waypointsOpacity
+                            setOnMarkerClickListener { m, _ ->
+                                selectedItemType = "Waypoint"
+                                selectedItemId = wp.id
+                                selectedItemTitle = wp.name
+                                selectedItemSub = "Category: [${wp.category}] • Accuracy: ${String.format(Locale.US, "%.1f", wp.accuracy)}m\nLatitude: ${String.format(Locale.US, "%.6f", wp.latitude)}°\nLongitude: ${String.format(Locale.US, "%.6f", wp.longitude)}°\nNotes: ${wp.description}"
+                                m.showInfoWindow()
+                                true
+                            }
+                        }
+                        mapView.overlays.add(marker)
+                    }
+                }
+            }
+
+            // 4. Render Saved Geological Track Polylines
+            if (showTracksLayer) {
+                tracks.forEachIndexed { idx, track ->
+                    val trackPts = parsePoints(track.pointsJson)
+                    if (trackPts.isNotEmpty()) {
+                        val polyline = org.osmdroid.views.overlay.Polyline(mapView).apply {
+                            setPoints(trackPts)
+                            outlinePaint.color = trackColors[idx % trackColors.size]
+                            outlinePaint.strokeWidth = 5.0f
+                            outlinePaint.alpha = (tracksOpacity * 255).toInt()
+                        }
+                        mapView.overlays.add(polyline)
+                    }
+                }
+            }
+
+            // 5. Render Active Live Recording Polyline path
+            if (isRecording && activeTrackPoints.isNotEmpty()) {
+                val livePolyline = org.osmdroid.views.overlay.Polyline(mapView).apply {
+                    setPoints(activeTrackPoints.toList())
+                    outlinePaint.color = android.graphics.Color.rgb(231, 76, 60) // High visibility red
+                    outlinePaint.strokeWidth = 7.0f
+                    outlinePaint.strokeCap = android.graphics.Paint.Cap.ROUND
+                }
+                mapView.overlays.add(livePolyline)
+            }
+
+            // 6. Draw KML / KMZ Imported Layer if toggled ON
+            if (showKmlLayer) {
+                kmlWaypoints.forEach { kwp ->
                     val marker = Marker(mapView).apply {
-                        id = "waypoint_${wp.id}"
-                        position = GeoPoint(wp.latitude, wp.longitude)
-                        title = wp.name
-                        subDescription = "Category: ${wp.category}\nElev: ${wp.elevation}m • Accuracy: ${wp.accuracy}m\nNotes: ${wp.description}"
-                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                        id = "kml_wp_${kwp.name}_${kwp.latitude}"
+                        position = GeoPoint(kwp.latitude, kwp.longitude)
+                        title = "KML Point: ${kwp.name}"
+                        subDescription = kwp.description.ifEmpty { "Imported KML Coordinate Landmark" }
+                        icon = createCircleMarkerDrawable(context, android.graphics.Color.rgb(142, 68, 173), 14)
+                        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                        alpha = kmlOpacity
                         setOnMarkerClickListener { m, _ ->
                             selectedItemType = "Waypoint"
-                            selectedItemId = wp.id
-                            selectedItemTitle = wp.name
-                            selectedItemSub = "Category: [${wp.category}] • Accuracy: ${String.format(Locale.US, "%.1f", wp.accuracy)}m\nLatitude: ${String.format(Locale.US, "%.6f", wp.latitude)}°\nLongitude: ${String.format(Locale.US, "%.6f", wp.longitude)}°\nNotes: ${wp.description}"
+                            selectedItemId = -100
+                            selectedItemTitle = kwp.name
+                            selectedItemSub = "Imported KML Landmark\nLatitude: ${kwp.latitude}°\nLongitude: ${kwp.longitude}°\nElevation: ${kwp.elevation}m\nNotes: ${kwp.description}"
                             m.showInfoWindow()
                             true
                         }
                     }
                     mapView.overlays.add(marker)
                 }
-            }
-        }
-
-        // 4. Render Saved Geological Track Polylines
-        if (showTracksLayer) {
-            tracks.forEachIndexed { idx, track ->
-                val trackPts = parsePoints(track.pointsJson)
-                if (trackPts.isNotEmpty()) {
-                    val polyline = org.osmdroid.views.overlay.Polyline(mapView).apply {
-                        setPoints(trackPts)
-                        outlinePaint.color = trackColors[idx % trackColors.size]
-                        outlinePaint.strokeWidth = 5.0f
+                kmlLines.forEach { kl ->
+                    if (kl.points.isNotEmpty()) {
+                        val polyline = org.osmdroid.views.overlay.Polyline(mapView).apply {
+                            setPoints(kl.points)
+                            outlinePaint.color = android.graphics.Color.rgb(142, 68, 173) // High contrast purple
+                            outlinePaint.strokeWidth = 6.0f
+                            outlinePaint.alpha = (kmlOpacity * 255).toInt()
+                        }
+                        mapView.overlays.add(polyline)
                     }
-                    mapView.overlays.add(polyline)
                 }
             }
-        }
 
-        // 5. Render Active Live Recording Polyline path
-        if (isRecording && activeTrackPoints.isNotEmpty()) {
-            val livePolyline = org.osmdroid.views.overlay.Polyline(mapView).apply {
-                setPoints(activeTrackPoints.toList())
-                outlinePaint.color = android.graphics.Color.rgb(231, 76, 60) // High visibility red
-                outlinePaint.strokeWidth = 7.0f
-                outlinePaint.strokeCap = android.graphics.Paint.Cap.ROUND
-            }
-            mapView.overlays.add(livePolyline)
-        }
-
-        // Force recreation of tracking marker since the stack was cleared
-        userGpsMarker = null
-
-        // Auto center map on initial data load
-        if (!hasCentered) {
-            val validStations = stations.filter { it.latitude != 0.0 && it.longitude != 0.0 }
-            val validBoreholes = boreholes.filter { it.latitude != 0.0 && it.longitude != 0.0 }
-            val centerPoint = if (validStations.isNotEmpty()) {
-                val avgLat = validStations.map { it.latitude }.average()
-                val avgLon = validStations.map { it.longitude }.average()
-                GeoPoint(avgLat, avgLon)
-            } else if (validBoreholes.isNotEmpty()) {
-                val avgLat = validBoreholes.map { it.latitude }.average()
-                val avgLon = validBoreholes.map { it.longitude }.average()
-                GeoPoint(avgLat, avgLon)
-            } else {
-                null
-            }
-            if (centerPoint != null) {
-                mapView.controller.setCenter(centerPoint)
-                mapView.controller.setZoom(10.0)
-                hasCentered = true
-            }
-        }
-
-        mapView.invalidate()
-    }
-
-    // Dynamic Tracking Effect: Smooth real-time coordinate updates
-    LaunchedEffect(mapViewRef, gpsState.latitude, gpsState.longitude, gpsState.accuracy, gpsState.elevation, userGpsMarker) {
-        val mapView = mapViewRef ?: return@LaunchedEffect
-        val myLat = gpsState.latitude
-        val myLon = gpsState.longitude
-        if (myLat != 0.0 && myLon != 0.0) {
-            val currentMarker = userGpsMarker
-            if (currentMarker != null && mapView.overlays.contains(currentMarker)) {
-                currentMarker.position = GeoPoint(myLat, myLon)
-                currentMarker.subDescription = "Accuracy: ${String.format(Locale.US, "%.1f", gpsState.accuracy)}m\nElev: ${gpsState.elevation}m"
-                mapView.invalidate()
-            } else {
-                val newMarker = Marker(mapView).apply {
+            // 7. Render My Real-Time Position
+            val myLat = gpsState.latitude
+            val myLon = gpsState.longitude
+            if (myLat != 0.0 && myLon != 0.0) {
+                val marker = Marker(mapView).apply {
                     id = "user_gps_location"
                     position = GeoPoint(myLat, myLon)
                     title = "My Real-Time Position"
                     subDescription = "Accuracy: ${String.format(Locale.US, "%.1f", gpsState.accuracy)}m\nElev: ${gpsState.elevation}m"
-                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
+                    icon = createCircleMarkerDrawable(context, android.graphics.Color.rgb(52, 152, 219), 18)
+                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                     setOnMarkerClickListener { m, _ ->
                         selectedItemType = "My GPS"
                         selectedItemId = -99
@@ -9082,10 +9179,39 @@ fun StationOfflineMapScreen(
                         true
                     }
                 }
-                mapView.overlays.add(newMarker)
-                userGpsMarker = newMarker
-                mapView.invalidate()
+                mapView.overlays.add(marker)
+                userGpsMarker = marker
+
+                if (!hasCentered) {
+                    mapView.controller.animateTo(GeoPoint(myLat, myLon))
+                    mapView.controller.setZoom(14.0)
+                    hasCentered = true
+                }
             }
+
+            // Fallback: Auto center map to initial averages if GPS is not yet centered
+            if (!hasCentered) {
+                val validStations = stations.filter { it.latitude != 0.0 && it.longitude != 0.0 }
+                val validBoreholes = boreholes.filter { it.latitude != 0.0 && it.longitude != 0.0 }
+                val centerPoint = if (validStations.isNotEmpty()) {
+                    val avgLat = validStations.map { it.latitude }.average()
+                    val avgLon = validStations.map { it.longitude }.average()
+                    GeoPoint(avgLat, avgLon)
+                } else if (validBoreholes.isNotEmpty()) {
+                    val avgLat = validBoreholes.map { it.latitude }.average()
+                    val avgLon = validBoreholes.map { it.longitude }.average()
+                    GeoPoint(avgLat, avgLon)
+                } else {
+                    null
+                }
+                if (centerPoint != null) {
+                    mapView.controller.setCenter(centerPoint)
+                    mapView.controller.setZoom(10.0)
+                    hasCentered = true
+                }
+            }
+
+            mapView.invalidate()
         }
     }
 
@@ -9107,6 +9233,16 @@ fun StationOfflineMapScreen(
                             imageVector = Icons.Default.History, 
                             contentDescription = "History Hub", 
                             tint = if (showHistoryHub) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    IconButton(
+                        onClick = { showMapSettingsDialog = true },
+                        modifier = Modifier.testTag("map_settings_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Map Layer & Theme Settings",
+                            tint = if (showMapSettingsDialog) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                         )
                     }
                 },
@@ -9148,12 +9284,151 @@ fun StationOfflineMapScreen(
                         mapViewRef = this
                     }
                 },
-                update = { _ -> },
+                update = { view ->
+                    val source = when (currentTileSourceIndex) {
+                        1 -> {
+                            org.osmdroid.tileprovider.tilesource.XYTileSource(
+                                "EsriSatellite",
+                                0, 19, 256, ".jpg",
+                                arrayOf("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/")
+                            )
+                        }
+                        2 -> {
+                            org.osmdroid.tileprovider.tilesource.XYTileSource(
+                                "OpenTopoMap",
+                                0, 17, 256, ".png",
+                                arrayOf(
+                                    "https://a.tile.opentopomap.org/",
+                                    "https://b.tile.opentopomap.org/",
+                                    "https://c.tile.opentopomap.org/"
+                                )
+                            )
+                        }
+                        else -> TileSourceFactory.MAPNIK
+                    }
+                    val currentTileSource = view.tileProvider?.tileSource
+                    if (currentTileSource == null || currentTileSource.name() != source.name()) {
+                        view.setTileSource(source)
+                    }
+                },
                 onRelease = { mapView ->
                     mapView.onPause()
                     mapView.onDetach()
                 }
             )
+
+            // 1. Top-Left Compact Coordinates HUD Card
+            Card(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp)
+                    .width(135.dp),
+                shape = RoundedCornerShape(8.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
+                ),
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+            ) {
+                Column(
+                    modifier = Modifier.padding(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(1.dp)
+                ) {
+                    Text(
+                        text = "LOCATION COORDINATES",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        letterSpacing = 0.3.sp
+                    )
+                    if (gpsState.latitude != 0.0) {
+                        Text(
+                            text = String.format(Locale.US, "Lat: %.6f°", gpsState.latitude),
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = String.format(Locale.US, "Lon: %.6f°", gpsState.longitude),
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Elev: ${gpsState.elevation.toInt()}m | ${gpsState.source.take(13)}",
+                            fontSize = 8.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Text(
+                            text = "Awaiting GPS Fix...",
+                            fontSize = 9.sp,
+                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            // 2. Top-Center GPS accuracy & Satellites indicator badge
+            Card(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = if (isRecording) 68.dp else 8.dp),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f)
+                ),
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val hasAccuracy = gpsState.latitude != 0.0 && gpsState.accuracy > 0.0 && gpsState.accuracy < 30.0
+                    
+                    Box(
+                        modifier = Modifier
+                            .size(7.dp)
+                            .background(if (hasAccuracy) Color(0xFF2ECC71) else Color(0xFFE74C3C), CircleShape)
+                    )
+                    
+                    Text(
+                        text = if (hasAccuracy) "GPS ACTIVE" else "GPS OFFLINE",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (hasAccuracy) Color(0xFF2ECC71) else Color(0xFFE74C3C)
+                    )
+                    
+                    VerticalDivider(modifier = Modifier.height(10.dp), thickness = 0.5.dp)
+                    
+                    Icon(
+                        imageVector = Icons.Default.Satellite,
+                        contentDescription = "Satellite connection",
+                        modifier = Modifier.size(10.dp),
+                        tint = if (hasAccuracy) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    
+                    Text(
+                        text = "Sats: ${gpsState.satellites}",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    
+                    if (hasAccuracy) {
+                        Text(
+                            text = "±${gpsState.accuracy.toInt()}m",
+                            fontSize = 9.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+            }
 
             // Dynamic Live Route Logging HUD Card
             if (isRecording) {
@@ -9561,17 +9836,34 @@ fun StationOfflineMapScreen(
                 Card(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(16.dp)
+                        .padding(horizontal = 14.dp, vertical = 20.dp)
                         .fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.5.dp, Color(0xFFC96A2B).copy(alpha = 0.5f)),
-                    elevation = CardDefaults.cardElevation(6.dp)
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.95f)),
+                    border = BorderStroke(1.5.dp, when (selectedItemType) {
+                        "Station" -> Color(0xFF27AE60)
+                        "Borehole" -> Color(0xFF2980B9)
+                        "Waypoint" -> Color(0xFFE67E22)
+                        else -> Color(0xFF9B59B6)
+                    }.copy(alpha = 0.6f)),
+                    elevation = CardDefaults.cardElevation(12.dp)
                 ) {
                     Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        // 1. Draggable-styling Handle Visualizer
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterHorizontally)
+                                .width(36.dp)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f))
+                        )
+
+                        Spacer(modifier = Modifier.height(2.dp))
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -9581,7 +9873,12 @@ fun StationOfflineMapScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                val indicatorColor = if (selectedItemType == "Station") MaterialTheme.colorScheme.primary else if (selectedItemType == "Borehole") Color(0xFF0A84FF) else Color(0xFFE67E22)
+                                val indicatorColor = when (selectedItemType) {
+                                    "Station" -> Color(0xFF27AE60)
+                                    "Borehole" -> Color(0xFF2980B9)
+                                    "Waypoint" -> Color(0xFFE67E22)
+                                    else -> Color(0xFF9B59B6)
+                                }
                                 Box(
                                     modifier = Modifier
                                         .size(10.dp)
@@ -9589,9 +9886,10 @@ fun StationOfflineMapScreen(
                                 )
                                 Text(
                                     text = (selectedItemType ?: "").uppercase(Locale.US),
-                                    fontSize = 11.sp,
+                                    fontSize = 10.sp,
                                     fontWeight = FontWeight.Black,
-                                    color = indicatorColor
+                                    color = indicatorColor,
+                                    letterSpacing = 0.5.sp
                                 )
                             }
                             IconButton(
@@ -9609,19 +9907,39 @@ fun StationOfflineMapScreen(
                             text = selectedItemTitle ?: "",
                             fontSize = 18.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface,
+                            letterSpacing = (-0.2).sp
                         )
 
-                        Text(
-                            text = selectedItemSub ?: "",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            lineHeight = 15.sp,
-                            fontFamily = FontFamily.Monospace
-                        )
+                        // Info Details Grid representation (Premium visual format)
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                val subText = selectedItemSub ?: ""
+                                subText.split("\n").forEach { line ->
+                                    if (line.isNotBlank()) {
+                                        val parts = line.split(":", limit = 2)
+                                        if (parts.size == 2) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Text(parts[0].trim(), fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
+                                                Text(parts[1].trim(), fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
+                                            }
+                                        } else {
+                                            Text(line.trim(), fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
+                                }
+                            }
+                        }
 
                         if (selectedItemType == "Station" || selectedItemType == "Borehole") {
-                            Spacer(modifier = Modifier.height(4.dp))
+                            Spacer(modifier = Modifier.height(2.dp))
                             Button(
                                 onClick = {
                                     val id = selectedItemId
@@ -9635,13 +9953,13 @@ fun StationOfflineMapScreen(
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(48.dp),
-                                shape = RoundedCornerShape(12.dp),
+                                    .height(44.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC96A2B))
                             ) {
                                 Icon(Icons.Default.Map, null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Open Details Screen", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Open Dynamic Logging Suite", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -9855,6 +10173,289 @@ fun StationOfflineMapScreen(
                     }
                 ) {
                     Text("Discard Track")
+                }
+            }
+        )
+    }
+
+    // C. DIALOG: Map Layer Settings & KML Imports configuration console
+    if (showMapSettingsDialog) {
+        AlertDialog(
+            onDismissRequest = { showMapSettingsDialog = false },
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(Icons.Default.Settings, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Text("Map Console & Layer controls", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    item {
+                        Text(
+                            text = "MAP RASTER TILE SOURCES",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            letterSpacing = 0.5.sp
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { currentTileSourceIndex = 0 }
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                RadioButton(selected = currentTileSourceIndex == 0, onClick = { currentTileSourceIndex = 0 })
+                                Text("Standard Vector (OSM Mapnik)", fontSize = 12.sp)
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { currentTileSourceIndex = 1 }
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                RadioButton(selected = currentTileSourceIndex == 1, onClick = { currentTileSourceIndex = 1 })
+                                Text("High-Res Satellite imagery (ArcGIS Online)", fontSize = 12.sp)
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { currentTileSourceIndex = 2 }
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                RadioButton(selected = currentTileSourceIndex == 2, onClick = { currentTileSourceIndex = 2 })
+                                Text("Topographic contour Map (OpenTopo)", fontSize = 12.sp)
+                            }
+                        }
+                    }
+                    
+                    item {
+                        HorizontalDivider(thickness = 0.5.dp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "LAYER VISIBILITY OVERLAYS",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            letterSpacing = 0.5.sp
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Stations Layer
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Field Station Markers", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Switch(
+                                        checked = showStationsLayer,
+                                        onCheckedChange = { showStationsLayer = it },
+                                        modifier = Modifier.scale(0.8f)
+                                    )
+                                }
+                                if (showStationsLayer) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.fillMaxWidth().padding(start = 8.dp)
+                                    ) {
+                                        Text("Opacity: ${(stationsOpacity * 100).toInt()}%", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(72.dp))
+                                        Slider(
+                                            value = stationsOpacity,
+                                            onValueChange = { stationsOpacity = it },
+                                            valueRange = 0.1f..1.0f,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Boreholes Layer
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Deep Boreholes Markers", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Switch(
+                                        checked = showBoreholesLayer,
+                                        onCheckedChange = { showBoreholesLayer = it },
+                                        modifier = Modifier.scale(0.8f)
+                                    )
+                                }
+                                if (showBoreholesLayer) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.fillMaxWidth().padding(start = 8.dp)
+                                    ) {
+                                        Text("Opacity: ${(boreholesOpacity * 100).toInt()}%", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(72.dp))
+                                        Slider(
+                                            value = boreholesOpacity,
+                                            onValueChange = { boreholesOpacity = it },
+                                            valueRange = 0.1f..1.0f,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Waypoints Layer
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Waypoint Nodes", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Switch(
+                                        checked = showWaypointsLayer,
+                                        onCheckedChange = { showWaypointsLayer = it },
+                                        modifier = Modifier.scale(0.8f)
+                                    )
+                                }
+                                if (showWaypointsLayer) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.fillMaxWidth().padding(start = 8.dp)
+                                    ) {
+                                        Text("Opacity: ${(waypointsOpacity * 100).toInt()}%", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(72.dp))
+                                        Slider(
+                                            value = waypointsOpacity,
+                                            onValueChange = { waypointsOpacity = it },
+                                            valueRange = 0.1f..1.0f,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Tracks Layer
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Survey Route Tracks", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Switch(
+                                        checked = showTracksLayer,
+                                        onCheckedChange = { showTracksLayer = it },
+                                        modifier = Modifier.scale(0.8f)
+                                    )
+                                }
+                                if (showTracksLayer) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.fillMaxWidth().padding(start = 8.dp)
+                                    ) {
+                                        Text("Opacity: ${(tracksOpacity * 100).toInt()}%", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(72.dp))
+                                        Slider(
+                                            value = tracksOpacity,
+                                            onValueChange = { tracksOpacity = it },
+                                            valueRange = 0.1f..1.0f,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+                            }
+
+                            // KML Layer
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Imported KML/KMZ Layers", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Switch(
+                                        checked = showKmlLayer,
+                                        onCheckedChange = { showKmlLayer = it },
+                                        modifier = Modifier.scale(0.8f),
+                                        enabled = kmlWaypoints.isNotEmpty() || kmlLines.isNotEmpty()
+                                    )
+                                }
+                                if (showKmlLayer && (kmlWaypoints.isNotEmpty() || kmlLines.isNotEmpty())) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.fillMaxWidth().padding(start = 8.dp)
+                                    ) {
+                                        Text("Opacity: ${(kmlOpacity * 100).toInt()}%", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(72.dp))
+                                        Slider(
+                                            value = kmlOpacity,
+                                            onValueChange = { kmlOpacity = it },
+                                            valueRange = 0.1f..1.0f,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    item {
+                        HorizontalDivider(thickness = 0.5.dp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "IMPORT LANDMARKS (KML or KMZ)",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            letterSpacing = 0.5.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text("Extract custom markers and lines directly from geographic file feeds.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(modifier = Modifier.height(10.dp))
+                        
+                        Button(
+                            onClick = { filePickerLauncher.launch("*/*") },
+                            modifier = Modifier.fillMaxWidth().testTag("import_kml_kmz_btn"),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC96A2B))
+                        ) {
+                            Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Select KML / KMZ file")
+                        }
+                        
+                        if (kmlWaypoints.isNotEmpty() || kmlLines.isNotEmpty()) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f))
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text("ACTIVE SOURCE FEED STATS:", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                    Text("• Points Loaded: ${kmlWaypoints.size} node landmarks", fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                    Text("• Path Segments Loaded: ${kmlLines.size} vector routes", fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showMapSettingsDialog = false }) {
+                    Text("Close")
                 }
             }
         )
@@ -10360,5 +10961,187 @@ fun RockMassReportSection(
             }
         }
     }
+}
+
+// --- KML & KMZ Data Models and Parsers ---
+data class KmlPoint(
+    val name: String,
+    val description: String,
+    val latitude: Double,
+    val longitude: Double,
+    val elevation: Double = 0.0
+)
+
+data class KmlLine(
+    val name: String,
+    val description: String,
+    val points: List<org.osmdroid.util.GeoPoint>
+)
+
+fun parseKml(inputStream: java.io.InputStream): Pair<List<KmlPoint>, List<KmlLine>> {
+    val points = mutableListOf<KmlPoint>()
+    val lines = mutableListOf<KmlLine>()
+    
+    try {
+        val parser = android.util.Xml.newPullParser()
+        parser.setInput(inputStream, "UTF-8")
+        
+        var eventType = parser.eventType
+        var currentTag = ""
+        
+        var inPlacemark = false
+        var placemarkName = ""
+        var placemarkDesc = ""
+        
+        var inPoint = false
+        var pointCoords = ""
+        
+        var inLineString = false
+        var lineCoords = ""
+        
+        while (eventType != org.xmlpull.v1.XmlPullParser.END_DOCUMENT) {
+            val tagName = parser.name
+            when (eventType) {
+                org.xmlpull.v1.XmlPullParser.START_TAG -> {
+                    currentTag = tagName ?: ""
+                    if ("Placemark".equals(tagName, ignoreCase = true)) {
+                        inPlacemark = true
+                        placemarkName = ""
+                        placemarkDesc = ""
+                    } else if ("Point".equals(tagName, ignoreCase = true)) {
+                        inPoint = true
+                    } else if ("LineString".equals(tagName, ignoreCase = true)) {
+                        inLineString = true
+                    }
+                }
+                org.xmlpull.v1.XmlPullParser.TEXT -> {
+                    val text = parser.text?.trim() ?: ""
+                    if (text.isNotEmpty()) {
+                        if (inPlacemark && !inPoint && !inLineString) {
+                            if ("name".equals(currentTag, ignoreCase = true)) {
+                                placemarkName = text
+                            } else if ("description".equals(currentTag, ignoreCase = true)) {
+                                placemarkDesc = text
+                            }
+                        } else if (inPlacemark && inPoint) {
+                            if ("coordinates".equals(currentTag, ignoreCase = true)) {
+                                pointCoords = text
+                            }
+                        } else if (inPlacemark && inLineString) {
+                            if ("coordinates".equals(currentTag, ignoreCase = true)) {
+                                lineCoords = text
+                            }
+                        }
+                    }
+                }
+                org.xmlpull.v1.XmlPullParser.END_TAG -> {
+                    if ("Placemark".equals(tagName, ignoreCase = true)) {
+                        inPlacemark = false
+                        
+                        // Parse simple Point coords
+                        if (pointCoords.isNotEmpty()) {
+                            val parts = pointCoords.split(",")
+                            if (parts.size >= 2) {
+                                val lon = parts[0].trim().toDoubleOrNull()
+                                val lat = parts[1].trim().toDoubleOrNull()
+                                val alt = if (parts.size >= 3) parts[2].trim().toDoubleOrNull() ?: 0.0 else 0.0
+                                if (lat != null && lon != null) {
+                                    points.add(KmlPoint(
+                                        name = placemarkName.ifEmpty { "KML Point" },
+                                        description = placemarkDesc,
+                                        latitude = lat,
+                                        longitude = lon,
+                                        elevation = alt
+                                    ))
+                                }
+                            }
+                            pointCoords = ""
+                        }
+                        
+                        // Parse LineString coords
+                        if (lineCoords.isNotEmpty()) {
+                            val geoPoints = mutableListOf<org.osmdroid.util.GeoPoint>()
+                            val coordPairs = lineCoords.split(Regex("\\s+"))
+                            coordPairs.forEach { pair ->
+                                val parts = pair.split(",")
+                                if (parts.size >= 2) {
+                                    val lon = parts[0].trim().toDoubleOrNull()
+                                    val lat = parts[1].trim().toDoubleOrNull()
+                                    if (lat != null && lon != null) {
+                                        geoPoints.add(org.osmdroid.util.GeoPoint(lat, lon))
+                                    }
+                                }
+                            }
+                            if (geoPoints.isNotEmpty()) {
+                                lines.add(KmlLine(
+                                    name = placemarkName.ifEmpty { "KML Line" },
+                                    description = placemarkDesc,
+                                    points = geoPoints
+                                ))
+                            }
+                            lineCoords = ""
+                        }
+                        
+                    } else if ("Point".equals(tagName, ignoreCase = true)) {
+                        inPoint = false
+                    } else if ("LineString".equals(tagName, ignoreCase = true)) {
+                        inLineString = false
+                    }
+                    currentTag = ""
+                }
+            }
+            eventType = parser.next()
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+    
+    return Pair(points, lines)
+}
+
+fun parseKmz(inputStream: java.io.InputStream): Pair<List<KmlPoint>, List<KmlLine>> {
+    val points = mutableListOf<KmlPoint>()
+    val lines = mutableListOf<KmlLine>()
+    try {
+        val zipInputStream = java.util.zip.ZipInputStream(inputStream)
+        var zipEntry = zipInputStream.nextEntry
+        while (zipEntry != null) {
+            if (zipEntry.name.endsWith(".kml", ignoreCase = true)) {
+                val bytes = zipInputStream.readBytes()
+                val byteStream = java.io.ByteArrayInputStream(bytes)
+                val (parsedPoints, parsedLines) = parseKml(byteStream)
+                points.addAll(parsedPoints)
+                lines.addAll(parsedLines)
+            }
+            zipInputStream.closeEntry()
+            zipEntry = zipInputStream.nextEntry
+        }
+        zipInputStream.close()
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+    return Pair(points, lines)
+}
+
+fun createCircleMarkerDrawable(context: android.content.Context, colorHex: Int, sizeDp: Int = 18): android.graphics.drawable.Drawable {
+    val density = context.resources.displayMetrics.density
+    val sizePx = (sizeDp * density).toInt()
+    val bitmap = android.graphics.Bitmap.createBitmap(sizePx, sizePx, android.graphics.Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bitmap)
+    val paint = android.graphics.Paint().apply {
+        color = colorHex
+        style = android.graphics.Paint.Style.FILL
+        isAntiAlias = true
+    }
+    val strokePaint = android.graphics.Paint().apply {
+        color = android.graphics.Color.WHITE
+        style = android.graphics.Paint.Style.STROKE
+        strokeWidth = 2f * density
+        isAntiAlias = true
+    }
+    val radius = sizePx / 2f
+    canvas.drawCircle(radius, radius, radius - 2f * density, paint)
+    canvas.drawCircle(radius, radius, radius - 2f * density, strokePaint)
+    return android.graphics.drawable.BitmapDrawable(context.resources, bitmap)
 }
 
