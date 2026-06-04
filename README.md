@@ -1,21 +1,43 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# 🌲 GeoField Pro — Advanced GPS Field Book & Geological Mapping
 
-# Run and deploy your AI Studio app
+[![Kotlin](https://img.shields.io/badge/Kotlin-1.9.0-purple.svg)](https://kotlinlang.org)
+[![Platform](https://img.shields.io/badge/Platform-Android-green.svg)](https://developer.android.com)
+[![AlpineQuest Inspired](https://img.shields.io/badge/GPS-AlpineQuest_Style-brightgreen.svg)](#)
 
-This contains everything you need to run your app locally.
+GeoField Pro is a professional, high-precision, offline-first mobile field data logging and geological mapping tool. Tailored for geologists, field surveyors, mining engineers, and outdoor explorers, it acts as a digital field logbook with advanced real-time navigation overlay, track recording, and structured data exporting.
 
-View your app in AI Studio: https://ai.studio/apps/9033a0e4-9bd4-42fc-ab40-df21a280d8c3
+**Join the Community:**  
+📢 Telegram: [@geofieldpro](https://t.me/geofieldpro)  
+💻 GitHub: [farzad-f](https://github.com/farzad-f)
 
-## Run Locally
+---
 
-**Prerequisites:**  [Android Studio](https://developer.android.com/studio)
+## 🚀 Key Achievements & Features
 
+*   **🌐 Comprehensive Map Providers**: Toggle seamlessly between multiple high-resolution online web-maps:
+    *   *Google Satellite Imagery*
+    *   *Google Hybrid (Satellite + Roads)*
+    *   *Google Terrain / Topological*
+    *   *Google Standard Roadster*
+    *   *OpenTopoMap (Topo Contours)*
+    *   *OpenStreetMap (Standard OSM)*
+*   **📡 AlpineQuest-Style Navigation Overlay**:
+    *   Neon alignment target crosshairs with real-time center coordinates reporting.
+    *   Multi-GNSS active satellite tracking indicators.
+    *   Accuracy color-graded pulsing locator circles with LED status indicators (Green: Excellent Precision `< 2.8m`, Orange: Warning, Red: Low accuracy signal).
+    *   Anchor-lock toggle for automatic camera tracking centration.
+*   **🗺️ Geographic Coordination & Grid Conversion**:
+    *   Provides automatic coordinate conversion metrics from WGS84 GPS degrees to metric Universal Transverse Mercator (UTM) Zone grid positions dynamically.
+*   **🗂️ Rich Geological Data Logging**:
+    *   Log specific strike, dip, geological rock units, and structural observations.
+    *   Generate structured multi-sheet Microsoft Excel and GPX logs for rapid importing into ArcGIS, QGIS, or Google Earth.
+*   **🛤️ Real-time Track Recorder**: Log sequential pathways offline with elevation profile charts and total computed lengths.
 
-1. Open Android Studio
-2. Select **Open** and choose the directory containing this project
-3. Allow Android Studio to fix any incompatibilities as it imports the project.
-4. Create a file named `.env` in the project directory and set `GEMINI_API_KEY` in that file to your Gemini API key (see `.env.example` for an example)
-5. Remove this line from the app's `build.gradle.kts` file: `signingConfig = signingConfigs.getByName("debugConfig")`
-6. Run the app on an emulator or physical device
+---
+
+## ✉️ Contact & Developer Profile
+
+*   **Developer**: Farzad Fathollazadeh
+*   **GitHub**: [@farzad-f](https://github.com/farzad-f)
+*   **Email**: [farzadfathollazadeh@gmail.com](mailto:farzadfathollazadeh@gmail.com)
+*   **Telegram Portal**: [t.me/geofieldpro](https://t.me/geofieldpro)

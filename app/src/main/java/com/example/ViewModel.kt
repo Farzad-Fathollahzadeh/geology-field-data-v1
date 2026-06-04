@@ -1212,6 +1212,18 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun updateStation(station: Station) {
+        viewModelScope.launch {
+            dao.insertStation(station)
+        }
+    }
+
+    fun updateObservation(observation: Observation) {
+        viewModelScope.launch {
+            dao.insertObservation(observation)
+        }
+    }
+
     private fun toCsvString(headers: List<String>, rows: List<List<Any?>>): String {
         val sb = java.lang.StringBuilder()
         sb.append(headers.joinToString(",") { escapeCsvField(it) }).append("\n")

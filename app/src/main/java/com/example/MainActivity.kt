@@ -43,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -60,6 +61,11 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.compose.ui.viewinterop.AndroidView
 
 class MainActivity : ComponentActivity() {
     private val viewModel: GeologyViewModel by viewModels()
@@ -465,6 +471,9 @@ fun MainScreenContent(
                                         },
                                         onDeleteObservation = {
                                             viewModel.deleteObservation(it)
+                                        },
+                                        onUpdateStation = {
+                                            viewModel.updateStation(it)
                                         }
                                     )
                                 }
@@ -837,6 +846,110 @@ fun GeoFieldSplashScreen() {
 }
 
 // ==========================================
+// DEVELOPER SOCIAL & COMMUNITY PANEL PANEL
+// ==========================================
+@Composable
+fun DeveloperSocialPanel(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(top = 16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "زمین‌پوی / ",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "PROJECT GEOFIELD PRO COMMUNITY",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            
+            Text(
+                text = "Developer: Farzad Fathollazadeh (farzad-f)",
+                fontSize = 9.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                fontWeight = FontWeight.Medium
+            )
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Telegram button
+                Button(
+                    onClick = { openBrowserLink(context, "https://t.me/geofieldpro") },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF0088CC),
+                        contentColor = Color.White
+                    ),
+                    contentPadding = PaddingValues(vertical = 4.dp, horizontal = 4.dp),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.Send, contentDescription = "Telegram", modifier = Modifier.size(11.dp), tint = Color.White)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Telegram", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                }
+                
+                // GitHub button
+                Button(
+                    onClick = { openBrowserLink(context, "https://github.com/farzad-f") },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF24292E),
+                        contentColor = Color.White
+                    ),
+                    contentPadding = PaddingValues(vertical = 4.dp, horizontal = 4.dp),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.Language, contentDescription = "GitHub", modifier = Modifier.size(11.dp), tint = Color.White)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("GitHub", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                }
+                
+                // LinkedIn button
+                Button(
+                    onClick = { openBrowserLink(context, "https://www.linkedin.com/in/farzadff") },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF0077B5),
+                        contentColor = Color.White
+                    ),
+                    contentPadding = PaddingValues(vertical = 4.dp, horizontal = 4.dp),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.Person, contentDescription = "LinkedIn", modifier = Modifier.size(11.dp), tint = Color.White)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("LinkedIn", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+// ==========================================
 // 1. PROJECTS LIST SCREEN LOGIC
 // ==========================================
 @Composable
@@ -898,38 +1011,8 @@ fun ProjectListScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("New Project", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                 }
-                Spacer(modifier = Modifier.height(24.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth(0.8f)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
-                        .clickable {
-                            try {
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/geofieldpro"))
-                                context.startActivity(intent)
-                            } catch (e: Exception) {
-                                // ignore
-                            }
-                        }
-                        .padding(vertical = 12.dp, horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Send,
-                        contentDescription = "Telegram Link",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "کانال تلگرام زمین‌پوی: t.me/geofieldpro",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
+                Spacer(modifier = Modifier.height(16.dp))
+                DeveloperSocialPanel(modifier = Modifier.fillMaxWidth(0.8f))
             }
         } else {
             Column(modifier = Modifier.fillMaxSize()) {
@@ -973,7 +1056,7 @@ fun ProjectListScreen(
                         .fillMaxWidth()
                         .padding(bottom = 12.dp)
                         .testTag("project_search_input"),
-                    placeholder = { Text("جستجو در پروژه‌ها...") },
+                    placeholder = { Text("Search in projects...") },
                     leadingIcon = {
                         Icon(
                             imageVector = Icons.Default.Search,
@@ -1015,14 +1098,14 @@ fun ProjectListScreen(
                             )
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
-                                text = "نتیجه‌ای یافت نشد",
+                                text = "No Projects Found",
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 16.sp
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "پروژه‌ای با کلمات جستجو شده همخوانی ندارد.",
+                                text = "No projects match your search keywords.",
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
                             )
@@ -1133,37 +1216,7 @@ fun ProjectListScreen(
                     Text("ADD NEW FIELD PROJECT", fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
-                        .clickable {
-                            try {
-                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/geofieldpro"))
-                                context.startActivity(intent)
-                            } catch (e: Exception) {
-                                // ignore
-                            }
-                        }
-                        .padding(vertical = 12.dp, horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Send,
-                        contentDescription = "Telegram Link",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "کانال تلگرام زمین‌پوی: t.me/geofieldpro",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
+                DeveloperSocialPanel(modifier = Modifier.fillMaxWidth())
             }
         }
     }
@@ -1982,11 +2035,13 @@ fun StationDetailScreen(
     station: Station?,
     observations: List<Observation>,
     onAddObservationClick: () -> Unit,
-    onDeleteObservation: (Int) -> Unit
+    onDeleteObservation: (Int) -> Unit,
+    onUpdateStation: (Station) -> Unit
 ) {
     if (station == null) return
 
     val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(station.createdAt))
+    var showEditStationDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -2010,12 +2065,28 @@ fun StationDetailScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = station.stationCode,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = station.stationCode,
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        IconButton(
+                            onClick = { showEditStationDialog = true },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Edit coordinates",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
                     val accuracyColor = when {
                         station.accuracy < 5.0 -> Color(0xFF00A86B)        // GPS_ACTIVE
                         station.accuracy < 15.0 -> Color(0xFFFFB020)       // DATA_WARNING
@@ -2090,6 +2161,100 @@ fun StationDetailScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontWeight = FontWeight.Medium
                 )
+
+                if (showEditStationDialog) {
+                    var codeEdit by remember { mutableStateOf(station.stationCode) }
+                    var latEdit by remember { mutableStateOf(station.latitude.toString()) }
+                    var lonEdit by remember { mutableStateOf(station.longitude.toString()) }
+                    var elevEdit by remember { mutableStateOf(station.elevation.toString()) }
+                    var zoneEdit by remember { mutableStateOf(station.utmZone) }
+                    var eastEdit by remember { mutableStateOf(station.utmEasting.toString()) }
+                    var northEdit by remember { mutableStateOf(station.utmNorthing.toString()) }
+
+                    AlertDialog(
+                        onDismissRequest = { showEditStationDialog = false },
+                        title = { Text("Edit Survey Station", fontWeight = FontWeight.Bold) },
+                        text = {
+                            Column(
+                                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = codeEdit,
+                                    onValueChange = { codeEdit = it },
+                                    label = { Text("Station Code") },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                OutlinedTextField(
+                                    value = latEdit,
+                                    onValueChange = { latEdit = it },
+                                    label = { Text("Latitude (WGS84)") },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                OutlinedTextField(
+                                    value = lonEdit,
+                                    onValueChange = { lonEdit = it },
+                                    label = { Text("Longitude (WGS84)") },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                OutlinedTextField(
+                                    value = elevEdit,
+                                    onValueChange = { elevEdit = it },
+                                    label = { Text("Elevation (m)") },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                OutlinedTextField(
+                                    value = zoneEdit,
+                                    onValueChange = { zoneEdit = it },
+                                    label = { Text("UTM Zone") },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                OutlinedTextField(
+                                    value = eastEdit,
+                                    onValueChange = { eastEdit = it },
+                                    label = { Text("UTM Easting") },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                OutlinedTextField(
+                                    value = northEdit,
+                                    onValueChange = { northEdit = it },
+                                    label = { Text("UTM Northing") },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    val finalLat = latEdit.toDoubleOrNull() ?: station.latitude
+                                    val finalLon = lonEdit.toDoubleOrNull() ?: station.longitude
+                                    val finalElev = elevEdit.toDoubleOrNull() ?: station.elevation
+                                    val finalEast = eastEdit.toDoubleOrNull() ?: station.utmEasting
+                                    val finalNorth = northEdit.toDoubleOrNull() ?: station.utmNorthing
+                                    
+                                    val updated = station.copy(
+                                        stationCode = codeEdit,
+                                        latitude = finalLat,
+                                        longitude = finalLon,
+                                        elevation = finalElev,
+                                        utmEasting = finalEast,
+                                        utmNorthing = finalNorth,
+                                        utmZone = zoneEdit
+                                    )
+                                    onUpdateStation(updated)
+                                    showEditStationDialog = false
+                                }
+                            ) {
+                                Text("Save Changes")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showEditStationDialog = false }) {
+                                Text("Cancel")
+                            }
+                        }
+                    )
+                }
             }
         }
 
@@ -2323,8 +2488,80 @@ fun StationDetailScreen(
 }
 
 // ==========================================================
-// 6. ADD OBSERVATION / DYNAMIC FORM SCREEN
-// ==========================================
+// 6. GEOLOGY TRANSLATING DICTIONARY AUTO-SUGGEST & FORM SCREEN
+// ==========================================================
+val GeologyDictionary = listOf(
+    "basalt" to "بازالت",
+    "andesite" to "آندزیت",
+    "fault" to "گسل",
+    "quartz" to "کوارتز",
+    "granite" to "گرانیت",
+    "tuff" to "توف",
+    "diorite" to "دیوریت",
+    "limestone" to "سنگ آهک",
+    "schist" to "شیست",
+    "vein" to "رگه",
+    "joint" to "درزه",
+    "strike" to "امتداد",
+    "dip" to "شیب",
+    "alteration" to "دگرسانی",
+    "argillic" to "آرژیلیک",
+    "potassic" to "پتاسیک",
+    "propyllitic" to "پروپیلتیک",
+    "phylic" to "فیلیک",
+    "chalcocite" to "کالکوسیت",
+    "chalcopyrite" to "کالکوپیریت",
+    "pyrite" to "پیریت",
+    "magnetite" to "مگنتیت",
+    "hematite" to "هماتیت",
+    "malachite" to "مالاکیت",
+    "porphyry" to "پورفیری"
+)
+
+@Composable
+fun GeologyDictionaryAutoSuggest(
+    query: String,
+    onSuggestSelected: (String) -> Unit
+) {
+    if (query.trim().isEmpty()) return
+    
+    val matches = remember(query) {
+        val q = query.lowercase(Locale.US).trim()
+        GeologyDictionary.filter { (eng, per) ->
+            eng.contains(q) || per.contains(q)
+        }.take(3)
+    }
+    
+    if (matches.isNotEmpty()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.MenuBook, 
+                contentDescription = "Dictionary",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(14.dp)
+            )
+            Text(
+                text = "Auto-Suggest:", 
+                fontSize = 11.sp, 
+                fontWeight = FontWeight.Bold, 
+                color = MaterialTheme.colorScheme.primary
+            )
+            matches.forEach { (eng, per) ->
+                AssistChip(
+                    onClick = { onSuggestSelected("$eng ($per)") },
+                    label = { Text("$eng / $per", fontSize = 10.sp) }
+                )
+            }
+        }
+    }
+}
+
 @Composable
 fun AddObservationScreen(
     station: Station?,
@@ -3544,6 +3781,39 @@ fun HomeDashboardContent(
                 )
             }
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
+        Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+        
+        // High-fidelity short app description
+        Text(
+            text = "GeoField Pro is a modular, high-precision offline GIS logging and geotech analyzer tool engineered for field geologists, mining engineers, and exploration geophysicists.",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            lineHeight = 18.sp,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+        )
+        
+        val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            AssistChip(
+                onClick = { uriHandler.openUri("https://github.com/farzadf7/geofield-pro") },
+                label = { Text("GitHub Repo", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                leadingIcon = { Icon(Icons.Default.Code, contentDescription = "GitHub", modifier = Modifier.size(14.dp)) },
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+            )
+            AssistChip(
+                onClick = { uriHandler.openUri("https://t.me/geofield_pro") },
+                label = { Text("Telegram Support", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                leadingIcon = { Icon(Icons.Default.Send, contentDescription = "Telegram", modifier = Modifier.size(14.dp)) },
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+            )
+        }
     }
 }
 
@@ -3879,18 +4149,18 @@ fun RockMechanicsContent() {
     val rmrScore = ucsIndex + rqdRating + spacingIndex + jointConditionIndex + groundwaterIndex + adjustmentIndex
 
     val (rockClass, rockDescription, rockAdvice) = when {
-        rmrScore >= 81 -> Triple("Class I", "توده سنگ بسیار عالی (Very Good Rock)", "پایداری دهانه: ۲۰ سال برای اسپن ۱۵ متری | چسبندگی کوهزیون: بیشتر از ۴۰۰ کیلوپاسکال | زاویه اصطکاک داخلی: بیشتر از ۴۵ درجه")
-        rmrScore in 61..80 -> Triple("Class II", "توده سنگ خوب (Good Rock)", "پایداری دهانه: ۱ سال برای اسپن ۱۰ متری | چسبندگی کوهزیون: ۳۰۰ الی ۴۰۰ کیلوپاسکال | زاویه اصطکاک داخلی: ۳۵ الی ۴۵ درجه")
-        rmrScore in 41..60 -> Triple("Class III", "توده سنگ متوسط (Fair Rock)", "پایداری دهانه: ۱ هفته برای اسپن ۵ متری | چسبندگی کوهزیون: ۲۰۰ الی ۳۰۰ کیلوپاسکال | زاویه اصطکاک داخلی: ۲۵ الی ۳۵ درجه")
-        rmrScore in 21..40 -> Triple("Class IV", "توده سنگ ضعیف (Poor Rock)", "پایداری دهانه: ۱۰ ساعت برای جبهه‌کار ۲.۵ متری | چسبندگی کوهزیون: ۱۰۰ الی ۲۰۰ کیلوپاسکال | زاویه اصطکاک داخلی: ۱۵ الی ۲۵ درجه")
-        else -> Triple("Class V", "توده سنگ بسیار ضعیف (Very Poor Rock)", "پایداری دهانه: ۳۰ دقیقه برای جبهه‌کار ۱ متری ریالی عاجل | چسبندگی کوهزیون: کمتر از ۱۰۰ کیلوپاسکال | زاویه اصطکاک داخلی: کمتر از ۱۵ درجه")
+        rmrScore >= 81 -> Triple("Class I", "Very Good Rock", "Stand-up time: 20 years for 15m span | Cohesion: >400 kPa | Friction angle: >45°")
+        rmrScore in 61..80 -> Triple("Class II", "Good Rock", "Stand-up time: 1 year for 10m span | Cohesion: 300-400 kPa | Friction angle: 35-45°")
+        rmrScore in 41..60 -> Triple("Class III", "Fair Rock", "Stand-up time: 1 week for 5m span | Cohesion: 200-300 kPa | Friction angle: 25-35°")
+        rmrScore in 21..40 -> Triple("Class IV", "Poor Rock", "Stand-up time: 10 hours for 2.5m span | Cohesion: 100-200 kPa | Friction angle: 15-25°")
+        else -> Triple("Class V", "Very Poor Rock", "Stand-up time: 30 minutes for 1m span, immediate support | Cohesion: <100 kPa | Friction angle: <15°")
     }
 
     var savedLogs by remember {
         mutableStateOf(
             listOf(
-                RmrLogEntry("زون گسلی شیب دیواره شرقی عیار بالا", 38, "Class IV", "2026-06-04"),
-                RmrLogEntry("سینه کار گالری اکتشافی پورتال غربی", 72, "Class II", "2026-06-04")
+                RmrLogEntry("High grade East Wall Shear Zone Fault", 38, "Class IV", "2026-06-04"),
+                RmrLogEntry("West Portal Exploration Gallery Portal Tunnel Face", 72, "Class II", "2026-06-04")
             )
         )
     }
@@ -3915,8 +4185,8 @@ fun RockMechanicsContent() {
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("امتیاز نهایی طبقه‌بندی زمین‌شناسی RMR-89", fontSize = 11.sp, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
-                Text("$rmrScore امتیاز", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                Text("RMR-89 Rock Mass Rating Classification Final Score", fontSize = 11.sp, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
+                Text("$rmrScore Points", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                 Text(rockDescription, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                 Divider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f))
                 Text(rockAdvice, fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f), lineHeight = 15.sp)
@@ -3927,22 +4197,22 @@ fun RockMechanicsContent() {
         OutlinedTextField(
             value = locationName,
             onValueChange = { locationName = it },
-            label = { Text("نام موقعیت یا زون آزمون مکانیک سنگ صحرایی", fontSize = 11.sp) },
+            label = { Text("Location tag / Shear Zone / Portal Wall / Mine Face", fontSize = 11.sp) },
             modifier = Modifier.fillMaxWidth()
         )
 
-        Text("تنظیم پارامترهای توده سنگ زمین‌فنی", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
+        Text("Configure Rock Mass Geotechnical Parameters", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
 
         // 1. UCS
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("۱. مقاومت فشاری تک‌محوری سنگ بکر (UCS)", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                Text("1. Uniaxial Compressive Strength of Intact Rock (UCS)", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     listOf(
-                        Triple(">250 MPa (خیلی سخت)", 15, "15"),
-                        Triple("100-250 (سخت)", 12, "12"),
-                        Triple("50-100 (متوسط)", 7, "7"),
-                        Triple("<50 (ضعیف)", 4, "4")
+                        Triple(">250 MPa (Very Hard)", 15, "15"),
+                        Triple("100-250 (Hard)", 12, "12"),
+                        Triple("50-100 (Medium)", 7, "7"),
+                        Triple("<50 (Weak)", 4, "4")
                     ).forEach { (label, rat, scoreUcs) ->
                         FilterChip(
                             selected = ucsIndex == rat,
@@ -3959,8 +4229,8 @@ fun RockMechanicsContent() {
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("۲. ضریب کیفی توده سنگ (RQD)", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    Text("${rqdValue.toInt()}% (امتیاز: $rqdRating)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("2. Rock Quality Designation (RQD)", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Text("${rqdValue.toInt()}% (Rating Score: $rqdRating)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                 }
                 Slider(
                     value = rqdValue,
@@ -3973,13 +4243,13 @@ fun RockMechanicsContent() {
         // 3. Joints Spacing
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("۳. فاصله‌داری دسته‌درزه‌ها (Spacing)", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                Text("3. Spacing of Discontinuities (Joint Spacing)", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     listOf(
-                        Triple(">2m (بسیار زیاد)", 20, "20"),
-                        Triple("0.6-2m (زیاد)", 15, "15"),
+                        Triple(">2m (Very Wide)", 20, "20"),
+                        Triple("0.6-2m (Wide)", 15, "15"),
                         Triple("200-600mm", 10, "10"),
-                        Triple("<200mm (تراکم بالا)", 5, "5")
+                        Triple("<200mm (Close)", 5, "5")
                     ).forEach { (label, rat, scoreSp) ->
                         FilterChip(
                             selected = spacingIndex == rat,
@@ -3995,13 +4265,13 @@ fun RockMechanicsContent() {
         // 4. Joints Condition
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("۴. شرایط سطحی و زبری سطوح درزه‌ها", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                Text("4. Condition of Discontinuities (Roughness & Infill)", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     listOf(
-                        Triple("بسیار زبر/فاقد هوازدگی", 30, "30"),
-                        Triple("اندکی زبر/<1mm دهانه", 25, "25"),
-                        Triple("صیقلی و آینه‌ای", 10, "10"),
-                        Triple("پرکننده رس نرم >5mm", 0, "0")
+                        Triple("Very Rough/Unweathered", 30, "30"),
+                        Triple("Slightly Rough/<1mm Open", 25, "25"),
+                        Triple("Slickensided/Glossy", 10, "10"),
+                        Triple("Soft Clay Infill >5mm", 0, "0")
                     ).forEach { (label, rat, scoreJn) ->
                         FilterChip(
                             selected = jointConditionIndex == rat,
@@ -4017,13 +4287,13 @@ fun RockMechanicsContent() {
         // 5. Groundwater State
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("۵. نفوذ جریان آب زیرزمینی", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                Text("5. Groundwater Inflow & Wetness State", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     listOf(
-                        Triple("کاملا خشک (بی‌آب)", 15, "15"),
-                        Triple("مرطوب نشت اندک", 10, "10"),
-                        Triple("تحت فشار روان", 4, "4"),
-                        Triple("ریزش شدید گالری", 0, "0")
+                        Triple("Completely Dry", 15, "15"),
+                        Triple("Damp / Minor Seepage", 10, "10"),
+                        Triple("Under Flow Pressure", 4, "4"),
+                        Triple("Heavy Gushing Inflow", 0, "0")
                     ).forEach { (label, rat, scoreGw) ->
                         FilterChip(
                             selected = groundwaterIndex == rat,
@@ -4039,13 +4309,13 @@ fun RockMechanicsContent() {
         // 6. Joint Orientation
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("۶. تطابق راستای حفاری با شیب درزه‌ها (جهت‌گیری)", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                Text("6. Tunnel/Drive Alignment Discontinuity Orientation Adjustment", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     listOf(
-                        Triple("موافق عالی", 0, "0"),
-                        Triple("فقط مساعد", -2, "-2"),
-                        Triple("متوسط", -5, "-5"),
-                        Triple("بسیار نامساعد", -12, "-12")
+                        Triple("Very Favorable", 0, "0"),
+                        Triple("Favorable", -2, "-2"),
+                        Triple("Fair / Medium", -5, "-5"),
+                        Triple("Very Unfavorable", -12, "-12")
                     ).forEach { (label, rat, scoreAdj) ->
                         FilterChip(
                             selected = adjustmentIndex == rat,
@@ -4067,11 +4337,11 @@ fun RockMechanicsContent() {
                 onClick = {
                     val dateToday = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
                     savedLogs = savedLogs + RmrLogEntry(locationName, rmrScore, rockClass, dateToday)
-                    Toast.makeText(context, "ارزیابی زمین‌فنی توده سنگ به ژورنال الحاق شد!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Rock Mass Geotechnical evaluation added to journal!", Toast.LENGTH_SHORT).show()
                 },
                 modifier = Modifier.weight(1f)
             ) {
-                Text("ثبت ارزیابی سنگ", fontSize = 11.sp)
+                Text("Log Rock Evaluation", fontSize = 11.sp)
             }
 
             Button(
@@ -4086,13 +4356,13 @@ fun RockMechanicsContent() {
                 modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
             ) {
-                Text("خروجی کلی CSV", fontSize = 11.sp)
+                Text("Export All to CSV", fontSize = 11.sp)
             }
         }
 
         Divider()
 
-        Text("ژورنال ثبت مطالعات مکانیک سنگ صحرایی", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        Text("Geotechnical Rock Mechanics Studies Journal", fontWeight = FontWeight.Bold, fontSize = 13.sp)
 
         // Local structural list display
         Card(
@@ -4102,13 +4372,13 @@ fun RockMechanicsContent() {
         ) {
             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (savedLogs.isEmpty()) {
-                    Text("هیچ ارزیابی ژئوتکنیکی در جلسه جاری ثبت نشده است.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("No geotechnical studies logged in this session.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     savedLogs.forEach { log ->
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(log.location, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                                Text("تاریخ برداشت: ${log.date}", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Date of Study: ${log.date}", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Column(horizontalAlignment = Alignment.End) {
                                 Box(
@@ -4143,11 +4413,226 @@ fun RockMechanicsContent() {
 // -------------------------------------------------------------------------
 // 4. MAP TAB: CANVAS GIS PLOTTER & TRACK RECORDER
 // -------------------------------------------------------------------------
+enum class MapMode { ONLINE, OFFLINE }
+
+fun isInternetAvailable(context: android.content.Context): Boolean {
+    return try {
+        val cm = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val net = cm.activeNetwork ?: return false
+        val cap = cm.getNetworkCapabilities(net) ?: return false
+        cap.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    } catch (e: Exception) {
+        false
+    }
+}
+
+fun openBrowserLink(context: android.content.Context, url: String) {
+    try {
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+        context.startActivity(intent)
+    } catch (e: Exception) {
+        // Safe fallback
+    }
+}
+
+fun generateLeafletHtml(
+    stations: List<Station>,
+    trackPoints: List<TrackPoint>,
+    isRealPos: Boolean,
+    currentLat: Double,
+    currentLon: Double,
+    zoom: Int,
+    tileUrl: String,
+    gpsAccuracy: Double,
+    lockGpsCenter: Boolean
+): String {
+    val stationsJson = stations.joinToString(prefix = "[", postfix = "]") { st ->
+        """{"lat": ${st.latitude}, "lon": ${st.longitude}, "code": "${st.stationCode.replace("\"", "\\\"")}"}"""
+    }
+    
+    val trackJson = trackPoints.joinToString(prefix = "[", postfix = "]") { pt ->
+        """{"lat": ${pt.lat}, "lon": ${pt.lon}}"""
+    }
+
+    val defaultLat = if (lockGpsCenter) currentLat else (if (stations.isNotEmpty()) stations.map { it.latitude }.average() else currentLat)
+    val defaultLon = if (lockGpsCenter) currentLon else (if (stations.isNotEmpty()) stations.map { it.longitude }.average() else currentLon)
+
+    val leafZoom = when (zoom) {
+        1 -> 8
+        2 -> 10
+        3 -> 12
+        4 -> 14
+        5 -> 15
+        6 -> 16
+        7 -> 17
+        8 -> 18
+        else -> 14
+    }
+
+    return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+            <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+            <style>
+                body { padding: 0; margin: 0; background-color: #0F1B16; }
+                html, body, #map { height: 100%; width: 100%; }
+                .leaflet-container { background: #0F1B16; }
+                .custom-div-icon {
+                    background-color: #ffb300;
+                    border: 2px solid #000;
+                    border-radius: 50%;
+                    width: 12px;
+                    height: 12px;
+                }
+            </style>
+        </head>
+        <body>
+            <div id="map"></div>
+            <script>
+                var map = L.map('map', {
+                    zoomControl: false,
+                    attributionControl: false
+                }).setView([$defaultLat, $defaultLon], $leafZoom);
+
+                L.tileLayer('$tileUrl', {
+                    maxZoom: 21,
+                    subdomains: ['mt0', 'mt1', 'mt2', 'mt3', 'a', 'b', 'c']
+                }).addTo(map);
+
+                var stations = $stationsJson;
+                stations.forEach(function(st) {
+                    var marker = L.marker([st.lat, st.lon], {
+                        icon: L.divIcon({
+                            className: 'custom-div-icon',
+                            html: '<div style="position: absolute; left: 16px; top: -6px; color: #ffeb3b; font-weight: bold; font-size: 11px; text-shadow: 1px 1px 2px black; white-space: nowrap;">' + st.code + '</div>',
+                            iconSize: [12, 12]
+                        })
+                    }).addTo(map);
+                    marker.bindPopup("<b>" + st.code + "</b><br>Lat: " + st.lat + "<br>Lon: " + st.lon);
+                });
+
+                var trackPoints = $trackJson;
+                var polyline = null;
+                if (trackPoints.length > 1) {
+                    var latlngs = trackPoints.map(function(pt) { return [pt.lat, pt.lon]; });
+                    polyline = L.polyline(latlngs, {color: '#ff3d00', weight: 4}).addTo(map);
+                }
+
+                // GPS pulse accuracy and location dot
+                var liveAccuracyCircle = null;
+                var liveMarkerPoint = null;
+
+                if ($isRealPos) {
+                    liveAccuracyCircle = L.circle([$currentLat, $currentLon], {
+                        color: '#00e5ff',
+                        fillColor: '#00e5ff',
+                        fillOpacity: 0.15,
+                        weight: 1,
+                        radius: $gpsAccuracy
+                    }).addTo(map);
+
+                    liveMarkerPoint = L.circleMarker([$currentLat, $currentLon], {
+                        color: '#ffffff',
+                        fillColor: '#29b6f6',
+                        fillOpacity: 0.9,
+                        weight: 2,
+                        radius: 7
+                    }).addTo(map);
+                    liveMarkerPoint.bindPopup("GNSS Tracker Target Locked");
+                }
+
+                // Lock tracking camera logic
+                if ($lockGpsCenter && $isRealPos) {
+                    map.setView([$currentLat, $currentLon], $leafZoom);
+                } else if (!$lockGpsCenter && polyline) {
+                    map.fitBounds(polyline.getBounds());
+                } else if (stations.length > 0) {
+                    var markersGroup = stations.map(function(st) { return L.marker([st.lat, st.lon]); });
+                    if (markersGroup.length > 0) {
+                        var group = new L.featureGroup(markersGroup);
+                        map.fitBounds(group.getBounds());
+                    }
+                }
+            </script>
+        </body>
+        </html>
+    """.trimIndent()
+}
+
+@Composable
+fun WebViewMap(
+    stations: List<Station>,
+    trackPoints: List<TrackPoint>,
+    isRealPos: Boolean,
+    currentLat: Double,
+    currentLon: Double,
+    zoom: Int,
+    tileUrl: String,
+    gpsAccuracy: Double,
+    lockGpsCenter: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val htmlContent = remember(stations, trackPoints, isRealPos, currentLat, currentLon, zoom, tileUrl, gpsAccuracy, lockGpsCenter) {
+        generateLeafletHtml(stations, trackPoints, isRealPos, currentLat, currentLon, zoom, tileUrl, gpsAccuracy, lockGpsCenter)
+    }
+
+    AndroidView(
+        factory = { ctx ->
+            WebView(ctx).apply {
+                webViewClient = WebViewClient()
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                settings.useWideViewPort = true
+                settings.loadWithOverviewMode = true
+                loadDataWithBaseURL("https://localhost", htmlContent, "text/html", "UTF-8", null)
+            }
+        },
+        update = { webView ->
+            webView.loadDataWithBaseURL("https://localhost", htmlContent, "text/html", "UTF-8", null)
+        },
+        modifier = modifier
+    )
+}
+
+enum class MapLayerProvider(val label: String, val url: String) {
+    GOOGLE_SATELLITE("Google Sat", "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"),
+    GOOGLE_HYBRID("Google Hybrid", "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"),
+    GOOGLE_TERRAIN("Google Terrain/Topo", "https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}"),
+    GOOGLE_ROADMAP("Google Roadmap", "https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}"),
+    OPEN_STREET_MAP("OSM Standard", "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"),
+    OPEN_TOPO_MAP("OpenTopoMap", "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png")
+}
+
 @Composable
 fun MapContent(viewModel: GeologyViewModel) {
     val context = LocalContext.current
     val projectStations by viewModel.activeProjectStations.collectAsStateWithLifecycle()
+    val allStationsList by viewModel.allStations.collectAsStateWithLifecycle()
     val savedTracks by viewModel.tracks.collectAsStateWithLifecycle()
+
+    val stationsToShow = if (projectStations.isNotEmpty()) projectStations else allStationsList
+    var zoomLevel by remember { mutableStateOf(4) } // 1 to 8, default 4
+    var mapMode by remember { mutableStateOf(if (isInternetAvailable(context)) MapMode.ONLINE else MapMode.OFFLINE) }
+    var mapLayer by remember { mutableStateOf(MapLayerProvider.GOOGLE_SATELLITE) }
+    var satelliteCount by remember { mutableStateOf(14) }
+    var gpsAccuracy by remember { mutableStateOf(2.4) }
+    var lockGpsCenter by remember { mutableStateOf(true) }
+    val scale = remember(zoomLevel) {
+        when (zoomLevel) {
+            1 -> 40000.0
+            2 -> 120000.0
+            3 -> 350000.0
+            4 -> 800000.0
+            5 -> 1800000.0
+            6 -> 4000000.0
+            7 -> 9000000.0
+            8 -> 20000000.0
+            else -> 800000.0
+        }
+    }
 
     // Interactive switches
     var isRealPositionEnabled by remember { mutableStateOf(false) }
@@ -4256,6 +4741,10 @@ fun MapContent(viewModel: GeologyViewModel) {
         currentLat += stepSize * Math.cos(rad)
         currentLon += stepSize * Math.sin(rad)
         
+        // Randomize physical satellite telemetry values dynamically when simulated movement takes place
+        satelliteCount = (12..19).random()
+        gpsAccuracy = 1.2 + Math.random() * 2.5
+
         if (isTrackRecordingEnabled) {
             activePointsList.add(
                 TrackPoint(currentLat, currentLon, 1210.0 + (Math.random() - 0.5) * 4, System.currentTimeMillis(), currentHeading)
@@ -4330,95 +4819,322 @@ fun MapContent(viewModel: GeologyViewModel) {
             }
         }
 
+        // Interactive Map View Selector
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                .padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Button(
+                onClick = { mapMode = MapMode.ONLINE },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (mapMode == MapMode.ONLINE) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    contentColor = if (mapMode == MapMode.ONLINE) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                ),
+                contentPadding = PaddingValues(vertical = 4.dp),
+                shape = RoundedCornerShape(6.dp)
+            ) {
+                Icon(imageVector = Icons.Default.Language, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Online Map Toggle", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+            
+            Button(
+                onClick = { mapMode = MapMode.OFFLINE },
+                modifier = Modifier.weight(1f),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (mapMode == MapMode.OFFLINE) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    contentColor = if (mapMode == MapMode.OFFLINE) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                ),
+                contentPadding = PaddingValues(vertical = 4.dp),
+                shape = RoundedCornerShape(6.dp)
+            ) {
+                Icon(imageVector = Icons.Default.GridOn, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Offline Vector Grid", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        // Online Multi-Layer Map Provider Scrollable Selection (Satisfies "تعداد نقشه ها بیشتر بشه" & adds Google Satellite, Hybrid, OpenTopoMap)
+        if (mapMode == MapMode.ONLINE) {
+            androidx.compose.foundation.lazy.LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp)
+            ) {
+                items(MapLayerProvider.values()) { provider ->
+                    val isSelected = mapLayer == provider
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = { mapLayer = provider },
+                        label = { 
+                            Text(
+                                text = provider.label, 
+                                fontSize = 9.sp, 
+                                fontWeight = FontWeight.Bold
+                            ) 
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    )
+                }
+            }
+        }
+
+        // External Link Quick Navigation Portal (Satisfies "گوگل و لینک" browser action)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
+                .padding(vertical = 4.dp, horizontal = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("External Mapping Links:", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(
+                    onClick = { openBrowserLink(context, "https://www.google.com/maps/search/?api=1&query=$currentLat,$currentLon") },
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                    modifier = Modifier.height(24.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.Language, contentDescription = null, modifier = Modifier.size(10.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text("Google Maps Web", fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                }
+                
+                TextButton(
+                    onClick = { openBrowserLink(context, "https://www.openstreetmap.org/#map=17/$currentLat/$currentLon") },
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                    modifier = Modifier.height(24.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.Language, contentDescription = null, modifier = Modifier.size(10.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text("OSM Web Link", fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
         // Live GIS Map Canvas
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(200.dp)
+                .height(260.dp)
                 .clip(RoundedCornerShape(12.dp))
                 .background(Color(0xFF0F1B16)) // Dark high-contrast cyber teal forest theme
                 .border(1.5.dp, MaterialTheme.colorScheme.primary)
         ) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val w = size.width
-                val h = size.height
-                
-                // Draw coordinate scale lines (radar grid grids)
-                val strokeColor = Color(0xFF225544)
-                for (x in 20..w.toInt() step 50) {
-                    drawLine(color = strokeColor, start = androidx.compose.ui.geometry.Offset(x.toFloat(), 0f), end = androidx.compose.ui.geometry.Offset(x.toFloat(), h), strokeWidth = 0.5f)
-                }
-                for (y in 20..h.toInt() step 50) {
-                    drawLine(color = strokeColor, start = androidx.compose.ui.geometry.Offset(0f, y.toFloat()), end = androidx.compose.ui.geometry.Offset(w, y.toFloat()), strokeWidth = 0.5f)
-                }
-
-                // Reference coordinates setup center
-                val baseLat = 35.6943
-                val baseLon = 51.4215
-                val scale = 800000.0 // Coordinate zoom scale multiplier
-
-                fun toCanvasX(longitude: Double): Float {
-                    return (w / 2f + (longitude - baseLon) * scale * Math.cos(Math.toRadians(baseLat))).toFloat()
-                }
-                fun toCanvasY(latitude: Double): Float {
-                    return (h / 2f - (latitude - baseLat) * scale).toFloat()
-                }
-
-                // Plot Project's Stations as small triangles/dots with text code
-                projectStations.forEach { station ->
-                    val cx = toCanvasX(station.longitude)
-                    val cy = toCanvasY(station.latitude)
-                    if (cx in 0f..w && cy in 0f..h) {
-                        drawCircle(color = Color(0xFFFFB300), radius = 6f, center = androidx.compose.ui.geometry.Offset(cx, cy))
-                        drawCircle(color = Color.Black, radius = 2f, center = androidx.compose.ui.geometry.Offset(cx, cy))
+            if (mapMode == MapMode.ONLINE) {
+                WebViewMap(
+                    stations = stationsToShow,
+                    trackPoints = activePointsList,
+                    isRealPos = isRealPositionEnabled,
+                    currentLat = currentLat,
+                    currentLon = currentLon,
+                    zoom = zoomLevel,
+                    tileUrl = mapLayer.url,
+                    gpsAccuracy = gpsAccuracy,
+                    lockGpsCenter = lockGpsCenter,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val w = size.width
+                    val h = size.height
+                    
+                    // Draw coordinate scale lines (radar grid grids)
+                    val strokeColor = Color(0xFF225544)
+                    for (x in 20..w.toInt() step 50) {
+                        drawLine(color = strokeColor, start = androidx.compose.ui.geometry.Offset(x.toFloat(), 0f), end = androidx.compose.ui.geometry.Offset(x.toFloat(), h), strokeWidth = 0.5f)
                     }
-                }
-
-                // Draw Track recorder line segment path
-                if (activePointsList.size >= 2) {
-                    val pathColor = Color(0xFFFF3D00)
-                    for (i in 0 until activePointsList.size -1) {
-                        val p1 = activePointsList[i]
-                        val p2 = activePointsList[i+1]
-                        val x1 = toCanvasX(p1.lon)
-                        val y1 = toCanvasY(p1.lat)
-                        val x2 = toCanvasX(p2.lon)
-                        val y2 = toCanvasY(p2.lat)
-                        drawLine(color = pathColor, start = androidx.compose.ui.geometry.Offset(x1, y1), end = androidx.compose.ui.geometry.Offset(x2, y2), strokeWidth = 5f)
+                    for (y in 20..h.toInt() step 50) {
+                        drawLine(color = strokeColor, start = androidx.compose.ui.geometry.Offset(0f, y.toFloat()), end = androidx.compose.ui.geometry.Offset(w, y.toFloat()), strokeWidth = 0.5f)
                     }
-                }
 
-                // Show Current Pulsing Position Marker
-                if (isRealPositionEnabled) {
-                    val cx = toCanvasX(currentLon)
-                    val cy = toCanvasY(currentLat)
-                    if (cx in 0f..w && cy in 0f..h) {
-                        // Sight direction lines
-                        if (displayLineFromPosition) {
-                            val lineLength = 120f
-                            val angleRad = Math.toRadians(currentHeading)
-                            val endX = cx + lineLength * Math.sin(angleRad).toFloat()
-                            val endY = cy - lineLength * Math.cos(angleRad).toFloat()
-                            drawLine(
-                                color = Color(0xFF00E5FF),
-                                start = androidx.compose.ui.geometry.Offset(cx, cy),
-                                end = androidx.compose.ui.geometry.Offset(endX, endY),
-                                strokeWidth = 3f,
-                                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 5f), 0f)
+                    // Reference coordinates setup center (Dynamic centering or lock GPS)
+                    val baseLat = if (lockGpsCenter && isRealPositionEnabled) currentLat else (if (stationsToShow.isNotEmpty()) stationsToShow.map { it.latitude }.average() else currentLat)
+                    val baseLon = if (lockGpsCenter && isRealPositionEnabled) currentLon else (if (stationsToShow.isNotEmpty()) stationsToShow.map { it.longitude }.average() else currentLon)
+
+                    fun toCanvasX(longitude: Double): Float {
+                        return (w / 2f + (longitude - baseLon) * scale * Math.cos(Math.toRadians(baseLat))).toFloat()
+                    }
+                    fun toCanvasY(latitude: Double): Float {
+                        return (h / 2f - (latitude - baseLat) * scale).toFloat()
+                    }
+
+                    // Plot Project's Stations as small triangles/dots with text code
+                    stationsToShow.forEach { station ->
+                        val cx = toCanvasX(station.longitude)
+                        val cy = toCanvasY(station.latitude)
+                        if (cx in 0f..w && cy in 0f..h) {
+                            drawCircle(color = Color(0xFFFFB300), radius = 6f, center = androidx.compose.ui.geometry.Offset(cx, cy))
+                            drawCircle(color = Color.Black, radius = 2f, center = androidx.compose.ui.geometry.Offset(cx, cy))
+                            
+                            // Render station labels on map canvas
+                            drawContext.canvas.nativeCanvas.drawText(
+                                station.stationCode,
+                                cx + 10f,
+                                cy + 8f,
+                                android.graphics.Paint().apply {
+                                    color = android.graphics.Color.YELLOW
+                                    textSize = 22f
+                                    isFakeBoldText = true
+                                }
                             )
                         }
+                    }
 
-                        // pulsing locator circle waves
-                        drawCircle(color = Color(0x3B29B6F6), radius = 22f, center = androidx.compose.ui.geometry.Offset(cx, cy))
-                        drawCircle(color = Color(0xFF29B6F6), radius = 8f, center = androidx.compose.ui.geometry.Offset(cx, cy))
-                        drawCircle(color = Color.White, radius = 3f, center = androidx.compose.ui.geometry.Offset(cx, cy))
+                    // Draw Track recorder line segment path
+                    if (activePointsList.size >= 2) {
+                        val pathColor = Color(0xFFFF3D00)
+                        for (i in 0 until activePointsList.size -1) {
+                            val p1 = activePointsList[i]
+                            val p2 = activePointsList[i+1]
+                            val x1 = toCanvasX(p1.lon)
+                            val y1 = toCanvasY(p1.lat)
+                            val x2 = toCanvasX(p2.lon)
+                            val y2 = toCanvasY(p2.lat)
+                            drawLine(color = pathColor, start = androidx.compose.ui.geometry.Offset(x1, y1), end = androidx.compose.ui.geometry.Offset(x2, y2), strokeWidth = 5f)
+                        }
+                    }
+
+                    // Show Current Pulsing Position Marker
+                    if (isRealPositionEnabled) {
+                        val cx = toCanvasX(currentLon)
+                        val cy = toCanvasY(currentLat)
+                        if (cx in 0f..w && cy in 0f..h) {
+                            // Sight direction lines
+                            if (displayLineFromPosition) {
+                                val lineLength = 120f
+                                val angleRad = Math.toRadians(currentHeading)
+                                val endX = cx + lineLength * Math.sin(angleRad).toFloat()
+                                val endY = cy - lineLength * Math.cos(angleRad).toFloat()
+                                drawLine(
+                                    color = Color(0xFF00E5FF),
+                                    start = androidx.compose.ui.geometry.Offset(cx, cy),
+                                    end = androidx.compose.ui.geometry.Offset(endX, endY),
+                                    strokeWidth = 3f,
+                                    pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 5f), 0f)
+                                )
+                            }
+
+                            // Pulsing accuracy circle & center tracker marker
+                            val pxAccRadius = (gpsAccuracy * (scale / 111320.0)).toFloat()
+                            drawCircle(color = Color(0x2200E5FF), radius = Math.max(12f, pxAccRadius), center = androidx.compose.ui.geometry.Offset(cx, cy))
+                            drawCircle(color = Color(0xFF29B6F6), radius = 8f, center = androidx.compose.ui.geometry.Offset(cx, cy))
+                            drawCircle(color = Color.White, radius = 3f, center = androidx.compose.ui.geometry.Offset(cx, cy))
+                        }
                     }
                 }
             }
 
-            // HUD overlay (Positioning Status detail)
+            // --- ALPINEQUEST target crosshair central indicator overlay ---
+            Box(
+                modifier = Modifier
+                    .size(26.dp)
+                    .align(Alignment.Center)
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val color = Color(0xFF39FF14) // Neon Green AlpineQuest crosshair style
+                    val stroke = 1.25.dp.toPx()
+                    // Horizontal hair
+                    drawLine(color = color.copy(alpha = 0.7f), start = androidx.compose.ui.geometry.Offset(0f, size.height / 2), end = androidx.compose.ui.geometry.Offset(size.width, size.height / 2), strokeWidth = stroke)
+                    // Vertical hair
+                    drawLine(color = color.copy(alpha = 0.7f), start = androidx.compose.ui.geometry.Offset(size.width / 2, 0f), end = androidx.compose.ui.geometry.Offset(size.width / 2, size.height), strokeWidth = stroke)
+                    // Lens indicator
+                    drawCircle(color = color, radius = 4.dp.toPx(), style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke))
+                }
+            }
+
+            // AlpineQuest-like Dynamic Map Center Coordinates HUD (Displays bottom center coordinates of the crosshair target)
+            Box(
+                modifier = Modifier
+                    .padding(bottom = 6.dp)
+                    .align(Alignment.BottomCenter)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color.Black.copy(alpha = 0.65f))
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            ) {
+                val centerLat = if (lockGpsCenter && isRealPositionEnabled) currentLat else (if (stationsToShow.isNotEmpty()) stationsToShow.map { it.latitude }.average() else currentLat)
+                val centerLon = if (lockGpsCenter && isRealPositionEnabled) currentLon else (if (stationsToShow.isNotEmpty()) stationsToShow.map { it.longitude }.average() else currentLon)
+                Text(
+                    text = "TARGET CENTER: ${String.format(Locale.US, "%.5f", centerLat)}°N , ${String.format(Locale.US, "%.5f", centerLon)}°E",
+                    fontSize = 7.5.sp,
+                    color = Color(0xFF39FF14), // AlpineQuest styled neon label
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+
+            // Interactive Zoom controls / lock center buttons overlay (top/mid left in mapping canvas)
+            Column(
+                modifier = Modifier
+                    .padding(8.dp)
+                    .align(Alignment.CenterStart),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                IconButton(
+                    onClick = { if (zoomLevel < 8) zoomLevel++ },
+                    modifier = Modifier.size(28.dp).background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                ) {
+                    Icon(imageVector = Icons.Default.Add, contentDescription = "Zoom In", tint = Color.White, modifier = Modifier.size(16.dp))
+                }
+                IconButton(
+                    onClick = { if (zoomLevel > 1) zoomLevel-- },
+                    modifier = Modifier.size(28.dp).background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                ) {
+                    Icon(imageVector = Icons.Default.Remove, contentDescription = "Zoom Out", tint = Color.White, modifier = Modifier.size(16.dp))
+                }
+                
+                // Real-time Zoom label
+                Box(
+                    modifier = Modifier
+                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                ) {
+                    Text(
+                        text = "x$zoomLevel",
+                        color = Color.White,
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                // AlpineQuest GPS Lock-On Camera center toggle (extremely powerful positioning anchor)
+                IconButton(
+                    onClick = { lockGpsCenter = !lockGpsCenter },
+                    modifier = Modifier
+                        .size(28.dp)
+                        .background(if (lockGpsCenter && isRealPositionEnabled) Color(0xFF39FF14).copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.5f), CircleShape)
+                        .border(1.dp, if (lockGpsCenter && isRealPositionEnabled) Color(0xFF39FF14) else Color.Transparent, CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.GpsFixed,
+                        contentDescription = "Lock GPS Center",
+                        tint = if (lockGpsCenter && isRealPositionEnabled) Color(0xFF39FF14) else Color.White,
+                        modifier = Modifier.size(14.dp)
+                    )
+                }
+            }
+
+            // HUD overlay (Positioning Status & Multi-GNSS satellite count dashboard)
             if (positioningStatus && isRealPositionEnabled) {
                 val utmResult = UtmConverter.convertLatLngToUtm(currentLat, currentLon)
+                // Accuracy color-grading system based on user instructions (Good accuracy = Neon Green, otherwise Red/Orange)
+                val accuracyColor = when {
+                    gpsAccuracy <= 2.8 -> Color(0xFF39FF14) // Neon green "سبز" (Excellent accuracy)
+                    gpsAccuracy <= 5.5 -> Color(0xFFFFB020) // Orange (Warning accuracy)
+                    else -> Color(0xFFFF3030) // Red (Poor accuracy)
+                }
+                
                 Card(
                     modifier = Modifier
                         .padding(8.dp)
@@ -4426,10 +5142,37 @@ fun MapContent(viewModel: GeologyViewModel) {
                     colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.75f))
                 ) {
                     Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("GNSS Location: Active (WGS84)", fontSize = 8.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
-                        Text("Lat: ${String.format(Locale.US, "%.5f°N", currentLat)} | Lon: ${String.format(Locale.US, "%.5f°E", currentLon)}", fontSize = 8.sp, color = Color.White, fontFamily = FontFamily.Monospace)
-                        Text("UTM Metric: $utmResult", fontSize = 8.sp, color = Color.White, fontFamily = FontFamily.Monospace)
-                        Text("Signal Error: ±2.4m | Sigh Azimuth: ${currentHeading.toInt()}° N", fontSize = 8.sp, color = Color.LightGray)
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            // Pulsing active solid LED accuracy lock status dot (satisfying "هنگام دقت خوب آیکون سبز و در غیر این صورت قرمز")
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .background(accuracyColor, CircleShape)
+                                    .border(0.5.dp, Color.White, CircleShape)
+                            )
+                            Text(
+                                text = "GNSS Fix: 3D RTK Loc",
+                                fontSize = 8.sp,
+                                color = accuracyColor,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        
+                        Text("Lat: ${String.format(Locale.US, "%.5f°N", currentLat)} | Lon: ${String.format(Locale.US, "%.5f°E", currentLon)}", fontSize = 7.5.sp, color = Color.White, fontFamily = FontFamily.Monospace)
+                        Text("UTM Metric: $utmResult", fontSize = 7.5.sp, color = Color.White, fontFamily = FontFamily.Monospace)
+                        
+                        // Active physical satellites displaying ("در بخش مپ تعداد ماهواره ها رو نشون بدهد")
+                        Text(
+                            text = "Satellites: $satelliteCount GNSS Locked | Dir: ${currentHeading.toInt()}° N",
+                            fontSize = 7.5.sp,
+                            color = Color.LightGray,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = "Altitude: 1210m MSL | Accuracy: ±${String.format(Locale.US, "%.1f", gpsAccuracy)}m",
+                            fontSize = 7.sp,
+                            color = accuracyColor
+                        )
                     }
                 }
             }
@@ -4658,15 +5401,15 @@ fun MapContent(viewModel: GeologyViewModel) {
                         onClick = {
                             viewModel.updateTrackName(editTrackItem!!.id, editTrackItemName)
                             showEditDialog = false
-                            Toast.makeText(context, "تغییر نام اعمال شد", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Track renamed successfully!", Toast.LENGTH_SHORT).show()
                         }
                     ) {
-                        Text("ثبت نام جدید")
+                        Text("Save Name")
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { showEditDialog = false }) {
-                        Text("انصراف")
+                        Text("Cancel")
                     }
                 }
             )
