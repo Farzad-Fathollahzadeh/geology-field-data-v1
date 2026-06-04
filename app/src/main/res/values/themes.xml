@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.GeoFieldPro" parent="android:Theme.DeviceDefault.NoActionBar">
-        <!-- No ActionBar for Jetpack Compose container -->
-    </style>
+
+    <style name="Theme.MyApplication" parent="android:Theme.DeviceDefault.NoActionBar" />
 </resources>

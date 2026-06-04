@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Center circular border matching the splash screen logo -->
+    <path
+        android:strokeColor="#10B981"
+        android:strokeWidth="2.5"
+        android:pathData="M54,54 m-30,0 a30,30 0 1,1 60,0 a30,30 0 1,1 -60,0" />
+    <!-- Upward solid triangle in professional exploration green/teal -->
+    <path
+        android:fillColor="#10B981"
+        android:pathData="M54,32 L36,60 L72,60 Z" />
+    <!-- Downward solid triangle in accent yellow/orange representing mineral deposit -->
+    <path
+        android:fillColor="#FFB020"
+        android:pathData="M54,76 L40,52 L68,52 Z" />
+</vector>
