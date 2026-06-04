@@ -140,6 +140,135 @@ data class Track(
     val createdAt: Long = System.currentTimeMillis()
 )
 
+@Entity(
+    tableName = "boreholes",
+    foreignKeys = [
+        ForeignKey(
+            entity = Project::class,
+            parentColumns = ["id"],
+            childColumns = ["projectId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class Borehole(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val projectId: Int,
+    val boreholeCode: String,
+    val latitude: Double,
+    val longitude: Double,
+    val elevation: Double,
+    val azimuth: Double,
+    val dip: Double,
+    val plannedDepth: Double = 50.0,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "borehole_daily_reports",
+    foreignKeys = [
+        ForeignKey(
+            entity = Borehole::class,
+            parentColumns = ["id"],
+            childColumns = ["boreholeId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class BoreholeDailyReport(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val boreholeId: Int,
+    val reportDate: String,
+    val shift: String, // Day, Night
+    val progressMeters: Double,
+    val stoppagesHours: Double,
+    val problemsRemarks: String,
+    val shiftGeologist: String = "",
+    val drillRigId: String = ""
+)
+
+@Entity(
+    tableName = "borehole_core_runs",
+    foreignKeys = [
+        ForeignKey(
+            entity = Borehole::class,
+            parentColumns = ["id"],
+            childColumns = ["boreholeId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class BoreholeCoreRun(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val boreholeId: Int,
+    val runNumber: Int,
+    val depthFrom: Double,
+    val depthTo: Double,
+    val recoveryPercent: Double,
+    val rqdPercent: Double,
+    val lithology: String,
+    val mineralization: String,
+    val alteration: String,
+    val fractureFrequency: Int,
+    val ucsMpa: Double,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Entity(
+    tableName = "rock_mechanics_evaluations",
+    foreignKeys = [
+        ForeignKey(
+            entity = Project::class,
+            parentColumns = ["id"],
+            childColumns = ["projectId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class RockMechanicsEvaluation(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val projectId: Int,
+    val locationName: String,
+    val evaluationType: String, // RMR, Hoek-Brown, MRMR, RMi
+    val evaluationDate: String,
+    
+    // RMR fields
+    val rmrUcsVal: Double = 0.0,
+    val rmrRqdVal: Double = 0.0,
+    val rmrSpacingVal: Double = 0.0,
+    val rmrConditionVal: Double = 0.0,
+    val rmrWaterVal: Double = 0.0,
+    val rmrAdjustmentVal: Double = 0.0,
+    val rmrScore: Double = 0.0,
+    val rmrClass: String = "",
+    
+    // Hoek-Brown fields
+    val hbSigci: Double = 0.0,
+    val hbGsi: Double = 0.0,
+    val hbMi: Double = 0.0,
+    val hbD: Double = 0.0,
+    val hbMb: Double = 0.0,
+    val hbS: Double = 0.0,
+    val hbA: Double = 0.0,
+    val hbSigmaci: Double = 0.0,
+    
+    // MRMR fields
+    val mrmrRmrBasic: Double = 0.0,
+    val mrmrWeatheringAdj: Double = 0.0,
+    val mrmrJointOrientationAdj: Double = 0.0,
+    val mrmrDrillingAdj: Double = 0.0,
+    val mrmrScore: Double = 0.0,
+    val mrmrClass: String = "",
+    
+    // RMi fields
+    val rmiUcs: Double = 0.0,
+    val rmiJp: Double = 0.0,
+    val rmiValue: Double = 0.0,
+    
+    val notes: String = "",
+    val createdAt: Long = System.currentTimeMillis()
+)
+
 
 // --- DAO ---
 
@@ -235,14 +364,67 @@ interface GeologyDao {
 
     @Query("DELETE FROM tracks WHERE id = :id")
     suspend fun deleteTrackById(id: Int)
+
+    // Boreholes
+    @Query("SELECT * FROM boreholes WHERE projectId = :projectId ORDER BY id ASC")
+    fun getBoreholesForProject(projectId: Int): Flow<List<Borehole>>
+
+    @Query("SELECT * FROM boreholes WHERE id = :id")
+    fun getBoreholeById(id: Int): Flow<Borehole?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertBorehole(borehole: Borehole): Long
+
+    @Query("DELETE FROM boreholes WHERE id = :id")
+    suspend fun deleteBoreholeById(id: Int)
+
+    // Borehole Daily Reports
+    @Query("SELECT * FROM borehole_daily_reports WHERE boreholeId = :boreholeId ORDER BY id DESC")
+    fun getDailyReportsForBorehole(boreholeId: Int): Flow<List<BoreholeDailyReport>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertDailyReport(report: BoreholeDailyReport): Long
+
+    @Query("DELETE FROM borehole_daily_reports WHERE id = :id")
+    suspend fun deleteDailyReportById(id: Int)
+
+    // Borehole Core Runs
+    @Query("SELECT * FROM borehole_core_runs WHERE boreholeId = :boreholeId ORDER BY runNumber ASC")
+    fun getCoreRunsForBorehole(boreholeId: Int): Flow<List<BoreholeCoreRun>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCoreRun(coreRun: BoreholeCoreRun): Long
+
+    @Query("DELETE FROM borehole_core_runs WHERE id = :id")
+    suspend fun deleteCoreRunById(id: Int)
+
+    // Rock Mechanics Evaluations
+    @Query("SELECT * FROM rock_mechanics_evaluations WHERE projectId = :projectId ORDER BY id DESC")
+    fun getRockMechanicsEvaluationsForProject(projectId: Int): Flow<List<RockMechanicsEvaluation>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertRockMechanicsEvaluation(evaluation: RockMechanicsEvaluation): Long
+
+    @Query("DELETE FROM rock_mechanics_evaluations WHERE id = :id")
+    suspend fun deleteRockMechanicsEvaluationById(id: Int)
 }
 
 
 // --- DATABASE ---
 
 @Database(
-    entities = [Project::class, Station::class, Observation::class, Sample::class, Track::class],
-    version = 4,
+    entities = [
+        Project::class, 
+        Station::class, 
+        Observation::class, 
+        Sample::class, 
+        Track::class,
+        Borehole::class,
+        BoreholeDailyReport::class,
+        BoreholeCoreRun::class,
+        RockMechanicsEvaluation::class
+    ],
+    version = 5,
     exportSchema = false
 )
 abstract class GeologyDatabase : RoomDatabase() {

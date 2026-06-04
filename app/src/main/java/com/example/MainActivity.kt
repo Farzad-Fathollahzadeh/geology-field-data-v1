@@ -52,6 +52,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.theme.MyApplicationTheme
+import com.example.ui.BoreholeLoggingContent
+import com.example.ui.RockMechanicsContent
 import com.google.accompanist.permissions.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -212,20 +214,20 @@ fun MainScreenContent(
         }
 
         val mappingTitle = when (val screen = currentScreen) {
-            is Screen.ProjectList -> "نقشه‌برداری زمین‌شناسی صحرایی"
-            is Screen.CreateProject -> "تعریف پروژه جدید"
-            is Screen.ProjectDashboard -> activeProject?.name ?: "پروژه فعال"
-            is Screen.CreateStation -> "افزودن ایستگاه برداشت"
-            is Screen.StationDetail -> activeStation?.stationCode ?: "مشخصات ایستگاه"
-            is Screen.AddObservation -> "ثبت داده‌های زمین‌شناسی"
+            is Screen.ProjectList -> "Geological Mapping Projects"
+            is Screen.CreateProject -> "Create New Project"
+            is Screen.ProjectDashboard -> activeProject?.name ?: "Active Project"
+            is Screen.CreateStation -> "Add Survey Station"
+            is Screen.StationDetail -> activeStation?.stationCode ?: "Station Details"
+            is Screen.AddObservation -> "Log Field Observation"
         }
 
         val topBarTitle = when (activeTab) {
-            MainTab.Home -> "داشبورد عمومی مهندسی زمین"
+            MainTab.Home -> "Dashboard"
             MainTab.GeologicalMapping -> mappingTitle
-            MainTab.BoreholeLogging -> "لوگ‌گیری مغزه‌های حفاری (Borehole)"
-            MainTab.RockMechanics -> "مکانیک سنگ و طبقه‌بندی مهندسی"
-            MainTab.Map -> "سامانه نقشه زمین‌مرجع و مپینگ"
+            MainTab.BoreholeLogging -> "Borehole Core Logging"
+            MainTab.RockMechanics -> "Rock Geotechnical Mechanics"
+            MainTab.Map -> "Spatial Navigation Map"
         }
 
         Scaffold(
@@ -248,7 +250,7 @@ fun MainScreenContent(
                                     )
                                 } else {
                                     Text(
-                                        text = "GeoField Platform v1.1",
+                                        text = "GeoField Platform v3.1.1",
                                         fontSize = 10.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -340,31 +342,31 @@ fun MainScreenContent(
                     NavigationBarItem(
                         selected = activeTab == MainTab.Home,
                         onClick = { activeTab = MainTab.Home },
-                        label = { Text("خانه", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                        label = { Text("Home", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                         icon = { Icon(Icons.Default.Home, contentDescription = "Home dashboard") }
                     )
                     NavigationBarItem(
                         selected = activeTab == MainTab.GeologicalMapping,
                         onClick = { activeTab = MainTab.GeologicalMapping },
-                        label = { Text("نقشه‌برداری", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                        label = { Text("Mapping", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                         icon = { Icon(Icons.Default.Terrain, contentDescription = "Geology mapping") }
                     )
                     NavigationBarItem(
                         selected = activeTab == MainTab.BoreholeLogging,
                         onClick = { activeTab = MainTab.BoreholeLogging },
-                        label = { Text("گمانه", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                        label = { Text("Borehole", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                         icon = { Icon(Icons.Default.Layers, contentDescription = "Borehole core log") }
                     )
                     NavigationBarItem(
                         selected = activeTab == MainTab.RockMechanics,
                         onClick = { activeTab = MainTab.RockMechanics },
-                        label = { Text("مکانیک سنگ", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                        label = { Text("Rock Mech", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                         icon = { Icon(Icons.Default.Assessment, contentDescription = "Rock mechanics analysis") }
                     )
                     NavigationBarItem(
                         selected = activeTab == MainTab.Map,
                         onClick = { activeTab = MainTab.Map },
-                        label = { Text("نقشه", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                        label = { Text("Map", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                         icon = { Icon(Icons.Default.Map, contentDescription = "Interactive grid map") }
                     )
                 }
@@ -384,14 +386,15 @@ fun MainScreenContent(
                             observationsCount = allObservationsByState.size,
                             samplesCount = allSamplesByState.size,
                             viewModel = viewModel,
-                            context = context
+                            context = context,
+                            onNavigateToTab = { activeTab = it }
                         )
                     }
                     MainTab.BoreholeLogging -> {
-                        BoreholeLoggingContent()
+                        BoreholeLoggingContent(viewModel)
                     }
                     MainTab.RockMechanics -> {
-                        RockMechanicsContent()
+                        RockMechanicsContent(viewModel)
                     }
                     MainTab.Map -> {
                         MapContent(viewModel)
@@ -525,29 +528,29 @@ fun MainScreenContent(
         if (showSettingsDialog) {
             AlertDialog(
                 onDismissRequest = { showSettingsDialog = false },
-                title = { Text("تنظیمات عمومی سامانه زمین‌شناسی صحرایی", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+                title = { Text("GeoField Pro System Settings", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("مشخصات توسعه و مالکیت فکری نرم‌افزار:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("Intellectual Property & Developer details:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         Card(
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                         ) {
                             Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text("مدیر پروژه و برنامه‌نویس: فرزاد فتح‌الله‌زاده", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                Text("پلتفرم ساختارهای برداشت صحرایی معدن", fontSize = 12.sp)
-                                Text("توسعه یافته فروردین و خرداد ۱۴۰۵ (2026-06)", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Project Manager & Developer: Farzad Fathollahzadeh", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                Text("GeoField Mine Observation Platform", fontSize = 12.sp)
+                                Text("Developed June 2026 (v3.1.1)", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                         
                         Divider()
 
-                        Text("گزینه‌های سیستمی:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("System Options:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("تغییر تم دستگاه (روشن/تاریک)", fontSize = 12.sp)
+                            Text("Switch System Theme (Light/Dark)", fontSize = 12.sp)
                             Switch(checked = isDarkTheme, onCheckedChange = { onToggleTheme() })
                         }
                         
@@ -558,8 +561,8 @@ fun MainScreenContent(
                                     // Inject premium simulated samples to the database for geological field studies!
                                     val projId = viewModel.dao.insertProject(
                                         Project(
-                                            name = "پروژه اکتشافی طلای مس سونگون",
-                                            description = "توضیحات: زون ساختاری البرز غربی - آذربایجان. مطالعه دگرسانی هیدروترمال کانسار پورفیری",
+                                            name = "Sungun Copper-Gold Porphyry Project",
+                                            description = "West Alborz - Azerbaijan structural zone. Hydrothermal alteration and porphyry ore deposits survey area.",
                                             date = "2026-06-04",
                                             utmZoneMode = "MANUAL",
                                             utmZoneManual = "38S"
@@ -584,7 +587,7 @@ fun MainScreenContent(
                                         Observation(
                                             stationId = st1.toInt(),
                                             observationType = "Alteration",
-                                            notes = "دگرسانی شدید پتاسیک همراه با کانی‌سازی پیریت و کالکوپیریت در سنگ دیوریت‌پورفیری",
+                                            notes = "Intense potassic alteration accompanied by intense pyrite and chalcopyrite mineralization in Diorite Porphyry host rock.",
                                             photoPath = null,
                                             alterationType = "Potassic",
                                             intensity = "Strong",
@@ -596,7 +599,7 @@ fun MainScreenContent(
                                         Observation(
                                             stationId = st1.toInt(),
                                             observationType = "Lithology",
-                                            notes = "بافت تمام‌بلورین پورفیری، فرودرشت‌بلورهای پلاژیوکلاز و بیوتیت هم‌رشد در خمیره ریزبلور پتاسیک",
+                                            notes = "Holocrystalline porphyritic texture, plagioclase phenocrysts, and intergrown biotites in a potassic groundmass.",
                                             photoPath = null,
                                             lithologyType = "Granodiorite Porphyry",
                                             texture = "Porphyritic",
@@ -605,18 +608,18 @@ fun MainScreenContent(
                                             lithologyAlteration = "Chloritized biotites"
                                         )
                                     )
-                                    Toast.makeText(context, "پروژه و ایستگاه‌های پیش‌فرض تزریق شدند!", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Demo Sungun exploration campaign loaded successfully!", Toast.LENGTH_SHORT).show()
                                 }
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("بارگذاری پروژه اکتشافی نمونه (سونگون)", fontSize = 12.sp)
+                            Text("Load Demo Exploration Project (Sungun)", fontSize = 12.sp)
                         }
                     }
                 },
                 confirmButton = {
                     TextButton(onClick = { showSettingsDialog = false }) {
-                        Text("تایید")
+                        Text("OK")
                     }
                 }
             )
@@ -823,7 +826,7 @@ fun GeoFieldSplashScreen() {
                 .padding(bottom = 32.dp)
         ) {
             Text(
-                text = "OFFLINE-FIRST FIELD DATA LOGGER • v1.1",
+                text = "OFFLINE-FIRST FIELD DATA LOGGER • v3.1.1",
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -955,7 +958,7 @@ fun ProjectListScreen(
                         letterSpacing = 1.sp
                     )
                     Text(
-                        text = "v1.1",
+                        text = "v3.1.1",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
@@ -3353,7 +3356,8 @@ fun HomeDashboardContent(
     observationsCount: Int,
     samplesCount: Int,
     viewModel: GeologyViewModel,
-    context: android.content.Context
+    context: android.content.Context,
+    onNavigateToTab: (MainTab) -> Unit
 ) {
     val scrollState = rememberScrollState()
 
@@ -3377,13 +3381,13 @@ fun HomeDashboardContent(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "سامانه جامع زمین‌شناسی صحرایی و مهندسی معدن",
+                    text = "GeoField Pro — Geological & Mine Engineering Platform",
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onPrimaryContainer
                 )
                 Text(
-                    text = "خوش‌آمدید. با استفاده از ناوبری پایین اپلیکیشن می‌توانید به ابزارهای نقشه‌برداری زمین‌شناسی صحرایی، ثبت مغزه‌های گمانه‌های حفاری، طبقه‌بندی مهندسی مکانیک سنگ (سیستم RMR) و نقشه‌برداری جی‌پی‌اس آفلاین دسترسی یابید.",
+                    text = "Welcome to GeoField Pro. This modular platform implements high-precision geological field mapping, core borehole logging, geotechnical RMR calculations, and offline GPS sensor path mapping for engineering geologists and mining professionals.",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
                     lineHeight = 18.sp
@@ -3391,9 +3395,64 @@ fun HomeDashboardContent(
             }
         }
 
+        // Clickable Workspaces / Modules cards
+        Text(
+            text = "Exploration & Geotech Workspaces",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        val workspaces = listOf(
+            Triple("General Projects List", "Configure active project workspaces, manage field properties, coordinate grids, and primary targets.", Icons.Default.Folder) to MainTab.GeologicalMapping,
+            Triple("Geological Mapping", "Define survey stations, describe rock Lithology, core Alterations, Fault/Joint/Vein coordinates, structures, and samples.", Icons.Default.Terrain) to MainTab.GeologicalMapping,
+            Triple("Borehole Core Logging", "Log drilling Core Runs, Core Recoveries, and automatically calculate geotechnical Rock Quality Designation (RQD).", Icons.Default.Layers) to MainTab.BoreholeLogging,
+            Triple("Rock Mechanics Classification", "Estimate continuous engineering Bieniawski RMR index scores based on 6 critical geotech parameters.", Icons.Default.Assessment) to MainTab.RockMechanics,
+            Triple("GPS Track Recording & Interactive Map", "Simulate walks, track active sensor GPS points on an interactive digital radar grid, and export standard GPX paths.", Icons.Default.Map) to MainTab.Map
+        )
+
+        workspaces.forEach { (meta, targetTab) ->
+            val (title, desc, icon) = meta
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateToTab(targetTab) },
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(imageVector = icon, contentDescription = title, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = title, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
+                            Icon(imageVector = Icons.Default.ChevronRight, contentDescription = "Open", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.secondary)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(text = desc, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 16.sp)
+                    }
+                }
+            }
+        }
+
         // Section Title: Stats (اطلاعات کلی از بخش های مختلف)
         Text(
-            text = "آمارهای عمومی و کارکرد سامانه صحرایی",
+            text = "Field Operations Statistics",
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary
@@ -3405,17 +3464,17 @@ fun HomeDashboardContent(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             StatCard(
-                title = "پروژه‌ها",
+                title = "Projects Active",
                 count = projectsCount.toString(),
-                unit = "مورد",
+                unit = "Proj",
                 icon = Icons.Default.Folder,
                 tint = Color(0xFF1E88E5),
                 modifier = Modifier.weight(1f)
             )
             StatCard(
-                title = "ایستگاه‌ها",
+                title = "Stations Logged",
                 count = stationsCount.toString(),
-                unit = "ایستگاه",
+                unit = "Station",
                 icon = Icons.Default.Place,
                 tint = Color(0xFF43A047),
                 modifier = Modifier.weight(1f)
@@ -3427,17 +3486,17 @@ fun HomeDashboardContent(
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             StatCard(
-                title = "مشاهدات سنگی",
+                title = "Lith/Alteration Obs",
                 count = observationsCount.toString(),
-                unit = "ثبت شده",
+                unit = "Specs",
                 icon = Icons.Default.Terrain,
                 tint = Color(0xFFE65100),
                 modifier = Modifier.weight(1f)
             )
             StatCard(
-                title = "نمونه‌های سنگی",
+                title = "Mineral Samples",
                 count = samplesCount.toString(),
-                unit = "نمونه",
+                unit = "Specs",
                 icon = Icons.Default.Layers,
                 tint = Color(0xFF00ACC1),
                 modifier = Modifier.weight(1f)
@@ -3448,7 +3507,7 @@ fun HomeDashboardContent(
 
         // Quick Tips Panel
         Text(
-            text = "راهنمای ابزارهای تخصصی سیستم صحرایی",
+            text = "Detailed Engineering Guide & Specs",
             fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary
@@ -3464,24 +3523,24 @@ fun HomeDashboardContent(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 GuideBullet(
-                    number = "۱",
-                    title = "نقشه‌برداری (Geological Mapping)",
-                    desc = "پروژه‌های زمین‌شناسی بسازید، مختصات جغرافیایی ایستگاه‌ها را ذخیره کنید و توصیف سنگ‌شناسی (Lithology)، دگرسانی (Alteration)، ساختارها و کانی‌سازی فلزی را ثبت کنید."
+                    number = "1",
+                    title = "Geological Field Mapping",
+                    desc = "Initialize mapping campaigns, record coordinates, describe primary lithology attributes (Texture, Mineralogy), alterations index, and structure strike/dip angles."
                 )
                 GuideBullet(
-                    number = "۲",
-                    title = "لوگ‌گیری گمانه (Borehole Logging)",
-                    desc = "رکوردهای گمانه‌های حفاری گرانبهای دوقلو و اکتشافی را ثبت کنید؛ طول ران مغزه، میزان بازیابی مغزه (Recovery) و فاکتور کیفی توده سنگ (RQD) را تحت استانداردهای مهندسی محاسبه و خروجی CSV بگیرید."
+                    number = "2",
+                    title = "Drilling Borehole Core Logger",
+                    desc = "Maintain continuous core runs and daily drilling metrics. Input From/To core run intervals and total core recovered to compute recovery and Rock Quality Designation (RQD) instantly."
                 )
                 GuideBullet(
-                    number = "۳",
-                    title = "مکانیک سنگ (Rock Mechanics)",
-                    desc = "سیستم شاخص کیفی RMR مهندسی ترزاقی/بیاویسکی را بر اساس ۶ پارامتر ژئوتکنیکی سنگ از جمله مقاومت توده سنگ بکر (UCS) و زوایای درزه‌ها بلافاصله در تونل یا ترانشه محاسبه کنید."
+                    number = "3",
+                    title = "Rock Geotechnical Mechanics",
+                    desc = "Assess rock masses using the Bieniawski RMR Index. Grade UCS, RQD, joint apertures, roughness, ground water inflows, and tunnels lineation orientations in real-time."
                 )
                 GuideBullet(
-                    number = "۴",
-                    title = "سامانه مپ جی‌پی‌اس آفلاین (Map)",
-                    desc = "موقعیت واقعی ایستگاه‌ها را رصد کنید، همزمان مسیرهای جی‌پی‌اس صحرایی خود را با Track Recorder پیشرفته ضبط کنید و با فرمت‌های استاندارد GPX, KML یا GeoJSON خروجی بگیرید."
+                    number = "4",
+                    title = "GPS Track Recorder",
+                    desc = "Plot GPS sensor paths on the digital grid. Export track records directly in standard, shareable GPX, KML, and GeoJSON GIS spatial formats."
                 )
             }
         }
@@ -4226,7 +4285,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Icon(imageVector = Icons.Default.GpsFixed, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Text("موقعیت به لحظه (Real Position)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text("Real Position (GPS Locator)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                     }
                     Switch(
                         checked = isRealPositionEnabled,
@@ -4237,7 +4296,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Icon(imageVector = Icons.Default.RadioButtonChecked, contentDescription = null, tint = if (isTrackRecordingEnabled) Color.Red else MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("ضبط ترک مسیر (Track Recorder)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                        Text("Track Recorder Toggle", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                     }
                     Switch(
                         checked = isTrackRecordingEnabled,
@@ -4250,22 +4309,22 @@ fun MapContent(viewModel: GeologyViewModel) {
         // Horizontal Panel Options (قابلیت خاموش روشن کردن دستی برای کاربر فراهم باشد)
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("آپشن‌های ناوبری جی‌ان‌اس‌اس (Options):", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                Text("GNSS Navigation Options:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("۱. چرخش نقشه با GNSS (Rotate Map)", fontSize = 11.sp)
+                    Text("1. Rotate map using GNSS sensor (Rotate)", fontSize = 11.sp)
                     Checkbox(checked = rotateMapUsingGnss, onCheckedChange = { rotateMapUsingGnss = it })
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("۲. خط دید از موقعیت (Display Line)", fontSize = 11.sp)
+                    Text("2. Display line of sight from position (Line)", fontSize = 11.sp)
                     Checkbox(checked = displayLineFromPosition, onCheckedChange = { displayLineFromPosition = it })
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("۳. شناور وضعیت مکان‌یابی (Status HUD)", fontSize = 11.sp)
+                    Text("3. Navigation Coordinates Status HUD (Status)", fontSize = 11.sp)
                     Checkbox(checked = positioningStatus, onCheckedChange = { positioningStatus = it })
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("۴. سنسور ضبط مسیر (Track Recording)", fontSize = 11.sp)
+                    Text("4. Sensor Track Recording (Track)", fontSize = 11.sp)
                     Checkbox(checked = trackRecording, onCheckedChange = { if (it) onTrackRecordingChanged(true) else onTrackRecordingChanged(false) })
                 }
             }
@@ -4367,10 +4426,10 @@ fun MapContent(viewModel: GeologyViewModel) {
                     colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.75f))
                 ) {
                     Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("موقعیت‌یاب GNSS: فعال (WGS84)", fontSize = 8.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
-                        Text("عرض: ${String.format(Locale.US, "%.5f°N", currentLat)} | طولی: ${String.format(Locale.US, "%.5f°E", currentLon)}", fontSize = 8.sp, color = Color.White, fontFamily = FontFamily.Monospace)
-                        Text("متریک UTM: $utmResult", fontSize = 8.sp, color = Color.White, fontFamily = FontFamily.Monospace)
-                        Text("خروجی سیگنال خطا: ±2.4m | باربر: ${currentHeading.toInt()}° North", fontSize = 8.sp, color = Color.LightGray)
+                        Text("GNSS Location: Active (WGS84)", fontSize = 8.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
+                        Text("Lat: ${String.format(Locale.US, "%.5f°N", currentLat)} | Lon: ${String.format(Locale.US, "%.5f°E", currentLon)}", fontSize = 8.sp, color = Color.White, fontFamily = FontFamily.Monospace)
+                        Text("UTM Metric: $utmResult", fontSize = 8.sp, color = Color.White, fontFamily = FontFamily.Monospace)
+                        Text("Signal Error: ±2.4m | Sigh Azimuth: ${currentHeading.toInt()}° N", fontSize = 8.sp, color = Color.LightGray)
                     }
                 }
             }
@@ -4419,14 +4478,14 @@ fun MapContent(viewModel: GeologyViewModel) {
                     .background(Color.Black.copy(alpha = 0.5f))
                     .padding(4.dp)
             ) {
-                Text("شبیه‌ساز گام زدن: کلیک روی کلیدهای جهت", fontSize = 7.5.sp, color = Color.White)
+                Text("Walk Simulator: Tap arrow keys to walk", fontSize = 7.5.sp, color = Color.White)
             }
         }
 
         Divider()
 
         // List Header saved database tracks
-        Text("مسیرهای جی‌پی‌اس صحرایی ذخیره شده", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        Text("Saved Field GPS Tracks Journal", fontWeight = FontWeight.Bold, fontSize = 13.sp)
 
         // Tracks lazy scrolling list
         LazyColumn(
@@ -4435,7 +4494,7 @@ fun MapContent(viewModel: GeologyViewModel) {
         ) {
             if (savedTracks.isEmpty()) {
                 item {
-                    Text("مسیر جی‌پی‌اس ثبت شده‌ای موجود نیست. دکمه ضبط مسیر را روشن کنید و گام بزنید تا اولین ترک ضبط شود.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("No saved field GPS paths. Enable the Track Recorder and walk to capture paths.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
                 items(savedTracks) { track ->
@@ -4454,10 +4513,10 @@ fun MapContent(viewModel: GeologyViewModel) {
                             Spacer(modifier = Modifier.height(4.dp))
                             
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                Text("طول مسیر: ${track.lengthMeters.toInt()} متر", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text("Length: ${track.lengthMeters.toInt()} meters", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 val minutes = track.durationSeconds / 60
                                 val seconds = track.durationSeconds % 60
-                                Text("زمان ثبت: ${minutes}m ${seconds}s", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontFamily = FontFamily.Monospace)
+                                Text("Recorded: ${minutes}m ${seconds}s", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontFamily = FontFamily.Monospace)
                             }
 
                             Row(
@@ -4473,9 +4532,9 @@ fun MapContent(viewModel: GeologyViewModel) {
                                         showEditDialog = true
                                     }
                                 ) {
-                                    Icon(Icons.Default.Edit, contentDescription = "تغییر نام", modifier = Modifier.size(14.dp))
+                                    Icon(Icons.Default.Edit, contentDescription = "Rename", modifier = Modifier.size(14.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("تغییر نام", fontSize = 11.sp)
+                                    Text("Rename", fontSize = 11.sp)
                                 }
 
                                 Spacer(modifier = Modifier.width(10.dp))
@@ -4496,9 +4555,9 @@ fun MapContent(viewModel: GeologyViewModel) {
                                         shareFileWithApps(context, "${track.name}.$extension", mime, fileString)
                                     }
                                 ) {
-                                    Icon(Icons.Default.Share, contentDescription = "صادر کردن", modifier = Modifier.size(14.dp))
+                                    Icon(Icons.Default.Share, contentDescription = "Export", modifier = Modifier.size(14.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("خروجی ($exportFormatChoice)", fontSize = 11.sp)
+                                    Text("Export ($exportFormatChoice)", fontSize = 11.sp)
                                 }
 
                                 Spacer(modifier = Modifier.width(10.dp))
@@ -4508,9 +4567,9 @@ fun MapContent(viewModel: GeologyViewModel) {
                                     onClick = { viewModel.deleteTrack(track.id) },
                                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                                 ) {
-                                    Icon(Icons.Default.Delete, contentDescription = "حذف", modifier = Modifier.size(14.dp))
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(14.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("حذف", fontSize = 11.sp)
+                                    Text("Delete", fontSize = 11.sp)
                                 }
                             }
                         }
@@ -4525,7 +4584,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("انتخاب فرمت خروجی اشتراک‌گذاری غایی مسیرها:", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Default path share-export format:", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         listOf("GPX", "KML", "GeoJSON", "TXT").forEach { format ->
                             FilterChip(
@@ -4543,23 +4602,23 @@ fun MapContent(viewModel: GeologyViewModel) {
         if (showSaveDialog) {
             AlertDialog(
                 onDismissRequest = { showSaveDialog = false },
-                title = { Text("سیگنال انتهای ضبط: ذخیره‌سازی ترک مسیر", fontSize = 14.sp, fontWeight = FontWeight.Bold) },
+                title = { Text("End of Recording: Save Track Path", fontSize = 14.sp, fontWeight = FontWeight.Bold) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("مسیر صحرایی جی‌پی‌اس با متغیرهای ذیل با موفقیت اندازه‌گیری شد. لطفا نام مسیر برداشت فیلد را جهت ذخیره در ژورنال تعیین کنید:", fontSize = 11.sp)
+                        Text("The GPS field path was measured successfully. Please specify a label to save it in your database journal:", fontSize = 11.sp)
                         
                         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
                             Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text("طول کل برآورد: ${tempTrackLength.toInt()} متر", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                Text("مدت زمان ضبط: ${tempTrackDuration / 60}m ${tempTrackDuration % 60}s", fontSize = 11.sp)
-                                Text("تعداد ایستگاه‌های مجمع: ${activePointsList.size} نقطه", fontSize = 10.sp)
+                                Text("Estimated Length: ${tempTrackLength.toInt()} meters", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("Duration: ${tempTrackDuration / 60}m ${tempTrackDuration % 60}s", fontSize = 11.sp)
+                                Text("Captured Track Points: ${activePointsList.size} points", fontSize = 10.sp)
                             }
                         }
 
                         OutlinedTextField(
                             value = newTrackName,
                             onValueChange = { newTrackName = it },
-                            label = { Text("نام ترک ذخیره شونده", fontSize = 11.sp) }
+                            label = { Text("Track Name", fontSize = 11.sp) }
                         )
                     }
                 },
@@ -4568,15 +4627,15 @@ fun MapContent(viewModel: GeologyViewModel) {
                         onClick = {
                             viewModel.saveTrack(newTrackName, tempTrackPointsJson, tempTrackLength, tempTrackDuration)
                             showSaveDialog = false
-                            Toast.makeText(context, "مسیر ضبط با شناسه $newTrackName در پایگاه ارقام تثبیت شد", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Track logged successfully to sqlite as $newTrackName", Toast.LENGTH_SHORT).show()
                         }
                     ) {
-                        Text("ذخیره در بانک داده")
+                        Text("Save to Database")
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { showSaveDialog = false }) {
-                        Text("انصراف")
+                        Text("Cancel")
                     }
                 }
             )
@@ -4586,12 +4645,12 @@ fun MapContent(viewModel: GeologyViewModel) {
         if (showEditDialog && editTrackItem != null) {
             AlertDialog(
                 onDismissRequest = { showEditDialog = false },
-                title = { Text("تغییر نام مسیر مساحی شده", fontSize = 14.sp, fontWeight = FontWeight.Bold) },
+                title = { Text("Rename Survey Path", fontSize = 14.sp, fontWeight = FontWeight.Bold) },
                 text = {
                     OutlinedTextField(
                         value = editTrackItemName,
                         onValueChange = { editTrackItemName = it },
-                        label = { Text("نام جدید مسیر") }
+                        label = { Text("New Track Name") }
                     )
                 },
                 confirmButton = {

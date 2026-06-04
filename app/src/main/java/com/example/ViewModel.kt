@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
@@ -951,6 +952,263 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                 Toast.makeText(context, "Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
                 e.printStackTrace()
             }
+        }
+    }
+
+    // Direct multi-format exporters
+    fun exportGeoJson(context: Context, projectId: Int) {
+        viewModelScope.launch {
+            try {
+                val geoJsonString = withContext(Dispatchers.IO) {
+                    val stations = dao.getStationsForProjectSync(projectId)
+                    val sb = StringBuilder()
+                    sb.append("{\n  \"type\": \"FeatureCollection\",\n  \"features\": [\n")
+                    stations.forEachIndexed { index, st ->
+                        sb.append("    {\n")
+                        sb.append("      \"type\": \"Feature\",\n")
+                        sb.append("      \"geometry\": {\n")
+                        sb.append("        \"type\": \"Point\",\n")
+                        sb.append("        \"coordinates\": [${st.longitude}, ${st.latitude}]\n")
+                        sb.append("      },\n")
+                        sb.append("      \"properties\": {\n")
+                        sb.append("        \"stationCode\": \"${st.stationCode}\",\n")
+                        sb.append("        \"prefix\": \"${st.prefix}\",\n")
+                        sb.append("        \"elevation\": ${st.elevation},\n")
+                        sb.append("        \"utmZone\": \"${st.utmZone}\",\n")
+                        sb.append("        \"utmEasting\": ${st.utmEasting},\n")
+                        sb.append("        \"utmNorthing\": ${st.utmNorthing}\n")
+                        sb.append("      }\n")
+                        sb.append("    }")
+                        if (index < stations.size - 1) sb.append(",")
+                        sb.append("\n")
+                    }
+                    sb.append("  ]\n}")
+                    sb.toString()
+                }
+
+                val fileName = "Project_${projectId}_Map.geojson"
+                val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
+                val file = File(dir, fileName)
+                file.writeText(geoJsonString)
+
+                val authority = "${context.packageName}.fileprovider"
+                val fileUri: Uri = FileProvider.getUriForFile(context, authority, file)
+
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/geo+json"
+                    putExtra(Intent.EXTRA_STREAM, fileUri)
+                    putExtra(Intent.EXTRA_SUBJECT, "GeoJSON Map Export")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                val chooser = Intent.createChooser(intent, "Share GeoJSON Map")
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(chooser)
+
+                Toast.makeText(context, "GeoJSON Saved to Downloads: ${fileName}", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "GeoJSON Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun exportPdfReport(context: Context, projectId: Int) {
+        viewModelScope.launch {
+            try {
+                val file = withContext(Dispatchers.IO) {
+                    val stations = dao.getStationsForProjectSync(projectId)
+                    val project = dao.getProjectById(projectId).firstOrNull() ?: return@withContext null
+                    
+                    val pdfDocument = android.graphics.pdf.PdfDocument()
+                    val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, 1).create() // A4 Size: 595 x 842 pt
+                    val page = pdfDocument.startPage(pageInfo)
+                    val canvas = page.canvas
+                    
+                    val paint = android.graphics.Paint()
+                    
+                    // Header title
+                    paint.color = android.graphics.Color.DKGRAY
+                    paint.textSize = 18f
+                    paint.isFakeBoldText = true
+                    canvas.drawText("Geology & Mine Field Report", 40f, 60f, paint)
+                    
+                    // Subtitle
+                    paint.textSize = 12f
+                    paint.isFakeBoldText = false
+                    canvas.drawText("Project: ${project.name}", 40f, 90f, paint)
+                    canvas.drawText("Description: ${project.description ?: "General Survey"}", 40f, 110f, paint)
+                    
+                    paint.color = android.graphics.Color.LTGRAY
+                    canvas.drawLine(40f, 130f, 555f, 130f, paint)
+                    
+                    paint.color = android.graphics.Color.BLACK
+                    paint.textSize = 10f
+                    canvas.drawText("Logged Stations Summary:", 40f, 160f, paint)
+                    
+                    var drawY = 190f
+                    stations.take(20).forEach { st ->
+                        if (drawY < 800) {
+                            canvas.drawText(
+                                "Station: ${st.stationCode} | Coords: ${String.format("%.5f", st.latitude)}, ${String.format("%.5f", st.longitude)} | UTM: Z${st.utmZone} E:${st.utmEasting.toInt()} N:${st.utmNorthing.toInt()}",
+                                60f,
+                                drawY,
+                                paint
+                            )
+                            drawY += 22f
+                        }
+                    }
+                    
+                    if (stations.size > 20) {
+                        canvas.drawText("... and ${stations.size - 20} more stations logged.", 60f, drawY, paint)
+                    }
+                    
+                    pdfDocument.finishPage(page)
+                    
+                    val fileName = "Geotech_Report_${projectId}.pdf"
+                    val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
+                    val pdfFile = File(dir, fileName)
+                    pdfDocument.writeTo(pdfFile.outputStream())
+                    pdfDocument.close()
+                    pdfFile
+                } ?: return@launch
+
+                val authority = "${context.packageName}.fileprovider"
+                val fileUri: Uri = FileProvider.getUriForFile(context, authority, file)
+
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/pdf"
+                    putExtra(Intent.EXTRA_STREAM, fileUri)
+                    putExtra(Intent.EXTRA_SUBJECT, "PDF Field Report Export")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                val chooser = Intent.createChooser(intent, "Share PDF Report")
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(chooser)
+
+                Toast.makeText(context, "PDF Report Saved to Downloads: ${file.name}", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "PDF Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun exportCsv(context: Context, projectId: Int) {
+        viewModelScope.launch {
+            try {
+                val csvString = withContext(Dispatchers.IO) {
+                    val stations = dao.getStationsForProjectSync(projectId)
+                    val sb = StringBuilder()
+                    sb.append("StationCode,Prefix,Latitude,Longitude,Elevation,UTMZone,UTMEasting,UTMNorthing\n")
+                    stations.forEach { st ->
+                        sb.append("${st.stationCode},${st.prefix},${st.latitude},${st.longitude},${st.elevation},${st.utmZone},${st.utmEasting},${st.utmNorthing}\n")
+                    }
+                    sb.toString()
+                }
+
+                val fileName = "Project_${projectId}_Stations.csv"
+                val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
+                val file = File(dir, fileName)
+                file.writeText(csvString)
+
+                val authority = "${context.packageName}.fileprovider"
+                val fileUri: Uri = FileProvider.getUriForFile(context, authority, file)
+
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/csv"
+                    putExtra(Intent.EXTRA_STREAM, fileUri)
+                    putExtra(Intent.EXTRA_SUBJECT, "CSV Export")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                val chooser = Intent.createChooser(intent, "Share CSV Data")
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(chooser)
+
+                Toast.makeText(context, "CSV Saved to Downloads: ${fileName}", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "CSV Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    // Boreholes, Daily Reports, Core Runs, and Rock Mechanics operations
+    private val activeBoreholeId = MutableStateFlow<Int?>(null)
+    
+    val activeBorehole: StateFlow<Borehole?> = activeBoreholeId.flatMapLatest { id ->
+        if (id != null) dao.getBoreholeById(id) else flowOf(null)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    fun setActiveBorehole(id: Int?) {
+        activeBoreholeId.value = id
+    }
+
+    fun getBoreholesForProject(projectId: Int): StateFlow<List<Borehole>> {
+        return dao.getBoreholesForProject(projectId)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }
+
+    fun getDailyReportsForBorehole(boreholeId: Int): StateFlow<List<BoreholeDailyReport>> {
+        return dao.getDailyReportsForBorehole(boreholeId)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }
+
+    fun getCoreRunsForBorehole(boreholeId: Int): StateFlow<List<BoreholeCoreRun>> {
+        return dao.getCoreRunsForBorehole(boreholeId)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }
+
+    fun getRockMechanicsEvaluationsForProject(projectId: Int): StateFlow<List<RockMechanicsEvaluation>> {
+        return dao.getRockMechanicsEvaluationsForProject(projectId)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    }
+
+    fun saveBorehole(borehole: Borehole, onSaved: (Int) -> Unit) {
+        viewModelScope.launch {
+            val id = dao.insertBorehole(borehole)
+            onSaved(id.toInt())
+        }
+    }
+
+    fun deleteBorehole(id: Int) {
+        viewModelScope.launch {
+            dao.deleteBoreholeById(id)
+            if (activeBoreholeId.value == id) {
+                activeBoreholeId.value = null
+            }
+        }
+    }
+
+    fun saveDailyReport(report: BoreholeDailyReport) {
+        viewModelScope.launch {
+            dao.insertDailyReport(report)
+        }
+    }
+
+    fun deleteDailyReport(id: Int) {
+        viewModelScope.launch {
+            dao.deleteDailyReportById(id)
+        }
+    }
+
+    fun saveCoreRun(coreRun: BoreholeCoreRun) {
+        viewModelScope.launch {
+            dao.insertCoreRun(coreRun)
+        }
+    }
+
+    fun deleteCoreRun(id: Int) {
+        viewModelScope.launch {
+            dao.deleteCoreRunById(id)
+        }
+    }
+
+    fun saveRockMechanicsEvaluation(evaluation: RockMechanicsEvaluation) {
+        viewModelScope.launch {
+            dao.insertRockMechanicsEvaluation(evaluation)
+        }
+    }
+
+    fun deleteRockMechanicsEvaluation(id: Int) {
+        viewModelScope.launch {
+            dao.deleteRockMechanicsEvaluationById(id)
         }
     }
 
