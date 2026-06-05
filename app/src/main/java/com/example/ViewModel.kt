@@ -524,6 +524,128 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    // Save Station along with initial Observation and linked Sample
+    fun saveStationWithObservation(
+        projectId: Int,
+        stationCode: String,
+        prefix: String,
+        obsType: String,
+        notes: String,
+        photoPath: String?,
+        
+        lithType: String? = null,
+        texture: String? = null,
+        color: String? = null,
+        grainSize: String? = null,
+        lithAlteration: String? = null,
+        lithMineralization: String? = null,
+        
+        altType: String? = null,
+        altIntensity: String? = null,
+        hostRock: String? = null,
+        altAssociated: String? = null,
+        
+        faultType: String? = null,
+        strike: Int? = null,
+        dip: Int? = null,
+        dipDirection: Int? = null,
+        rake: Int? = null,
+        rakeDirection: String? = null,
+        movement: String? = null,
+        width: Double? = null,
+        
+        jointType: String? = null,
+        jointSpacing: Double? = null,
+        
+        veinType: String? = null,
+        veinMineralogy: String? = null,
+        
+        structureType: String? = null,
+        
+        minStyle: String? = null,
+        minAssociatedMinerals: String? = null,
+        minGradeEstimate: String? = null,
+        
+        sampleTaken: Boolean = false,
+        sampleIdCode: String? = null,
+        sampleType: String? = null,
+        sampleDesc: String? = null,
+        samplePhotoPath: String? = null,
+        
+        onSaved: (Int) -> Unit
+    ) {
+        val gps = _gpsState.value
+        if (!gps.isCaptured) return
+
+        viewModelScope.launch {
+            val stationId = dao.insertStation(
+                Station(
+                    projectId = projectId,
+                    stationCode = stationCode,
+                    prefix = prefix,
+                    latitude = gps.latitude,
+                    longitude = gps.longitude,
+                    elevation = gps.elevation,
+                    accuracy = gps.accuracy,
+                    elevationAccuracy = gps.elevationAccuracy,
+                    utmEasting = gps.utmEasting,
+                    utmNorthing = gps.utmNorthing,
+                    utmZone = gps.utmZone
+                )
+            )
+
+            val obsId = dao.insertObservation(
+                Observation(
+                    stationId = stationId.toInt(),
+                    observationType = obsType,
+                    photoPath = photoPath,
+                    notes = notes,
+                    lithologyType = lithType,
+                    texture = texture,
+                    color = color,
+                    grainSize = grainSize,
+                    lithologyAlteration = lithAlteration,
+                    lithologyMineralization = lithMineralization,
+                    alterationType = altType,
+                    intensity = altIntensity,
+                    hostRock = hostRock,
+                    associatedMinerals = altAssociated,
+                    faultType = faultType,
+                    strike = strike,
+                    dip = dip,
+                    dipDirection = dipDirection,
+                    rake = rake,
+                    rakeDirection = rakeDirection,
+                    movement = movement,
+                    width = width,
+                    jointType = jointType,
+                    jointSpacing = jointSpacing,
+                    veinType = veinType,
+                    veinMineralogy = veinMineralogy,
+                    structureType = structureType,
+                    minStyle = minStyle,
+                    minAssociatedMinerals = minAssociatedMinerals,
+                    minGradeEstimate = minGradeEstimate
+                )
+            )
+
+            if (sampleTaken && !sampleIdCode.isNullOrBlank()) {
+                dao.insertSample(
+                    Sample(
+                        observationId = obsId.toInt(),
+                        sampleCodeId = sampleIdCode,
+                        sampleType = sampleType ?: "Hand specimen",
+                        description = sampleDesc,
+                        photoPath = samplePhotoPath ?: photoPath
+                    )
+                )
+            }
+
+            setActiveStation(stationId.toInt())
+            onSaved(stationId.toInt())
+        }
+    }
+
     fun deleteStation(stationId: Int, projectId: Int) {
         viewModelScope.launch {
             dao.deleteStationById(stationId)

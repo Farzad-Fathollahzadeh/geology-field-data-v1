@@ -31,6 +31,10 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Offset
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import android.graphics.BitmapFactory
@@ -66,6 +70,18 @@ import android.net.NetworkCapabilities
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.ui.viewinterop.AndroidView
+
+// ----------------- AUTOCOMPLETE PRESETS GLOBAL CONSTANTS -----------------
+val lithologySuggestions = listOf("Basalt", "Andesite", "Granite", "Tuff", "Diorite", "Limestone", "Schist", "Sandstone", "Shale", "Dacite", "Rhyolite", "Gabbro")
+val textureSuggestions = listOf("Porphyritic", "Aphanitic", "Phaneritic", "Glassy", "Foliated", "Massive", "Granular", "Brecciated")
+val colorSuggestions = listOf("Dark Gray", "Light Gray", "Earthy Brown", "Terracotta Red", "Pale Green", "Cream White", "Jet Black")
+val alterationSuggestions = listOf("Argillic", "Phyllic", "Potassic", "Propylitic", "Silicification", "Sericitization", "Carbonatization")
+val alterationMineralsSuggestions = listOf("Quartz", "Sericite", "Chlorite", "Calcite", "Pyrite", "Chalcopyrite", "Epidote", "Kaolinite")
+val faultSuggestions = listOf("Normal Fault", "Reverse Fault", "Thrust Fault", "Strike-Slip - Dextral", "Strike-Slip - Sinistral", "Shear Zone")
+val jointSuggestions = listOf("Systematic Joint Set", "Nonsystematic Fractures", "Columnar Jointing")
+val veinSuggestions = listOf("Quartz-Veinlet", "Stockwork Veinlets", "Massive Quartz Vein", "Brecciated Vein")
+val structureSuggestions = listOf("Bedding (S0)", "Foliation (S1)", "Cleavage", "Fold Axis")
+val mineralizationSuggestions = listOf("Disseminated", "Massive Sulfide", "Stockwork", "Supergene Enrichment")
 
 class MainActivity : ComponentActivity() {
     private val viewModel: GeologyViewModel by viewModels()
@@ -1947,6 +1963,184 @@ fun CreateStationScreen(
         }
     }
 
+    // ==========================================
+    // MERGED OBSERVATION & SAMPLE STATES
+    // ==========================================
+    var includeObservation by remember { mutableStateOf(true) }
+    val obsType by remember(selectedPrefix) {
+        mutableStateOf(
+            when (selectedPrefix) {
+                "LITH" -> "Lithology"
+                "ALT" -> "Alteration"
+                "FLT" -> "Fault"
+                "STR" -> "Structure"
+                "SMP" -> "Mineralization"
+                else -> "Lithology"
+            }
+        )
+    }
+    
+    var notes by remember { mutableStateOf("") }
+    
+    // Lithology State
+    var lithType by remember { mutableStateOf("") }
+    var texture by remember { mutableStateOf("") }
+    var color by remember { mutableStateOf("") }
+    var grainSize by remember { mutableStateOf("Medium") }
+    var lithAlt by remember { mutableStateOf("") }
+    var lithMin by remember { mutableStateOf("") }
+
+    // Alteration State
+    var altType by remember { mutableStateOf("") }
+    var altIntensity by remember { mutableStateOf("Moderate") }
+    var altHostRock by remember { mutableStateOf("") }
+    var altMinerals by remember { mutableStateOf("") }
+
+    // Fault / Structure State
+    var faultType by remember { mutableStateOf("") }
+    var strike by remember { mutableStateOf("") }
+    var dip by remember { mutableStateOf("") }
+    var dipDirection by remember { mutableStateOf("") }
+    var autoCalcDipDir by remember { mutableStateOf(true) }
+    var rake by remember { mutableStateOf("") }
+    var rakeDirection by remember { mutableStateOf("") }
+    var movement by remember { mutableStateOf("") }
+    var width by remember { mutableStateOf("") }
+
+    // Joint State
+    var jointTypeInput by remember { mutableStateOf("") }
+    var jointSpacingInput by remember { mutableStateOf("") }
+
+    // Vein State
+    var veinTypeInput by remember { mutableStateOf("") }
+    var veinMineralogyInput by remember { mutableStateOf("") }
+
+    // Structure State
+    var foldStructureType by remember { mutableStateOf("") }
+
+    // Mineralization State
+    var mineralizationStyle by remember { mutableStateOf("") }
+    var associatedOreMinerals by remember { mutableStateOf("") }
+    var gradeEstimate by remember { mutableStateOf("") }
+
+    // Sample State
+    var sampleTaken by remember(selectedPrefix) { mutableStateOf(selectedPrefix == "SMP") }
+    var sampleIdCode by remember { mutableStateOf("") }
+    var sampleType by remember { mutableStateOf("Hand specimen") }
+    var sampleDesc by remember { mutableStateOf("") }
+
+    // Photo Watermarking States
+    var attachedPhotoPathsList by remember { mutableStateOf(emptyList<String>()) }
+    var isOverlayEnabled by remember { mutableStateOf(true) }
+    var overlayPosition by remember { mutableStateOf("BOTTOM_LEFT") }
+    var sightAzimuth by remember { mutableStateOf(180) }
+    var activeViewerPhotoPath by remember { mutableStateOf<String?>(null) }
+
+    var selectedUri by remember { mutableStateOf<Uri?>(null) }
+    var galleryMetadata by remember { mutableStateOf<PhotoProcessor.ImageMetadata?>(null) }
+    var showGpsWarningDialog by remember { mutableStateOf(false) }
+
+    val pickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            selectedUri = uri
+            val meta = PhotoProcessor.readImageExif(context, uri)
+            galleryMetadata = meta
+            if (meta.latitude == null || meta.longitude == null) {
+                showGpsWarningDialog = true
+            } else {
+                try {
+                    context.contentResolver.openInputStream(uri)?.use { stream ->
+                        val bitmap = BitmapFactory.decodeStream(stream)
+                        if (bitmap != null) {
+                            val path = PhotoProcessor.saveAnnotatedImage(
+                                context = context,
+                                baseBitmap = bitmap,
+                                stationCode = generatedCode,
+                                lat = meta.latitude,
+                                lon = meta.longitude,
+                                elevation = meta.elevation ?: gps.elevation,
+                                utmZone = gps.utmZone.ifBlank { "39N" },
+                                utmEasting = gps.utmEasting,
+                                utmNorthing = gps.utmNorthing,
+                                azimuth = sightAzimuth,
+                                timestamp = meta.timestamp ?: System.currentTimeMillis(),
+                                settings = PhotoProcessor.OverlaySettings(isOverlayEnabled, overlayPosition)
+                            )
+                            if (path != null) {
+                                attachedPhotoPathsList = attachedPhotoPathsList + path
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
+
+    if (showGpsWarningDialog && selectedUri != null) {
+        val uri = selectedUri!!
+        val meta = galleryMetadata
+        AlertDialog(
+            onDismissRequest = { showGpsWarningDialog = false },
+            title = { Text("GPS EXIF Tag Missing", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error) },
+            text = { Text("This gallery image has no GPS metadata coordinates tag. Force inherit current station's coordinates ($generatedCode)?") },
+            confirmButton = {
+                Button(
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    onClick = {
+                        showGpsWarningDialog = false
+                        try {
+                            context.contentResolver.openInputStream(uri)?.use { stream ->
+                                val bitmap = BitmapFactory.decodeStream(stream)
+                                if (bitmap != null) {
+                                    val path = PhotoProcessor.saveAnnotatedImage(
+                                        context = context,
+                                        baseBitmap = bitmap,
+                                        stationCode = generatedCode,
+                                        lat = gps.latitude,
+                                        lon = gps.longitude,
+                                        elevation = gps.elevation,
+                                        utmZone = gps.utmZone.ifBlank { "39N" },
+                                        utmEasting = gps.utmEasting,
+                                        utmNorthing = gps.utmNorthing,
+                                        azimuth = sightAzimuth,
+                                        timestamp = meta?.timestamp ?: System.currentTimeMillis(),
+                                        settings = PhotoProcessor.OverlaySettings(isOverlayEnabled, overlayPosition)
+                                    )
+                                    if (path != null) {
+                                        attachedPhotoPathsList = attachedPhotoPathsList + path
+                                    }
+                                }
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                ) {
+                    Text("Yes, Inherit Station GPS", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { showGpsWarningDialog = false }
+                ) {
+                    Text("Cancel Import", fontWeight = FontWeight.Bold)
+                }
+            },
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
+
+    // Auto generate sample id when toggled
+    LaunchedEffect(sampleTaken, generatedCode) {
+        if (sampleTaken && sampleIdCode.isBlank()) {
+            sampleIdCode = "${generatedCode}-S1"
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -2194,7 +2388,7 @@ fun CreateStationScreen(
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("UTM Coordinates", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                             Text(
-                                text = String.format(Locale.US, "%.1f E | %.1f N", gps.utmEasting, gps.utmNorthing),
+                                  text = String.format(Locale.US, "%.1f E | %.1f N", gps.utmEasting, gps.utmNorthing),
                                 fontFamily = FontFamily.Monospace,
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.Bold,
@@ -2307,7 +2501,7 @@ fun CreateStationScreen(
             }
         }
 
-        // COORD CONFIGURATION SYSTEM (Moved safely to station capture level to prevent project-level coordinate confusion)
+        // COORD CONFIGURATION SYSTEM
         activeProject?.let { project ->
             var expandedZones by remember { mutableStateOf(false) }
             val zonesList = listOf("11N", "32V", "38N", "39N", "40N", "50J", "54K", "55S")
@@ -2405,6 +2599,671 @@ fun CreateStationScreen(
             }
         }
 
+        // STEP 4: INITIAL OBSERVATION LOGGER
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(20.dp),
+            border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
+        ) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "STEP 4: LOG GEOLOGICAL OBSERVATION",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            letterSpacing = 1.sp
+                        )
+                        Text(
+                            text = "Auto-formatted observation of type: $obsType",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = includeObservation,
+                        onCheckedChange = { includeObservation = it },
+                        modifier = Modifier.testTag("include_observation_toggle")
+                    )
+                }
+
+                if (includeObservation) {
+                    Divider(thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
+
+                    // DYNAMIC FIELDS BASED ON SELECTED PREFIX-BASED OBSTYPE
+                    when (obsType) {
+                        "Lithology" -> {
+                            AutoCompleteTextField(
+                                value = lithType,
+                                onValueChange = { lithType = it },
+                                label = "Rock / Lithology Type",
+                                suggestions = lithologySuggestions,
+                                placeholder = "e.g. Granodiorite, Amphibolite, Basalt",
+                                testTag = "lithology_type"
+                            )
+
+                            AutoCompleteTextField(
+                                value = texture,
+                                onValueChange = { texture = it },
+                                label = "Texture / Fabric",
+                                suggestions = textureSuggestions,
+                                placeholder = "e.g. Porphyritic, Foliated, Gneissic"
+                            )
+
+                            AutoCompleteTextField(
+                                value = color,
+                                onValueChange = { color = it },
+                                label = "Color",
+                                suggestions = colorSuggestions,
+                                placeholder = "e.g. Dark grey, Pinkish grey, Terracotta"
+                            )
+
+                            // Grain Size Selector dropdown
+                            val sizes = listOf("Very Coarse", "Coarse", "Medium", "Fine", "Very Fine")
+                            var expandedSizes by remember { mutableStateOf(false) }
+                            Box {
+                                OutlinedButton(
+                                    onClick = { expandedSizes = true },
+                                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            "Grain Size: $grainSize", 
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 14.sp
+                                        )
+                                        Icon(Icons.Default.KeyboardArrowDown, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                                DropdownMenu(expanded = expandedSizes, onDismissRequest = { expandedSizes = false }) {
+                                    sizes.forEach { size ->
+                                        DropdownMenuItem(
+                                            text = { Text(size, fontWeight = FontWeight.Medium) }, 
+                                            onClick = { grainSize = size; expandedSizes = false }
+                                        )
+                                    }
+                                }
+                            }
+
+                            AutoCompleteTextField(
+                                value = lithAlt,
+                                onValueChange = { lithAlt = it },
+                                label = "Alteration Style",
+                                suggestions = alterationSuggestions,
+                                placeholder = "e.g. Weak Chlorite, Argillic"
+                            )
+
+                            AutoCompleteTextField(
+                                value = lithMin,
+                                onValueChange = { lithMin = it },
+                                label = "Mineralization Index",
+                                suggestions = alterationMineralsSuggestions,
+                                placeholder = "e.g. 2% Pyrite cubes, Malachite staining"
+                            )
+                        }
+                        
+                        "Alteration" -> {
+                            AutoCompleteTextField(
+                                value = altType,
+                                onValueChange = { altType = it },
+                                label = "Alteration Assembly",
+                                suggestions = alterationSuggestions,
+                                placeholder = "e.g. Quartz-Sericite-Pyrite (Phyllic)",
+                                testTag = "alteration_type"
+                            )
+
+                            // Intensity Select
+                            val intensities = listOf("Strong", "Moderate", "Weak")
+                            val isDark = isSystemInDarkTheme()
+                            Text("Alteration Intensity", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                intensities.forEach { rep ->
+                                    val active = altIntensity == rep
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(44.dp)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .background(
+                                                if (active) {
+                                                    MaterialTheme.colorScheme.primary
+                                                } else {
+                                                    if (isDark) Color(0xFF2C2C2F) else Color(0xFFF9F7F5)
+                                                }
+                                            )
+                                            .border(
+                                                1.dp,
+                                                if (active) Color.Transparent else MaterialTheme.colorScheme.outline,
+                                                RoundedCornerShape(12.dp)
+                                            )
+                                            .clickable { altIntensity = rep },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            rep, 
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            fontSize = 13.sp
+                                        )
+                                    }
+                                }
+                            }
+
+                            OutlinedTextField(
+                                value = altHostRock,
+                                onValueChange = { altHostRock = it },
+                                label = { Text("Host Rock") },
+                                placeholder = { Text("e.g. Altered Dacite porphyry") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp)
+                            )
+
+                            AutoCompleteTextField(
+                                value = altMinerals,
+                                onValueChange = { altMinerals = it },
+                                label = "Associated Alteration Minerals",
+                                suggestions = alterationMineralsSuggestions,
+                                placeholder = "e.g. Sericite, Jarosite, Alunite"
+                            )
+                        }
+
+                        "Fault" -> {
+                            AutoCompleteTextField(
+                                value = faultType,
+                                onValueChange = { faultType = it },
+                                label = "Fault Type / Kinematics",
+                                suggestions = faultSuggestions,
+                                placeholder = "e.g. Strike-Slip - Dextral, Normal Fault",
+                                testTag = "fault_type"
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = strike,
+                                    onValueChange = {
+                                        strike = it
+                                        if (autoCalcDipDir) {
+                                            val sI = it.toIntOrNull()
+                                            if (sI != null) {
+                                                dipDirection = String.format(Locale.ROOT, "%03d", (sI + 90) % 360)
+                                            }
+                                        }
+                                    },
+                                    label = { Text("Strike (0-360°)") },
+                                    placeholder = { Text("045") },
+                                    modifier = Modifier.weight(1f).testTag("strike_input"),
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                )
+
+                                OutlinedTextField(
+                                    value = dip,
+                                    onValueChange = { dip = it },
+                                    label = { Text("Dip (0-90°)") },
+                                    placeholder = { Text("60") },
+                                    modifier = Modifier.weight(1f).testTag("dip_input"),
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                )
+
+                                OutlinedTextField(
+                                    value = dipDirection,
+                                    onValueChange = { dipDirection = it },
+                                    label = { Text("Dip Dir (0-360°)") },
+                                    placeholder = { Text("135") },
+                                    modifier = Modifier.weight(1f).testTag("dip_direction_input"),
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                )
+                            }
+
+                            // RHR Auto-calculation checkbox
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth().clickable { autoCalcDipDir = !autoCalcDipDir }
+                            ) {
+                                Checkbox(
+                                    checked = autoCalcDipDir,
+                                    onCheckedChange = { autoCalcDipDir = it },
+                                    modifier = Modifier.size(36.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Auto-calc Dip Dir via Right-Hand Rule (RHR)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            }
+
+                            // Interactive Geological compass dial
+                            GeologicalCompassDial(
+                                strike = strike,
+                                dip = dip,
+                                dipDirection = dipDirection,
+                                onStrikeChange = { strike = it },
+                                onDipChange = { dip = it },
+                                onDipDirectionChange = { dipDirection = it },
+                                autoCalcDipDir = autoCalcDipDir
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = rake,
+                                    onValueChange = { rake = it },
+                                    label = { Text("Rake / Pitch (0-90°)") },
+                                    placeholder = { Text("35") },
+                                    modifier = Modifier.weight(1.3f).testTag("rake_input"),
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                )
+
+                                OutlinedTextField(
+                                    value = rakeDirection,
+                                    onValueChange = { rakeDirection = it },
+                                    label = { Text("Rake Dir") },
+                                    placeholder = { Text("NW, SE") },
+                                    modifier = Modifier.weight(1f).testTag("rake_dir_input"),
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = movement,
+                                    onValueChange = { movement = it },
+                                    label = { Text("Sense of Movement") },
+                                    placeholder = { Text("e.g. Slickenside microsteps") },
+                                    modifier = Modifier.weight(1.3f),
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+
+                                OutlinedTextField(
+                                    value = width,
+                                    onValueChange = { width = it },
+                                    label = { Text("Width (cm)") },
+                                    placeholder = { Text("15") },
+                                    modifier = Modifier.weight(1f),
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                )
+                            }
+                        }
+
+                        "Structure" -> {
+                            val isFlt = selectedPrefix == "FLT"
+                            val isAlt = selectedPrefix == "ALT"
+                            val isLith = selectedPrefix == "LITH"
+                            
+                            // Let geologist choose if it's bed/joint/vein structural data
+                            var selectedStructTab by remember { mutableStateOf("Bedding") }
+                            val tabChoices = listOf("Bedding", "Joint", "Vein", "Foliation")
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                tabChoices.forEach { tab ->
+                                    val act = selectedStructTab == tab
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(36.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (act) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
+                                            .clickable { selectedStructTab = tab }
+                                            .border(1.dp, if (act) Color.Transparent else MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(tab, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (act) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            when (selectedStructTab) {
+                                "Bedding" -> {
+                                    AutoCompleteTextField(
+                                        value = foldStructureType,
+                                        onValueChange = { foldStructureType = it },
+                                        label = "Bedding Structure Type",
+                                        suggestions = structureSuggestions,
+                                        placeholder = "e.g. Bedding S0"
+                                    )
+                                }
+                                "Joint" -> {
+                                    AutoCompleteTextField(
+                                        value = jointTypeInput,
+                                        onValueChange = { jointTypeInput = it },
+                                        label = "Joint Structure Set",
+                                        suggestions = jointSuggestions,
+                                        placeholder = "e.g. Systematic Joint Set A"
+                                    )
+                                    OutlinedTextField(
+                                        value = jointSpacingInput,
+                                        onValueChange = { jointSpacingInput = it },
+                                        label = { Text("Joint Spacing (cm)") },
+                                        placeholder = { Text("35") },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        singleLine = true,
+                                        shape = RoundedCornerShape(12.dp),
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                    )
+                                }
+                                "Vein" -> {
+                                    AutoCompleteTextField(
+                                        value = veinTypeInput,
+                                        onValueChange = { veinTypeInput = it },
+                                        label = "Vein Style",
+                                        suggestions = veinSuggestions,
+                                        placeholder = "e.g. Quartz Tension Veinlets"
+                                    )
+                                    AutoCompleteTextField(
+                                        value = veinMineralogyInput,
+                                        onValueChange = { veinMineralogyInput = it },
+                                        label = "Vein Mineralogy",
+                                        suggestions = alterationMineralsSuggestions,
+                                        placeholder = "e.g. Quartz + Sulfides"
+                                    )
+                                    OutlinedTextField(
+                                        value = width,
+                                        onValueChange = { width = it },
+                                        label = { Text("Vein Width (cm)") },
+                                        placeholder = { Text("12.5") },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        singleLine = true,
+                                        shape = RoundedCornerShape(12.dp),
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                    )
+                                }
+                                "Foliation" -> {
+                                    OutlinedTextField(
+                                        value = foldStructureType,
+                                        onValueChange = { foldStructureType = it },
+                                        label = { Text("Foliation / Symbol Type") },
+                                        placeholder = { Text("e.g. Cleavage S1, Surturing Boundary") },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        singleLine = true,
+                                        shape = RoundedCornerShape(12.dp)
+                                    )
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = strike,
+                                    onValueChange = {
+                                        strike = it
+                                        if (autoCalcDipDir) {
+                                            val sI = it.toIntOrNull()
+                                            if (sI != null) {
+                                                dipDirection = String.format(Locale.ROOT, "%03d", (sI + 90) % 360)
+                                            }
+                                        }
+                                    },
+                                    label = { Text("Strike / Trend (0-360°)") },
+                                    placeholder = { Text("270") },
+                                    modifier = Modifier.weight(1f),
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                )
+
+                                OutlinedTextField(
+                                    value = dip,
+                                    onValueChange = { dip = it },
+                                    label = { Text("Dip / Plunge (0-90°)") },
+                                    placeholder = { Text("30") },
+                                    modifier = Modifier.weight(1f),
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                )
+
+                                OutlinedTextField(
+                                    value = dipDirection,
+                                    onValueChange = { dipDirection = it },
+                                    label = { Text("Dip Dir (0-360°)") },
+                                    placeholder = { Text("360") },
+                                    modifier = Modifier.weight(1f),
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                )
+                            }
+
+                            // RHR Auto-calculation checkbox
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth().clickable { autoCalcDipDir = !autoCalcDipDir }
+                            ) {
+                                Checkbox(
+                                    checked = autoCalcDipDir,
+                                    onCheckedChange = { autoCalcDipDir = it },
+                                    modifier = Modifier.size(36.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Auto-calc Dip Dir via Right-Hand Rule (RHR)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            }
+
+                            // Interactive Geological compass dial
+                            GeologicalCompassDial(
+                                strike = strike,
+                                dip = dip,
+                                dipDirection = dipDirection,
+                                onStrikeChange = { strike = it },
+                                onDipChange = { dip = it },
+                                onDipDirectionChange = { dipDirection = it },
+                                autoCalcDipDir = autoCalcDipDir
+                            )
+                        }
+
+                        "Mineralization" -> {
+                            AutoCompleteTextField(
+                                value = mineralizationStyle,
+                                onValueChange = { mineralizationStyle = it },
+                                label = "Mineralization Index Style",
+                                suggestions = mineralizationSuggestions,
+                                placeholder = "e.g. Disseminated, Clotted veins"
+                            )
+
+                            AutoCompleteTextField(
+                                value = associatedOreMinerals,
+                                onValueChange = { associatedOreMinerals = it },
+                                label = "Associated Ore Minerals",
+                                suggestions = alterationMineralsSuggestions,
+                                placeholder = "e.g. Chalcopyrite, Bornite, Pyrite"
+                            )
+
+                            OutlinedTextField(
+                                value = gradeEstimate,
+                                onValueChange = { gradeEstimate = it },
+                                label = { Text("Field Visual Grade Estimate") },
+                                placeholder = { Text("e.g. 1.2% Cu, 0.4 ppm Au") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = notes,
+                        onValueChange = { notes = it },
+                        label = { Text("Detailed Observation Notes") },
+                        placeholder = { Text("Mention structures, grain patterns, boundaries, visual textures, etc...") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(85.dp)
+                            .testTag("observation_notes_input"),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    // SOLID SPECIMEN NESTED logger
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f)),
+                        border = BorderStroke(1.dp, if (sampleTaken) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(0.4f))
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Layers, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text("Log Solid Specimen Sample", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                        Text("Record physical sample taken at this station", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                                Switch(
+                                    checked = sampleTaken,
+                                    onCheckedChange = { sampleTaken = it },
+                                    modifier = Modifier.scale(0.85f).testTag("sample_taken_toggle")
+                                )
+                            }
+
+                            if (sampleTaken) {
+                                OutlinedTextField(
+                                    value = sampleIdCode,
+                                    onValueChange = { sampleIdCode = it },
+                                    label = { Text("Sample ID Code") },
+                                    modifier = Modifier.fillMaxWidth().testTag("sample_id_field"),
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+
+                                val sampleChoices = listOf("Hand specimen", "Grab sample", "Channel sample", "Drill Core", "Soil")
+                                var expandedSmpTypes by remember { mutableStateOf(false) }
+                                Box {
+                                    OutlinedButton(
+                                        onClick = { expandedSmpTypes = true },
+                                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                                    ) {
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                            Text("Specimen Type: $sampleType", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
+                                            Icon(Icons.Default.KeyboardArrowDown, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        }
+                                    }
+                                    DropdownMenu(expanded = expandedSmpTypes, onDismissRequest = { expandedSmpTypes = false }) {
+                                        sampleChoices.forEach { sc ->
+                                            DropdownMenuItem(text = { Text(sc, fontSize = 12.sp) }, onClick = { sampleType = sc; expandedSmpTypes = false })
+                                        }
+                                    }
+                                }
+
+                                OutlinedTextField(
+                                    value = sampleDesc,
+                                    onValueChange = { sampleDesc = it },
+                                    label = { Text("Sample Description & Purpose") },
+                                    placeholder = { Text("zircon dating, assaying, core log") },
+                                    modifier = Modifier.fillMaxWidth().testTag("sample_description"),
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(10.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // CAMERA ATTACHMENTS
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(0.15f)),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(0.3f)),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text("WATERMARKED FIELD EVIDENCE CAM", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Badge { Text("${attachedPhotoPathsList.size} Photos") }
+                            }
+
+                            if (attachedPhotoPathsList.isEmpty()) {
+                                Box(modifier = Modifier.fillMaxWidth().height(60.dp).background(MaterialTheme.colorScheme.surfaceVariant.copy(0.15f), RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
+                                    Text("No geocut evidence photos attached yet", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            } else {
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                                    items(attachedPhotoPathsList) { path ->
+                                        Box(modifier = Modifier.size(70.dp).clip(RoundedCornerShape(10.dp))) {
+                                            AsyncImage(
+                                                model = path,
+                                                contentDescription = null,
+                                                modifier = Modifier.fillMaxSize().clickable { activeViewerPhotoPath = path },
+                                                contentScale = ContentScale.Crop
+                                            )
+                                            IconButton(
+                                                onClick = { attachedPhotoPathsList = attachedPhotoPathsList.filter { it != path } },
+                                                modifier = Modifier.align(Alignment.TopEnd).size(22.dp).background(Color.Black.copy(0.4f), CircleShape)
+                                            ) {
+                                                Icon(Icons.Default.Close, null, modifier = Modifier.size(10.dp), tint = Color.White)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text("Stamping Stamp Overlay", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Switch(checked = isOverlayEnabled, onCheckedChange = { isOverlayEnabled = it }, modifier = Modifier.scale(0.75f))
+                            }
+
+                            Button(
+                                onClick = { pickerLauncher.launch("image/*") },
+                                modifier = Modifier.fillMaxWidth().height(42.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                            ) {
+                                Icon(Icons.Default.PhotoCamera, null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Snap/Select Photo from Storage", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                } else {
+                    Text("Observation form is bypassed. Only coordinate locking is performed.", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.7f), fontSize = 12.sp)
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.weight(1f))
 
         Row(
@@ -2427,7 +3286,146 @@ fun CreateStationScreen(
             Button(
                 onClick = {
                     if (gps.isCaptured) {
-                        viewModel.saveStation(projectId, generatedCode, selectedPrefix, onSaved)
+                        val notesVal = notes
+                        val photoPathVal = if (attachedPhotoPathsList.isNotEmpty()) attachedPhotoPathsList.filter { it.isNotBlank() }.joinToString(",") else null
+                        
+                        var lType: String? = null
+                        var tex: String? = null
+                        var col: String? = null
+                        var gSize: String? = null
+                        var lAlt: String? = null
+                        var lMin: String? = null
+                        
+                        var aType: String? = null
+                        var aInt: String? = null
+                        var aHost: String? = null
+                        var aMin: String? = null
+                        
+                        var fType: String? = null
+                        var jType: String? = null
+                        var jSp: Double? = null
+                        var vType: String? = null
+                        var vMin: String? = null
+                        var sType: String? = null
+                        var mStyle: String? = null
+                        var mAssoc: String? = null
+                        var mGrade: String? = null
+                        
+                        var strk: Int? = null
+                        var dp: Int? = null
+                        var dpDir: Int? = null
+                        var rk: Int? = null
+                        var rkDir: String? = null
+                        var mvt: String? = null
+                        var wdh: Double? = null
+
+                        if (includeObservation) {
+                            when (obsType) {
+                                "Lithology" -> {
+                                    lType = lithType.ifBlank { "Unnamed Lithology" }
+                                    tex = texture.ifBlank { "N/A" }
+                                    col = color.ifBlank { "N/A" }
+                                    gSize = grainSize
+                                    lAlt = lithAlt.ifBlank { null }
+                                    lMin = lithMin.ifBlank { null }
+                                }
+                                "Alteration" -> {
+                                    aType = altType.ifBlank { "Unnamed Alteration" }
+                                    aInt = altIntensity
+                                    aHost = altHostRock.ifBlank { "N/A" }
+                                    aMin = altMinerals.ifBlank { "N/A" }
+                                }
+                                "Fault" -> {
+                                    fType = faultType.ifBlank { "Unnamed Fault" }
+                                    strk = strike.toIntOrNull()
+                                    dp = dip.toIntOrNull()
+                                    dpDir = dipDirection.toIntOrNull()
+                                    rk = rake.toIntOrNull()
+                                    rkDir = rakeDirection.ifBlank { null }
+                                    mvt = movement.ifBlank { null }
+                                    wdh = width.toDoubleOrNull()
+                                }
+                                "Joint" -> {
+                                    jType = jointTypeInput.ifBlank { "Systematic Set" }
+                                    jSp = jointSpacingInput.toDoubleOrNull()
+                                    strk = strike.toIntOrNull()
+                                    dp = dip.toIntOrNull()
+                                    dpDir = dipDirection.toIntOrNull()
+                                }
+                                "Vein" -> {
+                                    vType = veinTypeInput.ifBlank { "Tension Vein" }
+                                    vMin = veinMineralogyInput.ifBlank { "Quartz" }
+                                    wdh = width.toDoubleOrNull()
+                                    strk = strike.toIntOrNull()
+                                    dp = dip.toIntOrNull()
+                                    dpDir = dipDirection.toIntOrNull()
+                                }
+                                "Structure" -> {
+                                    sType = foldStructureType.ifBlank { "Bedding S0" }
+                                    strk = strike.toIntOrNull()
+                                    dp = dip.toIntOrNull()
+                                    dpDir = dipDirection.toIntOrNull()
+                                }
+                                "Mineralization" -> {
+                                    mStyle = mineralizationStyle.ifBlank { "Disseminated" }
+                                    mAssoc = associatedOreMinerals.ifBlank { "N/A" }
+                                    mGrade = gradeEstimate.ifBlank { "N/A" }
+                                }
+                            }
+                        }
+
+                        if (includeObservation) {
+                            viewModel.saveStationWithObservation(
+                                projectId = projectId,
+                                stationCode = generatedCode,
+                                prefix = selectedPrefix,
+                                obsType = obsType,
+                                notes = notesVal,
+                                photoPath = photoPathVal,
+                                
+                                lithType = lType,
+                                texture = tex,
+                                color = col,
+                                grainSize = gSize,
+                                lithAlteration = lAlt,
+                                lithMineralization = lMin,
+                                
+                                altType = aType,
+                                altIntensity = aInt,
+                                hostRock = aHost,
+                                altAssociated = aMin,
+                                
+                                faultType = fType,
+                                strike = strk,
+                                dip = dp,
+                                dipDirection = dpDir,
+                                rake = rk,
+                                rakeDirection = rkDir,
+                                movement = mvt,
+                                width = wdh,
+                                
+                                jointType = jType,
+                                jointSpacing = jSp,
+                                
+                                veinType = vType,
+                                veinMineralogy = vMin,
+                                
+                                structureType = sType,
+                                
+                                minStyle = mStyle,
+                                minAssociatedMinerals = mAssoc,
+                                minGradeEstimate = mGrade,
+                                
+                                sampleTaken = sampleTaken,
+                                sampleIdCode = sampleIdCode,
+                                sampleType = sampleType,
+                                sampleDesc = sampleDesc,
+                                
+                                onSaved = onSaved
+                            )
+                        } else {
+                            viewModel.saveStation(projectId, generatedCode, selectedPrefix, onSaved)
+                        }
                     }
                 },
                 enabled = gps.isCaptured,
@@ -2440,6 +3438,29 @@ fun CreateStationScreen(
                 Icon(Icons.Default.Done, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(8.dp))
                 Text("Lock Station", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+
+    // Fullscreen viewing popup
+    if (activeViewerPhotoPath != null) {
+        Dialog(
+            onDismissRequest = { activeViewerPhotoPath = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+                AsyncImage(
+                    model = activeViewerPhotoPath,
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize().clickable { activeViewerPhotoPath = null },
+                    contentScale = ContentScale.Fit
+                )
+                IconButton(
+                    onClick = { activeViewerPhotoPath = null },
+                    modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).background(Color.Black.copy(0.4f), CircleShape)
+                ) {
+                    Icon(Icons.Default.Close, null, tint = Color.White)
+                }
             }
         }
     }
@@ -3378,6 +4399,72 @@ fun GeologyDictionaryAutoSuggest(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AutoCompleteTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    suggestions: List<String>,
+    modifier: Modifier = Modifier,
+    placeholder: String = "",
+    testTag: String = ""
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val filteredSuggestions = remember(value, suggestions) {
+        if (value.trim().isEmpty()) {
+            suggestions.take(6)
+        } else {
+            suggestions.filter { it.contains(value, ignoreCase = true) }.take(6)
+        }
+    }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+        modifier = modifier
+    ) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = {
+                onValueChange(it)
+                expanded = true
+            },
+            label = { Text(label) },
+            placeholder = { if (placeholder.isNotEmpty()) Text(placeholder) },
+            trailingIcon = {
+                ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+            },
+            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor()
+                .then(if (testTag.isNotEmpty()) Modifier.testTag(testTag) else Modifier),
+            shape = RoundedCornerShape(12.dp),
+            singleLine = true
+        )
+
+        if (filteredSuggestions.isNotEmpty()) {
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+            ) {
+                filteredSuggestions.forEach { suggestion ->
+                    DropdownMenuItem(
+                        text = { Text(suggestion, fontWeight = FontWeight.Medium, fontSize = 13.sp) },
+                        onClick = {
+                            onValueChange(suggestion)
+                            expanded = false
+                        },
+                        contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 fun AddObservationScreen(
     station: Station?,
@@ -3407,6 +4494,7 @@ fun AddObservationScreen(
     var strike by remember { mutableStateOf("") }
     var dip by remember { mutableStateOf("") }
     var dipDirection by remember { mutableStateOf("") }
+    var autoCalcDipDir by remember { mutableStateOf(true) }
     var rake by remember { mutableStateOf("") }
     var rakeDirection by remember { mutableStateOf("") }
     var movement by remember { mutableStateOf("") }
@@ -3648,36 +4736,29 @@ fun AddObservationScreen(
                     }
                 }
 
-                OutlinedTextField(
+                AutoCompleteTextField(
                     value = lithType,
                     onValueChange = { lithType = it },
-                    label = { Text("Rock / Lithology Type") },
-                    placeholder = { Text("e.g. Granodiorite, Amphibolite") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("lithology_type"),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Rock / Lithology Type",
+                    suggestions = lithologySuggestions,
+                    placeholder = "e.g. Granodiorite, Amphibolite",
+                    testTag = "lithology_type"
                 )
 
-                OutlinedTextField(
+                AutoCompleteTextField(
                     value = texture,
                     onValueChange = { texture = it },
-                    label = { Text("Texture / Fabric") },
-                    placeholder = { Text("e.g. Porphyritic, Foliated, Gneissic") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Texture / Fabric",
+                    suggestions = textureSuggestions,
+                    placeholder = "e.g. Porphyritic, Foliated, Gneissic"
                 )
 
-                OutlinedTextField(
+                AutoCompleteTextField(
                     value = color,
                     onValueChange = { color = it },
-                    label = { Text("Color") },
-                    placeholder = { Text("e.g. Grey-pink, Dark green") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Color",
+                    suggestions = colorSuggestions,
+                    placeholder = "e.g. Grey-pink, Dark green"
                 )
 
                 // Grain Size Selector dropdown
@@ -3714,39 +4795,32 @@ fun AddObservationScreen(
                     }
                 }
 
-                OutlinedTextField(
+                AutoCompleteTextField(
                     value = lithAlt,
                     onValueChange = { lithAlt = it },
-                    label = { Text("Alteration Style") },
-                    placeholder = { Text("e.g. Potassic, Propylitic, Weak Chlorite") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Alteration Style",
+                    suggestions = alterationSuggestions,
+                    placeholder = "e.g. Potassic, Propylitic, Weak Chlorite"
                 )
 
-                OutlinedTextField(
+                AutoCompleteTextField(
                     value = lithMin,
                     onValueChange = { lithMin = it },
-                    label = { Text("Mineralization Index") },
-                    placeholder = { Text("e.g. 2% Pyrite cubes, trace Chalcopyrite") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Mineralization Index",
+                    suggestions = alterationMineralsSuggestions,
+                    placeholder = "e.g. 2% Pyrite cubes, trace Chalcopyrite"
                 )
             }
             "Alteration" -> {
                 Text("ALTERATION ZONE FORM", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, letterSpacing = 1.sp)
 
-                OutlinedTextField(
+                AutoCompleteTextField(
                     value = altType,
                     onValueChange = { altType = it },
-                    label = { Text("Alteration Assembly") },
-                    placeholder = { Text("e.g. Quartz-Sericite-Pyrite (Phyllic)") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("alteration_type"),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Alteration Assembly",
+                    suggestions = alterationSuggestions,
+                    placeholder = "e.g. Quartz-Sericite-Pyrite (Phyllic)",
+                    testTag = "alteration_type"
                 )
 
                 // Intensity
@@ -3788,24 +4862,20 @@ fun AddObservationScreen(
                     }
                 }
 
-                OutlinedTextField(
+                AutoCompleteTextField(
                     value = altHostRock,
                     onValueChange = { altHostRock = it },
-                    label = { Text("Host Rock") },
-                    placeholder = { Text("e.g. Altered Dacite porphyry") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Host Rock",
+                    suggestions = lithologySuggestions,
+                    placeholder = "e.g. Altered Dacite porphyry"
                 )
 
-                OutlinedTextField(
+                AutoCompleteTextField(
                     value = altMinerals,
                     onValueChange = { altMinerals = it },
-                    label = { Text("Associated Alteration Minerals") },
-                    placeholder = { Text("e.g. Alunite, Kaolinite, Gypsum") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Associated Alteration Minerals",
+                    suggestions = alterationMineralsSuggestions,
+                    placeholder = "e.g. Alunite, Kaolinite, Gypsum"
                 )
             }
             "Fault" -> {
@@ -3824,14 +4894,13 @@ fun AddObservationScreen(
                     }
                 }
 
-                OutlinedTextField(
+                AutoCompleteTextField(
                     value = faultType,
                     onValueChange = { faultType = it },
-                    label = { Text("Fault Type / Kinematics") },
-                    placeholder = { Text("e.g. Dextral Strike-Slip, Low-angle Thrust") },
-                    modifier = Modifier.fillMaxWidth().testTag("fault_type"),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Fault Type / Kinematics",
+                    suggestions = faultSuggestions,
+                    placeholder = "e.g. Dextral Strike-Slip, Low-angle Thrust",
+                    testTag = "fault_type"
                 )
 
                 Row(
@@ -3840,7 +4909,15 @@ fun AddObservationScreen(
                 ) {
                     OutlinedTextField(
                         value = strike,
-                        onValueChange = { strike = it },
+                        onValueChange = {
+                            strike = it
+                            if (autoCalcDipDir) {
+                                val sI = it.toIntOrNull()
+                                if (sI != null) {
+                                    dipDirection = String.format(Locale.ROOT, "%03d", (sI + 90) % 360)
+                                }
+                            }
+                        },
                         label = { Text("Strike (0-360°)") },
                         placeholder = { Text("045") },
                         modifier = Modifier.weight(1f).testTag("strike_input"),
@@ -3871,6 +4948,31 @@ fun AddObservationScreen(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
                 }
+
+                // RHR Auto-calculation checkbox
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clickable { autoCalcDipDir = !autoCalcDipDir }
+                ) {
+                    Checkbox(
+                        checked = autoCalcDipDir,
+                        onCheckedChange = { autoCalcDipDir = it },
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Auto-calc Dip Dir via Right-Hand Rule (RHR)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                }
+
+                // Interactive Geological compass dial
+                GeologicalCompassDial(
+                    strike = strike,
+                    dip = dip,
+                    dipDirection = dipDirection,
+                    onStrikeChange = { strike = it },
+                    onDipChange = { dip = it },
+                    onDipDirectionChange = { dipDirection = it },
+                    autoCalcDipDir = autoCalcDipDir
+                )
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -3940,14 +5042,12 @@ fun AddObservationScreen(
                     }
                 }
 
-                OutlinedTextField(
+                AutoCompleteTextField(
                     value = jointTypeInput,
                     onValueChange = { jointTypeInput = it },
-                    label = { Text("Joint Structure / Set Type") },
-                    placeholder = { Text("e.g. Regional Systematic Joint Set A") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Joint Structure / Set Type",
+                    suggestions = jointSuggestions,
+                    placeholder = "e.g. Regional Systematic Joint Set A"
                 )
 
                 OutlinedTextField(
@@ -3967,7 +5067,15 @@ fun AddObservationScreen(
                 ) {
                     OutlinedTextField(
                         value = strike,
-                        onValueChange = { strike = it },
+                        onValueChange = {
+                            strike = it
+                            if (autoCalcDipDir) {
+                                val sI = it.toIntOrNull()
+                                if (sI != null) {
+                                    dipDirection = String.format(Locale.ROOT, "%03d", (sI + 90) % 360)
+                                }
+                            }
+                        },
                         label = { Text("Strike (0-360°)") },
                         placeholder = { Text("090") },
                         modifier = Modifier.weight(1f),
@@ -3998,6 +5106,31 @@ fun AddObservationScreen(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
                 }
+
+                // RHR Auto-calculation checkbox
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clickable { autoCalcDipDir = !autoCalcDipDir }
+                ) {
+                    Checkbox(
+                        checked = autoCalcDipDir,
+                        onCheckedChange = { autoCalcDipDir = it },
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Auto-calc Dip Dir via Right-Hand Rule (RHR)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                }
+
+                // Interactive Geological compass dial
+                GeologicalCompassDial(
+                    strike = strike,
+                    dip = dip,
+                    dipDirection = dipDirection,
+                    onStrikeChange = { strike = it },
+                    onDipChange = { dip = it },
+                    onDipDirectionChange = { dipDirection = it },
+                    autoCalcDipDir = autoCalcDipDir
+                )
             }
             "Vein" -> {
                 Text("HYDROTHERMAL VEIN DESCRIPTION", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, letterSpacing = 1.sp)
@@ -4015,24 +5148,20 @@ fun AddObservationScreen(
                     }
                 }
 
-                OutlinedTextField(
+                AutoCompleteTextField(
                     value = veinTypeInput,
                     onValueChange = { veinTypeInput = it },
-                    label = { Text("Vein Style") },
-                    placeholder = { Text("e.g. Tension Veinlet, Massive Quartz Reef") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Vein Style",
+                    suggestions = veinSuggestions,
+                    placeholder = "e.g. Tension Veinlet, Massive Quartz Reef"
                 )
 
-                OutlinedTextField(
+                AutoCompleteTextField(
                     value = veinMineralogyInput,
                     onValueChange = { veinMineralogyInput = it },
-                    label = { Text("Vein Mineralogy") },
-                    placeholder = { Text("e.g. Quartz + Fluorite + Chalcopyrite") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Vein Mineralogy",
+                    suggestions = alterationMineralsSuggestions,
+                    placeholder = "e.g. Quartz + Fluorite + Chalcopyrite"
                 )
 
                 OutlinedTextField(
@@ -4052,7 +5181,15 @@ fun AddObservationScreen(
                 ) {
                     OutlinedTextField(
                         value = strike,
-                        onValueChange = { strike = it },
+                        onValueChange = {
+                            strike = it
+                            if (autoCalcDipDir) {
+                                val sI = it.toIntOrNull()
+                                if (sI != null) {
+                                    dipDirection = String.format(Locale.ROOT, "%03d", (sI + 90) % 360)
+                                }
+                            }
+                        },
                         label = { Text("Strike (0-360°)") },
                         placeholder = { Text("120") },
                         modifier = Modifier.weight(1f),
@@ -4083,6 +5220,31 @@ fun AddObservationScreen(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
                 }
+
+                // RHR Auto-calculation checkbox
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clickable { autoCalcDipDir = !autoCalcDipDir }
+                ) {
+                    Checkbox(
+                        checked = autoCalcDipDir,
+                        onCheckedChange = { autoCalcDipDir = it },
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Auto-calc Dip Dir via Right-Hand Rule (RHR)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                }
+
+                // Interactive Geological compass dial
+                GeologicalCompassDial(
+                    strike = strike,
+                    dip = dip,
+                    dipDirection = dipDirection,
+                    onStrikeChange = { strike = it },
+                    onDipChange = { dip = it },
+                    onDipDirectionChange = { dipDirection = it },
+                    autoCalcDipDir = autoCalcDipDir
+                )
             }
             "Structure" -> {
                 Text("STRUCTURAL & BEDDING SYMBOLS FORM", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, letterSpacing = 1.sp)
@@ -4100,14 +5262,12 @@ fun AddObservationScreen(
                     }
                 }
 
-                OutlinedTextField(
+                AutoCompleteTextField(
                     value = foldStructureType,
                     onValueChange = { foldStructureType = it },
-                    label = { Text("Structural Symbol Type") },
-                    placeholder = { Text("e.g. Bedding S0, Fold Hinge Plunge") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Structural Symbol Type",
+                    suggestions = structureSuggestions,
+                    placeholder = "e.g. Bedding S0, Fold Hinge Plunge"
                 )
 
                 Row(
@@ -4116,7 +5276,15 @@ fun AddObservationScreen(
                 ) {
                     OutlinedTextField(
                         value = strike,
-                        onValueChange = { strike = it },
+                        onValueChange = {
+                            strike = it
+                            if (autoCalcDipDir) {
+                                val sI = it.toIntOrNull()
+                                if (sI != null) {
+                                    dipDirection = String.format(Locale.ROOT, "%03d", (sI + 90) % 360)
+                                }
+                            }
+                        },
                         label = { Text("Strike / Trend (0-360°)") },
                         placeholder = { Text("310") },
                         modifier = Modifier.weight(1f),
@@ -4147,6 +5315,31 @@ fun AddObservationScreen(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
                 }
+
+                // RHR Auto-calculation checkbox
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().clickable { autoCalcDipDir = !autoCalcDipDir }
+                ) {
+                    Checkbox(
+                        checked = autoCalcDipDir,
+                        onCheckedChange = { autoCalcDipDir = it },
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Auto-calc Dip Dir via Right-Hand Rule (RHR)", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                }
+
+                // Interactive Geological compass dial
+                GeologicalCompassDial(
+                    strike = strike,
+                    dip = dip,
+                    dipDirection = dipDirection,
+                    onStrikeChange = { strike = it },
+                    onDipChange = { dip = it },
+                    onDipDirectionChange = { dipDirection = it },
+                    autoCalcDipDir = autoCalcDipDir
+                )
             }
             "Mineralization" -> {
                 Text("MINERALIZATION ORE DEPOSIT FORM", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, letterSpacing = 1.sp)
@@ -4164,24 +5357,20 @@ fun AddObservationScreen(
                     }
                 }
 
-                OutlinedTextField(
+                AutoCompleteTextField(
                     value = mineralizationStyle,
                     onValueChange = { mineralizationStyle = it },
-                    label = { Text("Mineralization Index Style") },
-                    placeholder = { Text("e.g. Disseminated Chalcopyrite in potassic zone") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Mineralization Index Style",
+                    suggestions = mineralizationSuggestions,
+                    placeholder = "e.g. Disseminated Chalcopyrite in potassic zone"
                 )
 
-                OutlinedTextField(
+                AutoCompleteTextField(
                     value = associatedOreMinerals,
                     onValueChange = { associatedOreMinerals = it },
-                    label = { Text("Associated Ore Minerals") },
-                    placeholder = { Text("e.g. Pyrite, Chalcopyrite, Bornite, Malachite") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Associated Ore Minerals",
+                    suggestions = alterationMineralsSuggestions,
+                    placeholder = "e.g. Pyrite, Chalcopyrite, Bornite, Malachite"
                 )
 
                 OutlinedTextField(
@@ -4961,6 +6150,9 @@ fun HomeDashboardContent(
             }
         }
 
+        // Interactive QAPF Ternary Rock Classifier & Plotter Module
+        QAPFClassifierPanel()
+
         // Expandable Guidelines Accordion Panel (Keeps screen perfectly clean, professional and decluttered)
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -5121,6 +6313,500 @@ fun GuideBullet(number: String, title: String, desc: String) {
         Column(modifier = Modifier.weight(1f)) {
             Text(text = title, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
             Text(text = desc, fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 15.sp)
+        }
+    }
+}
+
+// -------------------------------------------------------------------------
+// REUSABLE GEOLOGICAL INSTRUMENT & CALCULATION COMPOSABLES
+// -------------------------------------------------------------------------
+fun getCardinalDirection(angleString: String): String {
+    val angle = angleString.toIntOrNull() ?: return "N"
+    val normalizedAngle = ((angle % 360) + 360) % 360
+    return when (normalizedAngle) {
+        in 338..360, in 0..22 -> "N"
+        in 23..67 -> "NE"
+        in 68..112 -> "E"
+        in 113..157 -> "SE"
+        in 158..202 -> "S"
+        in 203..247 -> "SW"
+        in 248..292 -> "W"
+        in 293..337 -> "NW"
+        else -> "N"
+    }
+}
+
+fun classifyPlutonicQAP(q: Float, a: Float, p: Float): String {
+    if (q >= 90f) return "Quartzolite"
+    if (q >= 60f) return "Quartz-rich Granitoid"
+    
+    val totalFeldspar = a + p
+    if (totalFeldspar <= 0f) return "Plutonic Rock (Indeterminate)"
+    val pRatio = p / totalFeldspar
+    
+    if (q >= 20f) {
+        return when {
+            pRatio < 0.10f -> "Alkali Feldspar Granite"
+            pRatio < 0.35f -> "Syenogranite (Granite)"
+            pRatio < 0.65f -> "Monzogranite"
+            pRatio < 0.90f -> "Granodiorite"
+            else -> "Tonalite"
+        }
+    } else if (q >= 5f) {
+        return when {
+            pRatio < 0.10f -> "Quartz Alkali Feldspar Syenite"
+            pRatio < 0.35f -> "Quartz Syenite"
+            pRatio < 0.65f -> "Quartz Monzonite"
+            pRatio < 0.90f -> "Quartz Monzodiorite"
+            else -> "Quartz Diorite / Quartz Gabbro"
+        }
+    } else {
+        return when {
+            pRatio < 0.10f -> "Alkali Feldspar Syenite"
+            pRatio < 0.35f -> "Syenite"
+            pRatio < 0.65f -> "Monzonite"
+            pRatio < 0.90f -> "Monzodiorite / Monzogabbro"
+            else -> "Diorite / Gabbro / Anorthosite"
+        }
+    }
+}
+
+@Composable
+fun GeologicalCompassDial(
+    strike: String,
+    dip: String,
+    dipDirection: String,
+    onStrikeChange: (String) -> Unit,
+    onDipChange: (String) -> Unit,
+    onDipDirectionChange: (String) -> Unit,
+    autoCalcDipDir: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val strikeVal = strike.toIntOrNull() ?: 0
+    val dipVal = dip.toIntOrNull() ?: 0
+    val dipDirVal = dipDirection.toIntOrNull() ?: 0
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f))
+            .padding(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = "Interactive Clinometer Compass Tool",
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(110.dp)
+                    .background(MaterialTheme.colorScheme.surface, CircleShape)
+                    .border(1.5.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                    .pointerInput(autoCalcDipDir) {
+                        detectTapGestures { offset ->
+                            val cx = size.width / 2f
+                            val cy = size.height / 2f
+                            val dx = offset.x - cx
+                            val dy = offset.y - cy
+                            var angle = Math.toDegrees(Math.atan2(dy.toDouble(), dx.toDouble())).toFloat()
+                            angle = (angle + 90f + 360f) % 360f
+                            val newStrike = angle.toInt()
+                            onStrikeChange(newStrike.toString())
+                            if (autoCalcDipDir) {
+                                val newDipDir = (newStrike + 90) % 360
+                                onDipDirectionChange(String.format(Locale.ROOT, "%03d", newDipDir))
+                            }
+                        }
+                    }
+                    .pointerInput(autoCalcDipDir) {
+                        detectDragGestures { change, _ ->
+                            change.consume()
+                            val cx = size.width / 2f
+                            val cy = size.height / 2f
+                            val dx = change.position.x - cx
+                            val dy = change.position.y - cy
+                            var angle = Math.toDegrees(Math.atan2(dy.toDouble(), dx.toDouble())).toFloat()
+                            angle = (angle + 90f + 360f) % 360f
+                            val newStrike = angle.toInt()
+                            onStrikeChange(newStrike.toString())
+                            if (autoCalcDipDir) {
+                                val newDipDir = (newStrike + 90) % 360
+                                onDipDirectionChange(String.format(Locale.ROOT, "%03d", newDipDir))
+                            }
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val center = Offset(size.width / 2, size.height / 2)
+                    val r = size.width / 2
+
+                    drawCircle(
+                        color = Color.LightGray.copy(alpha = 0.3f),
+                        radius = r - 10,
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(1f)
+                    )
+
+                    drawContext.canvas.nativeCanvas.apply {
+                        val paint = android.graphics.Paint().apply {
+                            color = android.graphics.Color.GRAY
+                            textSize = 24f
+                            textAlign = android.graphics.Paint.Align.CENTER
+                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        }
+                        drawText("N", center.x, 24f, paint)
+                        drawText("S", center.x, size.height - 8f, paint)
+                        drawText("E", size.width - 20f, center.y + 8f, paint)
+                        drawText("W", 20f, center.y + 8f, paint)
+                    }
+
+                    val strikeRad = Math.toRadians((strikeVal - 90).toDouble())
+                    val strikeX1 = center.x + (r - 12) * Math.cos(strikeRad).toFloat()
+                    val strikeY1 = center.y + (r - 12) * Math.sin(strikeRad).toFloat()
+                    val strikeX2 = center.x - (r - 12) * Math.cos(strikeRad).toFloat()
+                    val strikeY2 = center.y - (r - 12) * Math.sin(strikeRad).toFloat()
+
+                    drawLine(
+                        color = Color(0xFFE53935),
+                        start = Offset(strikeX1, strikeY1),
+                        end = Offset(strikeX2, strikeY2),
+                        strokeWidth = 4f
+                    )
+
+                    val dipDirRad = Math.toRadians((dipDirVal - 90).toDouble())
+                    val dipLength = (r - 20) * (dipVal / 90f)
+                    val dipX = center.x + dipLength * Math.cos(dipDirRad).toFloat()
+                    val dipY = center.y + dipLength * Math.sin(dipDirRad).toFloat()
+
+                    drawLine(
+                        color = Color(0xFF1E88E5),
+                        start = center,
+                        end = Offset(dipX, dipY),
+                        strokeWidth = 6f
+                    )
+                    drawCircle(
+                        color = Color(0xFF1E88E5),
+                        radius = 6f,
+                        center = Offset(dipX, dipY)
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Strike: ${strikeVal}°",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = getCardinalDirection(strikeVal.toString()),
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                    )
+                }
+                Slider(
+                    value = strikeVal.toFloat(),
+                    onValueChange = {
+                        val newStrike = it.toInt()
+                        onStrikeChange(newStrike.toString())
+                        if (autoCalcDipDir) {
+                            val newDipDir = (newStrike + 90) % 360
+                            onDipDirectionChange(String.format(Locale.ROOT, "%03d", newDipDir))
+                        }
+                    },
+                    valueRange = 0f..360f,
+                    modifier = Modifier.height(28.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Dip: ${dipVal}°",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = if (dipVal < 20) "Flat" else if (dipVal < 60) "Moderate" else "Steep",
+                        fontSize = 9.sp,
+                        color = MaterialTheme.colorScheme.secondary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Slider(
+                    value = dipVal.toFloat(),
+                    onValueChange = {
+                        onDipChange(it.toInt().toString())
+                    },
+                    valueRange = 0f..90f,
+                    modifier = Modifier.height(28.dp)
+                )
+            }
+        }
+        Text(
+            text = "Tap or drag compass visually to configure measurements on-the-field.",
+            fontSize = 9.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+        )
+    }
+}
+
+@Composable
+fun QAPFClassifierPanel() {
+    var isExpanded by remember { mutableStateOf(false) }
+    var qInput by remember { mutableStateOf(35f) }
+    var aInput by remember { mutableStateOf(40f) }
+    var pInput by remember { mutableStateOf(25f) }
+
+    val sum = qInput + aInput + pInput
+    val qNorm = if (sum > 0) (qInput / sum) * 100f else 33.3f
+    val aNorm = if (sum > 0) (aInput / sum) * 100f else 33.3f
+    val pNorm = if (sum > 0) (pInput / sum) * 100f else 33.3f
+
+    val classifiedName = remember(qNorm, aNorm, pNorm) {
+        classifyPlutonicQAP(qNorm, aNorm, pNorm)
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth().testTag("qapf_classifier_card"),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Column(
+            modifier = Modifier.animateContentSize()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { isExpanded = !isExpanded }
+                    .padding(14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Category,
+                        contentDescription = "QAPF Chart",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text = "IUGS QAPF Ternary Rock Classifier",
+                        fontSize = 11.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text("Interactive Plot", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                }
+            }
+
+            if (isExpanded) {
+                Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Adjust raw quartz (Q), alkali feldspar (A), and plagioclase (P) mineral ratios. The diagram automatically normalizes values and plots the matching plutonic rock classification category.",
+                        fontSize = 10.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 15.sp
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(140.dp)
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(0.3f), RoundedCornerShape(8.dp))
+                                .border(0.5.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(8.dp))
+                                .pointerInput(Unit) {
+                                    detectTapGestures { offset ->
+                                        val w = size.width.toFloat()
+                                        val h = size.height.toFloat()
+                                        val xQ = w / 2f
+                                        val yQ = 10f
+                                        val xA = 10f
+                                        val yA = h - 10f
+                                        val xP = w - 10f
+                                        val yP = h - 10f
+
+                                        val det = (xA - xP) * (yQ - yP) - (xQ - xP) * (yA - yP)
+                                        if (det != 0f) {
+                                            val u = ((yQ - yP) * (offset.x - xP) + (xP - xQ) * (offset.y - yP)) / det
+                                            val v = ((yP - yA) * (offset.x - xP) + (xA - xP) * (offset.y - yP)) / det
+                                            val wr = 1f - u - v
+                                            if (u >= -0.05f && v >= -0.05f && wr >= -0.05f) {
+                                                val uClamp = u.coerceIn(0f, 1f)
+                                                val vClamp = v.coerceIn(0f, 1f)
+                                                val wrClamp = (1f - uClamp - vClamp).coerceIn(0f, 1f)
+                                                qInput = vClamp * 100f
+                                                aInput = uClamp * 100f
+                                                pInput = wrClamp * 100f
+                                            }
+                                        }
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                val w = size.width
+                                val h = size.height
+                                val xQ = w / 2f
+                                val yQ = 10f
+                                val xA = 10f
+                                val yA = h - 10f
+                                val xP = w - 10f
+                                val yP = h - 10f
+
+                                drawLine(color = Color.Gray, start = Offset(xQ, yQ), end = Offset(xA, yA), strokeWidth = 1.5f)
+                                drawLine(color = Color.Gray, start = Offset(xA, yA), end = Offset(xP, yP), strokeWidth = 1.5f)
+                                drawLine(color = Color.Gray, start = Offset(xP, yP), end = Offset(xQ, yQ), strokeWidth = 1.5f)
+
+                                val yQ20 = yQ + 0.8f * (yA - yQ)
+                                val xL20 = xA + 0.2f * (xQ - xA)
+                                val xR20 = xP - 0.2f * (xP - xQ)
+                                drawLine(color = Color.Gray.copy(0.4f), start = Offset(xL20, yQ20), end = Offset(xR20, yQ20), strokeWidth = 1f)
+
+                                val yQ60 = yQ + 0.4f * (yA - yQ)
+                                val xL60 = xA + 0.6f * (xQ - xA)
+                                val xR60 = xP - 0.6f * (xP - xQ)
+                                drawLine(color = Color.Gray.copy(0.4f), start = Offset(xL60, yQ60), end = Offset(xR60, yQ60), strokeWidth = 1f)
+
+                                val ticks = listOf(0.1f, 0.35f, 0.65f, 0.9f)
+                                ticks.forEach { t ->
+                                    val xAP = xA + t * (xP - xA)
+                                    val yAP = yA
+                                    drawLine(color = Color.Gray.copy(0.25f), start = Offset(xQ, yQ), end = Offset(xAP, yAP), strokeWidth = 0.8f)
+                                }
+
+                                drawContext.canvas.nativeCanvas.apply {
+                                    val paint = android.graphics.Paint().apply {
+                                        color = android.graphics.Color.GRAY
+                                        textSize = 18f
+                                        textAlign = android.graphics.Paint.Align.CENTER
+                                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                                    }
+                                    drawText("Q", xQ, yQ - 2f, paint)
+                                    drawText("A", xA - 4f, yA + 6f, paint)
+                                    drawText("P", xP + 6f, yP + 6f, paint)
+                                }
+
+                                val px = (aNorm * xA + pNorm * xP + qNorm * xQ) / 100f
+                                val py = (aNorm * yA + pNorm * yP + qNorm * yQ) / 100f
+
+                                drawCircle(
+                                    color = Color(0xFFFF5252).copy(0.3f),
+                                    radius = 12f,
+                                    center = Offset(px, py)
+                                )
+                                drawCircle(
+                                    color = Color(0xFFFF5252),
+                                    radius = 5f,
+                                    center = Offset(px, py)
+                                )
+                            }
+                        }
+
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(text = "Quartz (Q): ${qNorm.toInt()}%", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Slider(
+                                value = qInput,
+                                onValueChange = { qInput = it },
+                                valueRange = 0f..100f,
+                                modifier = Modifier.height(24.dp)
+                            )
+
+                            Text(text = "Alkali Feld. (A): ${aNorm.toInt()}%", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Slider(
+                                value = aInput,
+                                onValueChange = { aInput = it },
+                                valueRange = 0f..100f,
+                                modifier = Modifier.height(24.dp)
+                            )
+
+                            Text(text = "Plagioclase (P): ${pNorm.toInt()}%", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Slider(
+                                value = pInput,
+                                onValueChange = { pInput = it },
+                                valueRange = 0f..100f,
+                                modifier = Modifier.height(24.dp)
+                            )
+                        }
+                    }
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                "IUGS Scientific Classification:",
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Text(
+                                text = classifiedName,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Text(
+                                text = "Normalized: Q:${qNorm.toInt()}% | A:${aNorm.toInt()}% | P:${pNorm.toInt()}% (Tap on triangle to plot directly)",
+                                fontSize = 9.sp,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(0.7f)
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
