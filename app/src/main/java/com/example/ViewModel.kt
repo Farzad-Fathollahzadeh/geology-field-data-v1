@@ -69,6 +69,27 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
     
     val dao = db.dao()
 
+    private val prefs = application.getSharedPreferences("geofield_prefs", Context.MODE_PRIVATE)
+
+    // App Preferences (Settings state with SharedPreferences persistence)
+    val themeSetting = MutableStateFlow(prefs.getString("theme", "Dark") ?: "Dark")
+    val fontSizeSetting = MutableStateFlow(prefs.getString("font_size", "Standard") ?: "Standard")
+    val coordSystemSetting = MutableStateFlow(prefs.getString("coord_system", "UTM") ?: "UTM")
+
+    fun setThemeSetting(theme: String) { 
+        themeSetting.value = theme 
+        prefs.edit().putString("theme", theme).apply()
+    }
+    fun setFontSizeSetting(size: String) { 
+        fontSizeSetting.value = size 
+        prefs.edit().putString("font_size", size).apply()
+    }
+    fun setCoordSystemSetting(coord: String) { 
+        coordSystemSetting.value = coord 
+        prefs.edit().putString("coord_system", coord).apply()
+    }
+
+
     // Screen navigation state
     private val _currentScreen = MutableStateFlow<Screen>(Screen.ProjectList)
     val currentScreen: StateFlow<Screen> = _currentScreen
@@ -221,6 +242,12 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                 val updated = active.copy(utmZoneMode = mode, utmZoneManual = manualZone)
                 dao.insertProject(updated)
             }
+        }
+    }
+
+    fun updateProject(project: Project) {
+        viewModelScope.launch {
+            dao.insertProject(project)
         }
     }
 
@@ -538,6 +565,22 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
         movement: String? = null,
         width: Double? = null,
 
+        // Joint Specifics
+        jointType: String? = null,
+        jointSpacing: Double? = null,
+
+        // Vein Specifics
+        veinType: String? = null,
+        veinMineralogy: String? = null,
+
+        // Structure Specifics
+        structureType: String? = null,
+
+        // Mineralization Specifics
+        minStyle: String? = null,
+        minAssociatedMinerals: String? = null,
+        minGradeEstimate: String? = null,
+
         // Sample Specifics (linked via inner Sample Taking flow)
         sampleTaken: Boolean = false,
         sampleIdCode: String? = null,
@@ -571,7 +614,15 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                     rake = rake,
                     rakeDirection = rakeDirection,
                     movement = movement,
-                    width = width
+                    width = width,
+                    jointType = jointType,
+                    jointSpacing = jointSpacing,
+                    veinType = veinType,
+                    veinMineralogy = veinMineralogy,
+                    structureType = structureType,
+                    minStyle = minStyle,
+                    minAssociatedMinerals = minAssociatedMinerals,
+                    minGradeEstimate = minGradeEstimate
                 )
             )
 

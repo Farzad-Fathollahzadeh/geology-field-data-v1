@@ -74,23 +74,47 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            var darkThemeSetup by remember { mutableStateOf(false) }
+            val themeSetting by viewModel.themeSetting.collectAsStateWithLifecycle()
+            val fontSizeSetting by viewModel.fontSizeSetting.collectAsStateWithLifecycle()
             
-            MyApplicationTheme(darkTheme = darkThemeSetup, dynamicColor = false) {
-                // High contrast color scheme choice for sunlight exposure matching the Professional Polish palette
-                val backgroundColor = MaterialTheme.colorScheme.background
-
-                Surface(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .testTag("app_surface"),
-                    color = backgroundColor
-                ) {
-                    MainScreenContent(
-                        viewModel = viewModel,
-                        isDarkTheme = darkThemeSetup,
-                        onToggleTheme = { darkThemeSetup = !darkThemeSetup }
+            MyApplicationTheme(themeSetting = themeSetting) {
+                val currentDensity = androidx.compose.ui.platform.LocalDensity.current
+                val scaleMultiplier = when (fontSizeSetting) {
+                    "Large" -> 1.2f
+                    "Huge" -> 1.4f
+                    else -> 1.0f
+                }
+                val customDensity = remember(currentDensity, scaleMultiplier) {
+                    androidx.compose.ui.unit.Density(
+                        density = currentDensity.density,
+                        fontScale = currentDensity.fontScale * scaleMultiplier
                     )
+                }
+                androidx.compose.runtime.CompositionLocalProvider(
+                    androidx.compose.ui.platform.LocalDensity provides customDensity
+                ) {
+                    val backgroundColor = MaterialTheme.colorScheme.background
+
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .testTag("app_surface"),
+                        color = backgroundColor
+                    ) {
+                        MainScreenContent(
+                            viewModel = viewModel,
+                            isDarkTheme = (themeSetting == "Dark" || themeSetting == "HighContrast"),
+                            onToggleTheme = {
+                                val nextStyle = when (themeSetting) {
+                                    "Light" -> "Dark"
+                                    "Dark" -> "HighContrast"
+                                    "HighContrast" -> "Silver"
+                                    else -> "Light"
+                                }
+                                viewModel.setThemeSetting(nextStyle)
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -112,59 +136,59 @@ fun getGeologyTypeInfo(type: String): GeologyTypeInfo {
     return when (type.lowercase(Locale.ROOT).trim()) {
         "lithology" -> GeologyTypeInfo(
             name = "Lithology",
-            persianName = "سنگ‌شناسی (Lithology)",
+            persianName = "Lithology",
             icon = Icons.Default.Terrain,
             color = Color(0xFF8D6E63), // Clay/Slate Brown (Earthy rock)
-            description = "جنس سنگ، بافت، رنگ و اندازه دانه‌ها"
+            description = "Rock type, texture, color, and grain size details"
         )
         "alteration" -> GeologyTypeInfo(
             name = "Alteration",
-            persianName = "دگرسانی (Alteration)",
+            persianName = "Alteration",
             icon = Icons.Default.Waves, // Wavey alteration patterns
             color = Color(0xFFEF6C00), // Hydrothermal terracotta orange
-            description = "شدت و نوع دگرسانی هیدروترمال و کانی‌های همراه"
+            description = "Intensity, hydrothermal style, and associated minerals"
         )
         "fault" -> GeologyTypeInfo(
             name = "Fault",
-            persianName = "برداشت گسل (Fault)",
+            persianName = "Fault Structure",
             icon = Icons.Default.CompareArrows, // Shear sliding arrows
             color = Color(0xFFD32F2F), // Tension fracture active red
-            description = "امتداد، شیب، نوع حرکت و ضخامت گسل"
+            description = "Attitude (strike, dip), kinematics, slip, and zone width"
         )
         "joint" -> GeologyTypeInfo(
             name = "Joint",
-            persianName = "درزه (Joint)",
+            persianName = "Joint Set",
             icon = Icons.Default.GridOn, // Fracture joint grid pattern
             color = Color(0xFF455A64), // Basalt slate dark blue-grey
-            description = "فاصله‌داری و نوع درزه‌ها و شکستگی‌ها"
+            description = "Spacing (cm), fracture type, and joint set attitude"
         )
         "vein" -> GeologyTypeInfo(
             name = "Vein",
-            persianName = "رگه (Vein)",
+            persianName = "Hydrothermal Vein",
             icon = Icons.Default.Bolt, // High-energy mineral veins
             color = Color(0xFFFFB300), // Quartz/Gold Vein Yellow
-            description = "کانی‌سازی رگه‌ای و ضخامت آن"
+            description = "Mineral assemblages, width, and style of vein systems"
         )
         "structure" -> GeologyTypeInfo(
             name = "Structure",
-            persianName = "ساختار (Structure)",
+            persianName = "Structural Bedding",
             icon = Icons.Default.Menu, // Planar layering horizontal lines
             color = Color(0xFF00796B), // Foliated Metamorphic Teal
-            description = "لایه‌بندی، شیب، امتداد و لولای چین‌خوردگی"
+            description = "Bedding structural attitude (strike, dip, cleavage)"
         )
         "mineralization" -> GeologyTypeInfo(
             name = "Mineralization",
-            persianName = "کانی‌سازی (Mineralization)",
+            persianName = "Mineralization",
             icon = Icons.Default.Diamond, // Precious ore minerals
             color = Color(0xFFFF8F00), // Bronze/gold metallic kani
-            description = "تیپ و درصد تخمینی کانی‌سازی فلزی"
+            description = "Visual ore minerals, style (disseminated/massive), and grade"
         )
         else -> GeologyTypeInfo(
             name = type,
             persianName = type,
             icon = Icons.Default.Layers,
             color = Color(0xFF78909C),
-            description = "برداشت اطلاعات زمین‌شناسی صحرایی"
+            description = "Geological field survey mapping observations"
         )
     }
 }
@@ -187,6 +211,9 @@ fun MainScreenContent(
     val activeStation by viewModel.activeStation.collectAsStateWithLifecycle()
     val observations by viewModel.activeStationObservations.collectAsStateWithLifecycle()
     val projectList by viewModel.projects.collectAsStateWithLifecycle()
+    val themeSetting by viewModel.themeSetting.collectAsStateWithLifecycle()
+    val fontSizeSetting by viewModel.fontSizeSetting.collectAsStateWithLifecycle()
+    val coordSystemSetting by viewModel.coordSystemSetting.collectAsStateWithLifecycle()
 
     // Global Stats flows
     val allStations by viewModel.allStations.collectAsStateWithLifecycle()
@@ -311,6 +338,15 @@ fun MainScreenContent(
                             }
                         },
                         actions = {
+                            IconButton(
+                                onClick = { showSettingsDialog = true },
+                                modifier = Modifier.testTag("settings_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "Settings"
+                                )
+                            }
                             IconButton(
                                 onClick = onToggleTheme,
                                 modifier = Modifier.testTag("theme_toggle")
@@ -466,6 +502,9 @@ fun MainScreenContent(
                                     StationDetailScreen(
                                         station = activeStation,
                                         observations = observations,
+                                        onUpdateObservation = {
+                                            viewModel.updateObservation(it)
+                                        },
                                         onAddObservationClick = {
                                             viewModel.navigateTo(Screen.AddObservation(activeStation?.id ?: 0))
                                         },
@@ -512,6 +551,22 @@ fun MainScreenContent(
                                                 movement = details["movement"] as? String,
                                                 width = details["width"] as? Double,
 
+                                                // Joint
+                                                jointType = details["jointType"] as? String,
+                                                jointSpacing = details["jointSpacing"] as? Double,
+
+                                                // Vein
+                                                veinType = details["veinType"] as? String,
+                                                veinMineralogy = details["veinMineralogy"] as? String,
+
+                                                // Structure
+                                                structureType = details["structureType"] as? String,
+
+                                                // Mineralization
+                                                minStyle = details["minStyle"] as? String,
+                                                minAssociatedMinerals = details["minAssociatedMinerals"] as? String,
+                                                minGradeEstimate = details["minGradeEstimate"] as? String,
+
                                                 // Linked Sample Taken
                                                 sampleTaken = sampleTaken,
                                                 sampleIdCode = sample?.get("sampleCode") ?: "",
@@ -537,98 +592,305 @@ fun MainScreenContent(
         if (showSettingsDialog) {
             AlertDialog(
                 onDismissRequest = { showSettingsDialog = false },
-                title = { Text("GeoField Pro System Settings", fontWeight = FontWeight.Bold, fontSize = 16.sp) },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "GeoField Settings & Data Hub",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("Intellectual Property & Developer details:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text("Project Manager & Developer: Farzad Fathollahzadeh", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                                Text("GeoField Mine Observation Platform", fontSize = 12.sp)
-                                Text("Developed June 2026 (v3.1.1)", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        item {
+                            Text(
+                                text = "Appearance Settings (Outdoor Optimized):",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(Modifier.height(2.dp))
+                        }
+
+                        item {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    // Theme Setting Selectors
+                                    Text("App Theme:", fontWeight = FontWeight.Bold, fontSize = 10.5.sp)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        listOf(
+                                            "Light" to "☀️ Light",
+                                            "Dark" to "🌙 Dark",
+                                            "HighContrast" to "⚡ Contrast",
+                                            "Silver" to "🔘 Silver"
+                                        ).forEach { (themeId, label) ->
+                                            val isSelected = themeSetting == themeId
+                                            Button(
+                                                onClick = { viewModel.setThemeSetting(themeId) },
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                                                    contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                                ),
+                                                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
+                                                modifier = Modifier.weight(1f).height(30.dp),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(label, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(2.dp))
+
+                                    // Font Size Setting Selectors
+                                    Text("Font Size:", fontWeight = FontWeight.Bold, fontSize = 10.5.sp)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        listOf("Standard" to "Standard", "Large" to "Large", "Huge" to "Huge").forEach { (sizeId, label) ->
+                                            val isSelected = fontSizeSetting == sizeId
+                                            Button(
+                                                onClick = { viewModel.setFontSizeSetting(sizeId) },
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                                                    contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                                ),
+                                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                                                modifier = Modifier.weight(1f).height(30.dp),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(label, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(2.dp))
+
+                                    // Coordinate System Selectors
+                                    Text("Display Coordinate System:", fontWeight = FontWeight.Bold, fontSize = 10.5.sp)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        listOf("UTM" to "Universal UTM", "WGS84_DECIMAL" to "WGS84 Decimal").forEach { (coordId, label) ->
+                                            val isSelected = coordSystemSetting == coordId
+                                            Button(
+                                                onClick = { viewModel.setCoordSystemSetting(coordId) },
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                                                    contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                                ),
+                                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                                                modifier = Modifier.weight(1f).height(30.dp),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(label, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
-                        
-                        Divider()
 
-                        Text("System Options:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("Switch System Theme (Light/Dark)", fontSize = 12.sp)
-                            Switch(checked = isDarkTheme, onCheckedChange = { onToggleTheme() })
+                        item {
+                            Divider()
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                text = "Export & Share Hub:",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(Modifier.height(2.dp))
                         }
-                        
-                        Button(
-                            onClick = {
-                                showSettingsDialog = false
-                                coroutineScope.launch {
-                                    // Inject premium simulated samples to the database for geological field studies!
-                                    val projId = viewModel.dao.insertProject(
-                                        Project(
-                                            name = "Sungun Copper-Gold Porphyry Project",
-                                            description = "West Alborz - Azerbaijan structural zone. Hydrothermal alteration and porphyry ore deposits survey area.",
-                                            date = "2026-06-04",
-                                            utmZoneMode = "MANUAL",
-                                            utmZoneManual = "38S"
-                                        )
-                                    )
-                                    val st1 = viewModel.dao.insertStation(
-                                        Station(
-                                            projectId = projId.toInt(),
-                                            stationCode = "SG-ST01",
-                                            prefix = "SG",
-                                            latitude = 38.7180,
-                                            longitude = 46.7214,
-                                            elevation = 1680.0,
-                                            accuracy = 3.2,
-                                            elevationAccuracy = 1.5,
-                                            utmEasting = 649641.0,
-                                            utmNorthing = 4287012.0,
-                                            utmZone = "38S"
-                                        )
-                                    )
-                                    viewModel.dao.insertObservation(
-                                        Observation(
-                                            stationId = st1.toInt(),
-                                            observationType = "Alteration",
-                                            notes = "Intense potassic alteration accompanied by intense pyrite and chalcopyrite mineralization in Diorite Porphyry host rock.",
-                                            photoPath = null,
-                                            alterationType = "Potassic",
-                                            intensity = "Strong",
-                                            hostRock = "Diorite Porphyry",
-                                            associatedMinerals = "K-Feldspar, Biotite, Chalcopyrite, Quartz"
-                                        )
-                                    )
-                                    viewModel.dao.insertObservation(
-                                        Observation(
-                                            stationId = st1.toInt(),
-                                            observationType = "Lithology",
-                                            notes = "Holocrystalline porphyritic texture, plagioclase phenocrysts, and intergrown biotites in a potassic groundmass.",
-                                            photoPath = null,
-                                            lithologyType = "Granodiorite Porphyry",
-                                            texture = "Porphyritic",
-                                            color = "Greyish pink",
-                                            grainSize = "Medium to Coarse",
-                                            lithologyAlteration = "Chloritized biotites"
-                                        )
-                                    )
-                                    Toast.makeText(context, "Demo Sungun exploration campaign loaded successfully!", Toast.LENGTH_SHORT).show()
+
+                        if (projectList.isEmpty()) {
+                            item {
+                                Text("No projects found to export or share.", fontSize = 10.sp, color = Color.Gray)
+                            }
+                        } else {
+                            items(projectList) { proj ->
+                                Card(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(text = proj.name, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                                        Text(text = "Last Saved: ${proj.date ?: ""}", fontSize = 9.sp, color = Color.Gray)
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            // Excel XLS
+                                            Button(
+                                                onClick = { viewModel.exportProjectData(context, proj.id) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                                                modifier = Modifier.weight(1f).height(28.dp),
+                                                contentPadding = PaddingValues(horizontal = 2.dp),
+                                                shape = RoundedCornerShape(3.dp)
+                                            ) {
+                                                Icon(Icons.Default.Layers, contentDescription = null, modifier = Modifier.size(10.dp), tint = Color.White)
+                                                Spacer(Modifier.width(2.dp))
+                                                Text("Excel", fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                            }
+                                            // PDF Report
+                                            Button(
+                                                onClick = { viewModel.exportPdfReport(context, proj.id) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828)),
+                                                modifier = Modifier.weight(1f).height(28.dp),
+                                                contentPadding = PaddingValues(horizontal = 2.dp),
+                                                shape = RoundedCornerShape(3.dp)
+                                            ) {
+                                                Icon(Icons.Default.Assessment, contentDescription = null, modifier = Modifier.size(10.dp), tint = Color.White)
+                                                Spacer(Modifier.width(2.dp))
+                                                Text("PDF", fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                            }
+                                            // CSV
+                                            Button(
+                                                onClick = { viewModel.exportCsv(context, proj.id) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
+                                                modifier = Modifier.weight(1f).height(28.dp),
+                                                contentPadding = PaddingValues(horizontal = 2.dp),
+                                                shape = RoundedCornerShape(3.dp)
+                                            ) {
+                                                Icon(Icons.Default.List, contentDescription = null, modifier = Modifier.size(10.dp), tint = Color.White)
+                                                Spacer(Modifier.width(2.dp))
+                                                Text("CSV", fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                            }
+                                            // ZIP Package
+                                            Button(
+                                                onClick = { viewModel.exportProjectZip(context, proj.id) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0)),
+                                                modifier = Modifier.weight(1f).height(28.dp),
+                                                contentPadding = PaddingValues(horizontal = 2.dp),
+                                                shape = RoundedCornerShape(3.dp)
+                                            ) {
+                                                Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(10.dp), tint = Color.White)
+                                                Spacer(Modifier.width(2.dp))
+                                                Text("ZIP", fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
                                 }
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Load Demo Exploration Project (Sungun)", fontSize = 12.sp)
+                            }
+                        }
+
+                        item {
+                            Divider()
+                            Spacer(Modifier.height(2.dp))
+                            Button(
+                                onClick = {
+                                    showSettingsDialog = false
+                                    coroutineScope.launch {
+                                        // Inject premium simulated samples to the database for geological field studies!
+                                        val projId = viewModel.dao.insertProject(
+                                            Project(
+                                                name = "Sungun Copper-Gold Porphyry Project",
+                                                description = "West Alborz - Azerbaijan structural zone. Hydrothermal alteration and porphyry ore deposits survey area.",
+                                                date = "2026-06-04",
+                                                utmZoneMode = "MANUAL",
+                                                utmZoneManual = "38S"
+                                            )
+                                        )
+                                        val st1 = viewModel.dao.insertStation(
+                                            Station(
+                                                projectId = projId.toInt(),
+                                                stationCode = "SG-ST01",
+                                                prefix = "SG",
+                                                latitude = 38.7180,
+                                                longitude = 46.7214,
+                                                elevation = 1680.0,
+                                                accuracy = 3.2,
+                                                elevationAccuracy = 1.5,
+                                                utmEasting = 649641.0,
+                                                utmNorthing = 4287012.0,
+                                                utmZone = "38S"
+                                            )
+                                        )
+                                        viewModel.dao.insertObservation(
+                                            Observation(
+                                                stationId = st1.toInt(),
+                                                observationType = "Alteration",
+                                                notes = "Intense potassic alteration accompanied by intense pyrite and chalcopyrite mineralization in Diorite Porphyry host rock.",
+                                                photoPath = null,
+                                                alterationType = "Potassic",
+                                                intensity = "Strong",
+                                                hostRock = "Diorite Porphyry",
+                                                associatedMinerals = "K-Feldspar, Biotite, Chalcopyrite, Quartz"
+                                            )
+                                        )
+                                        viewModel.dao.insertObservation(
+                                            Observation(
+                                                stationId = st1.toInt(),
+                                                observationType = "Lithology",
+                                                notes = "Holocrystalline porphyritic texture, plagioclase phenocrysts, and intergrown biotites in a potassic groundmass.",
+                                                photoPath = null,
+                                                lithologyType = "Granodiorite Porphyry",
+                                                texture = "Porphyritic",
+                                                color = "Greyish pink",
+                                                grainSize = "Medium to Coarse",
+                                                lithologyAlteration = "Chloritized biotites"
+                                            )
+                                        )
+                                        Toast.makeText(context, "Demo Sungun exploration campaign loaded successfully!", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                            ) {
+                                Text("Load Demo Sungun Copper Mine Project", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        item {
+                            Spacer(Modifier.height(2.dp))
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Text("Project Sponsor & Developer: Farzad Fathollahzadeh", fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                                    Text("GeoField Mine Observation Platform", fontSize = 9.sp)
+                                    Text("Developed June 2026 (v3.2.0 • Offline GIS)", fontSize = 8.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
                         }
                     }
                 },
                 confirmButton = {
                     TextButton(onClick = { showSettingsDialog = false }) {
-                        Text("OK")
+                        Text("Close", fontWeight = FontWeight.Bold)
                     }
                 }
             )
@@ -1363,6 +1625,10 @@ fun ProjectDashboardScreen(
 ) {
     if (project == null) return
 
+    var showEditProjDialog by remember { mutableStateOf(false) }
+    var editProjName by remember { mutableStateOf(project.name) }
+    var editProjDesc by remember { mutableStateOf(project.description ?: "") }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1380,12 +1646,34 @@ fun ProjectDashboardScreen(
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
-                Text(
-                    text = project.name,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = project.name,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    IconButton(
+                        onClick = {
+                            editProjName = project.name
+                            editProjDesc = project.description ?: ""
+                            showEditProjDialog = true
+                        },
+                        modifier = Modifier.size(36.dp).testTag("edit_project_dashboard_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Edit Project Info",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1558,6 +1846,51 @@ fun ProjectDashboardScreen(
             Spacer(modifier = Modifier.width(8.dp))
             Text("ADD NEW STATION", fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
         }
+
+        if (showEditProjDialog) {
+            AlertDialog(
+                onDismissRequest = { showEditProjDialog = false },
+                title = { Text("Edit Project Info") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OutlinedTextField(
+                            value = editProjName,
+                            onValueChange = { editProjName = it },
+                            label = { Text("Project Name") },
+                            modifier = Modifier.fillMaxWidth().testTag("edit_project_name_input")
+                        )
+                        OutlinedTextField(
+                            value = editProjDesc,
+                            onValueChange = { editProjDesc = it },
+                            label = { Text("Description") },
+                            modifier = Modifier.fillMaxWidth().testTag("edit_project_desc_input")
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            if (editProjName.isNotBlank()) {
+                                viewModel.updateProject(
+                                    project.copy(
+                                        name = editProjName,
+                                        description = editProjDesc.ifBlank { null }
+                                    )
+                                )
+                                showEditProjDialog = false
+                            }
+                        }
+                    ) {
+                        Text("Save")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showEditProjDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
     }
 }
 
@@ -1578,6 +1911,19 @@ fun CreateStationScreen(
     val prefixes = listOf("LITH", "ALT", "FLT", "STR", "SMP")
     var selectedPrefix by remember { mutableStateOf("LITH") }
     var generatedCode by remember { mutableStateOf("LITH-001") }
+    
+    var isManualEditing by remember { mutableStateOf(false) }
+    var latInput by remember { mutableStateOf("") }
+    var lonInput by remember { mutableStateOf("") }
+    var eleInput by remember { mutableStateOf("") }
+
+    LaunchedEffect(gps) {
+        if (!isManualEditing && gps.isCaptured) {
+            latInput = gps.latitude.toString()
+            lonInput = gps.longitude.toString()
+            eleInput = gps.elevation.toString()
+        }
+    }
     
     // GPS request logic
     val locationPermissionState = rememberPermissionState(
@@ -1634,11 +1980,11 @@ fun CreateStationScreen(
 
                 var isDropdownExpanded by remember { mutableStateOf(false) }
                 val prefixDescriptions = mapOf(
-                    "LITH" to "Lithology Observation (LITH) - جنس سنگ",
-                    "ALT" to "Alteration Mapping (ALT) - دگرسانی",
-                    "FLT" to "Fault Survey (FLT) - برداشت گسل",
-                    "STR" to "Structural Logging (STR) - لایه‌بندی ساختاری",
-                    "SMP" to "Physical Specimen Sample (SMP) - نمونه فیزیکی"
+                    "LITH" to "Lithology Observation (LITH)",
+                    "ALT" to "Alteration Mapping (ALT)",
+                    "FLT" to "Fault Survey (FLT)",
+                    "STR" to "Structural Logging (STR)",
+                    "SMP" to "Physical Specimen Sample (SMP)"
                 )
 
                 Box(modifier = Modifier.fillMaxWidth()) {
@@ -1737,6 +2083,30 @@ fun CreateStationScreen(
                     }
                 }
 
+                if (gps.isCaptured) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.08f))
+                            .clickable { isManualEditing = !isManualEditing }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                            Text("Edit Coordinates Manually", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                        }
+                        Checkbox(
+                            checked = isManualEditing,
+                            onCheckedChange = { isManualEditing = it ?: false },
+                            modifier = Modifier.size(24.dp).testTag("manual_coord_checkbox")
+                        )
+                    }
+                }
+
                 Spacer(modifier = Modifier.height(14.dp))
 
                 if (gps.isLocating) {
@@ -1762,16 +2132,64 @@ fun CreateStationScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Latitude | Longitude", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
-                            Text(
-                                text = String.format(Locale.US, "%.6f°, %.6f°", gps.latitude, gps.longitude),
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontSize = 14.sp
-                            )
+                        if (isManualEditing) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(
+                                    value = latInput,
+                                    onValueChange = {
+                                        latInput = it
+                                        val latVal = it.toDoubleOrNull() ?: gps.latitude
+                                        val lonVal = lonInput.toDoubleOrNull() ?: gps.longitude
+                                        val eleVal = eleInput.toDoubleOrNull() ?: gps.elevation
+                                        viewModel.setManualCoordinates(latVal, lonVal, eleVal, 1.0)
+                                    },
+                                    label = { Text("Latitude", fontSize = 11.sp) },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.weight(1.1f).testTag("lat_input_field"),
+                                    singleLine = true
+                                )
+                                OutlinedTextField(
+                                    value = lonInput,
+                                    onValueChange = {
+                                        lonInput = it
+                                        val latVal = latInput.toDoubleOrNull() ?: gps.latitude
+                                        val lonVal = it.toDoubleOrNull() ?: gps.longitude
+                                        val eleVal = eleInput.toDoubleOrNull() ?: gps.elevation
+                                        viewModel.setManualCoordinates(latVal, lonVal, eleVal, 1.0)
+                                    },
+                                    label = { Text("Longitude", fontSize = 11.sp) },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.weight(1.1f).testTag("lon_input_field"),
+                                    singleLine = true
+                                )
+                                OutlinedTextField(
+                                    value = eleInput,
+                                    onValueChange = {
+                                        eleInput = it
+                                        val latVal = latInput.toDoubleOrNull() ?: gps.latitude
+                                        val lonVal = lonInput.toDoubleOrNull() ?: gps.longitude
+                                        val eleVal = it.toDoubleOrNull() ?: gps.elevation
+                                        viewModel.setManualCoordinates(latVal, lonVal, eleVal, 1.0)
+                                    },
+                                    label = { Text("Elevation (m)", fontSize = 11.sp) },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.weight(0.9f).testTag("ele_input_field"),
+                                    singleLine = true
+                                )
+                            }
+                        } else {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Latitude | Longitude", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                                Text(
+                                    text = String.format(Locale.US, "%.6f°, %.6f°", gps.latitude, gps.longitude),
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontSize = 14.sp
+                                )
+                            }
                         }
+                        
                         Divider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("UTM Coordinates", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
@@ -2034,6 +2452,7 @@ fun CreateStationScreen(
 fun StationDetailScreen(
     station: Station?,
     observations: List<Observation>,
+    onUpdateObservation: (Observation) -> Unit,
     onAddObservationClick: () -> Unit,
     onDeleteObservation: (Int) -> Unit,
     onUpdateStation: (Station) -> Unit
@@ -2042,6 +2461,48 @@ fun StationDetailScreen(
 
     val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(station.createdAt))
     var showEditStationDialog by remember { mutableStateOf(false) }
+
+    var showEditObsDialog by remember { mutableStateOf(false) }
+    var editingObservation by remember { mutableStateOf<Observation?>(null) }
+    var editObsNotes by remember { mutableStateOf("") }
+    
+    // Lithology-specific fields
+    var editLithType by remember { mutableStateOf("") }
+    var editLithTexture by remember { mutableStateOf("") }
+    var editLithColor by remember { mutableStateOf("") }
+    var editLithGrain by remember { mutableStateOf("") }
+
+    // Alteration-specific fields
+    var editAltType by remember { mutableStateOf("") }
+    var editAltIntensity by remember { mutableStateOf("") }
+    var editAltHost by remember { mutableStateOf("") }
+
+    // Fault-specific fields
+    var editFaultType by remember { mutableStateOf("") }
+    var editFaultStrike by remember { mutableStateOf("") }
+    var editFaultDip by remember { mutableStateOf("") }
+
+    // Joint-specific fields
+    var editJointType by remember { mutableStateOf("") }
+    var editJointSpacing by remember { mutableStateOf("") }
+
+    // Vein-specific fields
+    var editVeinType by remember { mutableStateOf("") }
+    var editVeinMineralogy by remember { mutableStateOf("") }
+    var editVeinWidth by remember { mutableStateOf("") }
+
+    // Structure-specific fields
+    var editStructureType by remember { mutableStateOf("") }
+
+    // Mineralization-specific fields
+    var editMinStyle by remember { mutableStateOf("") }
+    var editMinAssociatedMinerals by remember { mutableStateOf("") }
+    var editMinGradeEstimate by remember { mutableStateOf("") }
+
+    // Generic attitude elements for editing structures
+    var editStrike by remember { mutableStateOf("") }
+    var editDip by remember { mutableStateOf("") }
+    var editDipDirection by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier
@@ -2356,16 +2817,70 @@ fun StationDetailScreen(
                                         )
                                     }
 
-                                    IconButton(
-                                        onClick = { onDeleteObservation(obs.id) },
-                                        modifier = Modifier.size(24.dp)
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(
-                                            Icons.Default.Delete,
-                                            contentDescription = "Delete entry",
-                                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
-                                            modifier = Modifier.size(16.dp)
-                                        )
+                                        IconButton(
+                                            onClick = { 
+                                                editingObservation = obs
+                                                editObsNotes = obs.notes ?: ""
+                                                editLithType = obs.lithologyType ?: ""
+                                                editLithTexture = obs.texture ?: ""
+                                                editLithColor = obs.color ?: ""
+                                                editLithGrain = obs.grainSize ?: ""
+                                                editAltType = obs.alterationType ?: ""
+                                                editAltIntensity = obs.intensity ?: ""
+                                                editAltHost = obs.hostRock ?: ""
+                                                editFaultType = obs.faultType ?: ""
+                                                editFaultStrike = obs.strike?.toString() ?: ""
+                                                editFaultDip = obs.dip?.toString() ?: ""
+
+                                                // Joint properties initialization
+                                                editJointType = obs.jointType ?: ""
+                                                editJointSpacing = obs.jointSpacing?.toString() ?: ""
+
+                                                // Vein properties initialization
+                                                editVeinType = obs.veinType ?: ""
+                                                editVeinMineralogy = obs.veinMineralogy ?: ""
+                                                editVeinWidth = obs.width?.toString() ?: ""
+
+                                                // Structure properties initialization
+                                                editStructureType = obs.structureType ?: ""
+
+                                                // Mineralization properties initialization
+                                                editMinStyle = obs.minStyle ?: ""
+                                                editMinAssociatedMinerals = obs.minAssociatedMinerals ?: ""
+                                                editMinGradeEstimate = obs.minGradeEstimate ?: ""
+
+                                                // General attitudes initialization
+                                                editStrike = obs.strike?.toString() ?: ""
+                                                editDip = obs.dip?.toString() ?: ""
+                                                editDipDirection = obs.dipDirection?.toString() ?: ""
+
+                                                showEditObsDialog = true
+                                            },
+                                            modifier = Modifier.size(24.dp).testTag("edit_observation_item_btn")
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Edit,
+                                                contentDescription = "Edit entry",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+
+                                        IconButton(
+                                            onClick = { onDeleteObservation(obs.id) },
+                                            modifier = Modifier.size(24.dp).testTag("delete_observation_item_btn")
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Delete,
+                                                contentDescription = "Delete entry",
+                                                tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
                                     }
                                 }
 
@@ -2409,10 +2924,72 @@ fun StationDetailScreen(
                                         )
                                         Spacer(modifier = Modifier.height(2.dp))
                                         Text(
-                                            text = "Attitude: Strike ${obs.strike ?: 0}° / Dip ${obs.dip ?: 0}°",
+                                            text = "Attitude: Strike ${obs.strike ?: 0}° / Dip ${obs.dip ?: 0}° Dir ${obs.dipDirection ?: 0}°",
                                             fontSize = 12.sp,
                                             fontFamily = FontFamily.Monospace,
                                             fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    "Joint" -> {
+                                        Text(
+                                            text = "${obs.jointType ?: "Joint Fracture Set"}",
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "Spacing: ${obs.jointSpacing?.let { "${it} cm" } ?: "N/A"} | Attitude: Strike ${obs.strike ?: 0}° / Dip ${obs.dip ?: 0}° Dir ${obs.dipDirection ?: 0}°",
+                                            fontSize = 12.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    "Vein" -> {
+                                        Text(
+                                            text = "${obs.veinType ?: "Hydrothermal Vein"}",
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "Mineralogy: ${obs.veinMineralogy ?: "Quartz"} | Width: ${obs.width?.let { "${it} cm" } ?: "N/A"} | Attitude: Strike ${obs.strike ?: 0}° / Dip ${obs.dip ?: 0}°",
+                                            fontSize = 12.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    "Structure" -> {
+                                        Text(
+                                            text = "${obs.structureType ?: "Structural Symbol"}",
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "Attitude: Strike ${obs.strike ?: 0}° / Dip ${obs.dip ?: 0}° Dir ${obs.dipDirection ?: 0}°",
+                                            fontSize = 12.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    "Mineralization" -> {
+                                        Text(
+                                            text = "${obs.minStyle ?: "Ore Mineralization"}",
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "Ore Minerals: ${obs.minAssociatedMinerals ?: "N/A"} | Est. Grade: ${obs.minGradeEstimate ?: "N/A"}",
+                                            fontSize = 12.sp,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
@@ -2483,6 +3060,245 @@ fun StationDetailScreen(
             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(8.dp))
             Text("ADD OBSERVATION", fontSize = 14.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+        }
+
+        if (showEditObsDialog && editingObservation != null) {
+            val type = editingObservation!!.observationType
+            AlertDialog(
+                onDismissRequest = { showEditObsDialog = false },
+                title = { Text("Edit $type Observation", fontWeight = FontWeight.Bold) },
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = editObsNotes,
+                            onValueChange = { editObsNotes = it },
+                            label = { Text("Field Notes") },
+                            modifier = Modifier.fillMaxWidth().testTag("edit_obs_notes")
+                        )
+
+                        if (type == "Lithology") {
+                            OutlinedTextField(
+                                value = editLithType,
+                                onValueChange = { editLithType = it },
+                                label = { Text("Rock Type / Lithology") },
+                                modifier = Modifier.fillMaxWidth().testTag("edit_lith_type")
+                            )
+                            OutlinedTextField(
+                                value = editLithTexture,
+                                onValueChange = { editLithTexture = it },
+                                label = { Text("Texture") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = editLithGrain,
+                                onValueChange = { editLithGrain = it },
+                                label = { Text("Grain Size") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = editLithColor,
+                                onValueChange = { editLithColor = it },
+                                label = { Text("Color") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else if (type == "Alteration") {
+                            OutlinedTextField(
+                                value = editAltType,
+                                onValueChange = { editAltType = it },
+                                label = { Text("Alteration Style / Minerals") },
+                                modifier = Modifier.fillMaxWidth().testTag("edit_alt_type")
+                            )
+                            OutlinedTextField(
+                                value = editAltIntensity,
+                                onValueChange = { editAltIntensity = it },
+                                label = { Text("Intensity (e.g. Strong)") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = editAltHost,
+                                onValueChange = { editAltHost = it },
+                                label = { Text("Host Rock") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else if (type == "Fault") {
+                            OutlinedTextField(
+                                value = editFaultType,
+                                onValueChange = { editFaultType = it },
+                                label = { Text("Fault Type / Kinematics") },
+                                modifier = Modifier.fillMaxWidth().testTag("edit_fault_type")
+                            )
+                            OutlinedTextField(
+                                value = editStrike,
+                                onValueChange = { editStrike = it },
+                                label = { Text("Strike Direction (°)") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = editDip,
+                                onValueChange = { editDip = it },
+                                label = { Text("Dip Angle (°)") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = editDipDirection,
+                                onValueChange = { editDipDirection = it },
+                                label = { Text("Dip Direction (°)") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else if (type == "Joint") {
+                            OutlinedTextField(
+                                value = editJointType,
+                                onValueChange = { editJointType = it },
+                                label = { Text("Joint Structure Type") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = editJointSpacing,
+                                onValueChange = { editJointSpacing = it },
+                                label = { Text("Spacing (cm)") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = editStrike,
+                                onValueChange = { editStrike = it },
+                                label = { Text("Strike Direction (°)") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = editDip,
+                                onValueChange = { editDip = it },
+                                label = { Text("Dip Angle (°)") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else if (type == "Vein") {
+                            OutlinedTextField(
+                                value = editVeinType,
+                                onValueChange = { editVeinType = it },
+                                label = { Text("Vein Style") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = editVeinMineralogy,
+                                onValueChange = { editVeinMineralogy = it },
+                                label = { Text("Vein Mineralogy") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = editVeinWidth,
+                                onValueChange = { editVeinWidth = it },
+                                label = { Text("Width (cm)") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = editStrike,
+                                onValueChange = { editStrike = it },
+                                label = { Text("Strike Direction (°)") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = editDip,
+                                onValueChange = { editDip = it },
+                                label = { Text("Dip Angle (°)") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else if (type == "Structure") {
+                            OutlinedTextField(
+                                value = editStructureType,
+                                onValueChange = { editStructureType = it },
+                                label = { Text("Structural Symbol Type") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = editStrike,
+                                onValueChange = { editStrike = it },
+                                label = { Text("Strike / Trend (°)") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = editDip,
+                                onValueChange = { editDip = it },
+                                label = { Text("Dip / Plunge (°)") },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        } else if (type == "Mineralization") {
+                            OutlinedTextField(
+                                value = editMinStyle,
+                                onValueChange = { editMinStyle = it },
+                                label = { Text("Mineralization Index Style") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = editMinAssociatedMinerals,
+                                onValueChange = { editMinAssociatedMinerals = it },
+                                label = { Text("Associated Ore Minerals") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = editMinGradeEstimate,
+                                onValueChange = { editMinGradeEstimate = it },
+                                label = { Text("Field Grade Estimate") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val base = editingObservation
+                            if (base != null) {
+                                val updated = base.copy(
+                                    notes = editObsNotes.ifBlank { null },
+                                    lithologyType = if (type == "Lithology") editLithType else base.lithologyType,
+                                    texture = if (type == "Lithology") editLithTexture else base.texture,
+                                    color = if (type == "Lithology") editLithColor else base.color,
+                                    grainSize = if (type == "Lithology") editLithGrain else base.grainSize,
+                                    alterationType = if (type == "Alteration") editAltType else base.alterationType,
+                                    intensity = if (type == "Alteration") editAltIntensity else base.intensity,
+                                    hostRock = if (type == "Alteration") editAltHost else base.hostRock,
+                                    faultType = if (type == "Fault") editFaultType else base.faultType,
+                                    strike = if (type == "Fault" || type == "Joint" || type == "Vein" || type == "Structure") editStrike.toIntOrNull() else base.strike,
+                                    dip = if (type == "Fault" || type == "Joint" || type == "Vein" || type == "Structure") editDip.toIntOrNull() else base.dip,
+                                    dipDirection = if (type == "Fault" || type == "Joint" || type == "Vein" || type == "Structure") editDipDirection.toIntOrNull() else base.dipDirection,
+                                    jointType = if (type == "Joint") editJointType else base.jointType,
+                                    jointSpacing = if (type == "Joint") editJointSpacing.toDoubleOrNull() else base.jointSpacing,
+                                    veinType = if (type == "Vein") editVeinType else base.veinType,
+                                    veinMineralogy = if (type == "Vein") editVeinMineralogy else base.veinMineralogy,
+                                    width = if (type == "Vein") editVeinWidth.toDoubleOrNull() else base.width,
+                                    structureType = if (type == "Structure") editStructureType else base.structureType,
+                                    minStyle = if (type == "Mineralization") editMinStyle else base.minStyle,
+                                    minAssociatedMinerals = if (type == "Mineralization") editMinAssociatedMinerals else base.minAssociatedMinerals,
+                                    minGradeEstimate = if (type == "Mineralization") editMinGradeEstimate else base.minGradeEstimate
+                                )
+                                onUpdateObservation(updated)
+                                showEditObsDialog = false
+                            }
+                        },
+                        modifier = Modifier.testTag("save_obs_edit_btn")
+                    ) {
+                        Text("Save")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showEditObsDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
     }
 }
@@ -2595,6 +3411,22 @@ fun AddObservationScreen(
     var rakeDirection by remember { mutableStateOf("") }
     var movement by remember { mutableStateOf("") }
     var width by remember { mutableStateOf("") }
+
+    // Joint State
+    var jointTypeInput by remember { mutableStateOf("") }
+    var jointSpacingInput by remember { mutableStateOf("") }
+
+    // Vein State
+    var veinTypeInput by remember { mutableStateOf("") }
+    var veinMineralogyInput by remember { mutableStateOf("") }
+
+    // Structure State
+    var foldStructureType by remember { mutableStateOf("") }
+
+    // Mineralization State
+    var mineralizationStyle by remember { mutableStateOf("") }
+    var associatedOreMinerals by remember { mutableStateOf("") }
+    var gradeEstimate by remember { mutableStateOf("") }
 
     // Sample State
     var sampleTaken by remember { mutableStateOf(false) }
@@ -2976,34 +3808,28 @@ fun AddObservationScreen(
                     shape = RoundedCornerShape(12.dp)
                 )
             }
-            else -> {
-                // Structural Forms (Fault, Joint, Vein, or General)
-                Text("STRUCTURAL READINGS FORM: ${obsType.uppercase(Locale.getDefault())}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, letterSpacing = 1.sp)
-
+            "Fault" -> {
+                Text("FAULT & SHEAR ZONE MEASUREMENTS", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, letterSpacing = 1.sp)
+                
                 val faultPresets = listOf("Normal", "Reverse", "Strike-Slip", "Thrust", "Shear Zone")
-                if (obsType == "Fault") {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        faultPresets.take(3).forEach { ft ->
-                            AssistChip(
-                                onClick = { faultType = ft },
-                                label = { Text(ft, fontWeight = FontWeight.SemiBold) }
-                            )
-                        }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    faultPresets.take(3).forEach { ft ->
+                        AssistChip(
+                            onClick = { faultType = ft },
+                            label = { Text(ft, fontWeight = FontWeight.SemiBold) }
+                        )
                     }
                 }
 
                 OutlinedTextField(
-                    value = if (obsType == "Fault") faultType else obsType,
-                    onValueChange = { if (obsType == "Fault") faultType = it },
-                    label = { Text("Structural / Feature Type") },
-                    placeholder = { Text("e.g. Shear Joint, Normal Fault, Quartz Vein") },
-                    enabled = obsType == "Fault" || obsType == "Structure",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("fault_type"),
+                    value = faultType,
+                    onValueChange = { faultType = it },
+                    label = { Text("Fault Type / Kinematics") },
+                    placeholder = { Text("e.g. Dextral Strike-Slip, Low-angle Thrust") },
+                    modifier = Modifier.fillMaxWidth().testTag("fault_type"),
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp)
                 )
@@ -3016,10 +3842,8 @@ fun AddObservationScreen(
                         value = strike,
                         onValueChange = { strike = it },
                         label = { Text("Strike (0-360°)") },
-                        placeholder = { Text("e.g. 045") },
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("strike_input"),
+                        placeholder = { Text("045") },
+                        modifier = Modifier.weight(1f).testTag("strike_input"),
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
@@ -3029,10 +3853,8 @@ fun AddObservationScreen(
                         value = dip,
                         onValueChange = { dip = it },
                         label = { Text("Dip (0-90°)") },
-                        placeholder = { Text("e.g. 60") },
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("dip_input"),
+                        placeholder = { Text("60") },
+                        modifier = Modifier.weight(1f).testTag("dip_input"),
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
@@ -3042,10 +3864,8 @@ fun AddObservationScreen(
                         value = dipDirection,
                         onValueChange = { dipDirection = it },
                         label = { Text("Dip Dir (0-360°)") },
-                        placeholder = { Text("e.g. 135") },
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("dip_direction_input"),
+                        placeholder = { Text("135") },
+                        modifier = Modifier.weight(1f).testTag("dip_direction_input"),
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
@@ -3060,10 +3880,8 @@ fun AddObservationScreen(
                         value = rake,
                         onValueChange = { rake = it },
                         label = { Text("Rake / Pitch (0-90°)") },
-                        placeholder = { Text("e.g. 35") },
-                        modifier = Modifier
-                            .weight(1.3f)
-                            .testTag("rake_input"),
+                        placeholder = { Text("35") },
+                        modifier = Modifier.weight(1.3f).testTag("rake_input"),
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
@@ -3073,10 +3891,8 @@ fun AddObservationScreen(
                         value = rakeDirection,
                         onValueChange = { rakeDirection = it },
                         label = { Text("Rake Dir") },
-                        placeholder = { Text("e.g. NW, SE") },
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("rake_dir_input"),
+                        placeholder = { Text("NW, SE") },
+                        modifier = Modifier.weight(1f).testTag("rake_dir_input"),
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp)
                     )
@@ -3089,8 +3905,8 @@ fun AddObservationScreen(
                     OutlinedTextField(
                         value = movement,
                         onValueChange = { movement = it },
-                        label = { Text(if (obsType == "Vein") "Vein Mineralogy" else "Sense of Movement") },
-                        placeholder = { Text(if (obsType == "Vein") "Quartz + Calcite" else "e.g. Sinistral, Slickenside") },
+                        label = { Text("Sense of Movement") },
+                        placeholder = { Text("e.g. Sinistral, Slickenside") },
                         modifier = Modifier.weight(1.3f),
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp)
@@ -3100,13 +3916,293 @@ fun AddObservationScreen(
                         value = width,
                         onValueChange = { width = it },
                         label = { Text("Width (cm)") },
-                        placeholder = { Text("e.g. 15") },
+                        placeholder = { Text("15") },
                         modifier = Modifier.weight(1f),
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                     )
                 }
+            }
+            "Joint" -> {
+                Text("GEOLOGICAL JOINT & FRACTURE FORM", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, letterSpacing = 1.sp)
+                
+                val jointPresets = listOf("Systematic", "Columnar", "Tension Gash", "Conjugate")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    jointPresets.forEach { jt ->
+                        AssistChip(
+                            onClick = { jointTypeInput = jt },
+                            label = { Text(jt, fontWeight = FontWeight.SemiBold) }
+                        )
+                    }
+                }
+
+                OutlinedTextField(
+                    value = jointTypeInput,
+                    onValueChange = { jointTypeInput = it },
+                    label = { Text("Joint Structure / Set Type") },
+                    placeholder = { Text("e.g. Regional Systematic Joint Set A") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                OutlinedTextField(
+                    value = jointSpacingInput,
+                    onValueChange = { jointSpacingInput = it },
+                    label = { Text("Joint Spacing (cm)") },
+                    placeholder = { Text("e.g. 45") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedTextField(
+                        value = strike,
+                        onValueChange = { strike = it },
+                        label = { Text("Strike (0-360°)") },
+                        placeholder = { Text("090") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+
+                    OutlinedTextField(
+                        value = dip,
+                        onValueChange = { dip = it },
+                        label = { Text("Dip (0-90°)") },
+                        placeholder = { Text("85") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+
+                    OutlinedTextField(
+                        value = dipDirection,
+                        onValueChange = { dipDirection = it },
+                        label = { Text("Dip Dir (0-360°)") },
+                        placeholder = { Text("180") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
+            }
+            "Vein" -> {
+                Text("HYDROTHERMAL VEIN DESCRIPTION", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, letterSpacing = 1.sp)
+                
+                val veinPresets = listOf("Stockwork", "Saddle Reef", "Sheeted", "Brecciated")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    veinPresets.forEach { vt ->
+                        AssistChip(
+                            onClick = { veinTypeInput = vt },
+                            label = { Text(vt, fontWeight = FontWeight.SemiBold) }
+                        )
+                    }
+                }
+
+                OutlinedTextField(
+                    value = veinTypeInput,
+                    onValueChange = { veinTypeInput = it },
+                    label = { Text("Vein Style") },
+                    placeholder = { Text("e.g. Tension Veinlet, Massive Quartz Reef") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                OutlinedTextField(
+                    value = veinMineralogyInput,
+                    onValueChange = { veinMineralogyInput = it },
+                    label = { Text("Vein Mineralogy") },
+                    placeholder = { Text("e.g. Quartz + Fluorite + Chalcopyrite") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                OutlinedTextField(
+                    value = width,
+                    onValueChange = { width = it },
+                    label = { Text("Vein Width (cm)") },
+                    placeholder = { Text("e.g. 12.5") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedTextField(
+                        value = strike,
+                        onValueChange = { strike = it },
+                        label = { Text("Strike (0-360°)") },
+                        placeholder = { Text("120") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+
+                    OutlinedTextField(
+                        value = dip,
+                        onValueChange = { dip = it },
+                        label = { Text("Dip (0-90°)") },
+                        placeholder = { Text("45") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+
+                    OutlinedTextField(
+                        value = dipDirection,
+                        onValueChange = { dipDirection = it },
+                        label = { Text("Dip Dir (0-360°)") },
+                        placeholder = { Text("210") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
+            }
+            "Structure" -> {
+                Text("STRUCTURAL & BEDDING SYMBOLS FORM", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, letterSpacing = 1.sp)
+                
+                val structPresets = listOf("Bedding (S0)", "Foliation (S1)", "Cleavage", "Fold Axis")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    structPresets.take(3).forEach { st ->
+                        AssistChip(
+                            onClick = { foldStructureType = st },
+                            label = { Text(st, fontWeight = FontWeight.SemiBold) }
+                        )
+                    }
+                }
+
+                OutlinedTextField(
+                    value = foldStructureType,
+                    onValueChange = { foldStructureType = it },
+                    label = { Text("Structural Symbol Type") },
+                    placeholder = { Text("e.g. Bedding S0, Fold Hinge Plunge") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedTextField(
+                        value = strike,
+                        onValueChange = { strike = it },
+                        label = { Text("Strike / Trend (0-360°)") },
+                        placeholder = { Text("310") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+
+                    OutlinedTextField(
+                        value = dip,
+                        onValueChange = { dip = it },
+                        label = { Text("Dip / Plunge (0-90°)") },
+                        placeholder = { Text("30") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+
+                    OutlinedTextField(
+                        value = dipDirection,
+                        onValueChange = { dipDirection = it },
+                        label = { Text("Dip Dir / Plunge Dir (0-360°)") },
+                        placeholder = { Text("040") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
+            }
+            "Mineralization" -> {
+                Text("MINERALIZATION ORE DEPOSIT FORM", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, letterSpacing = 1.sp)
+                
+                val minPresets = listOf("Disseminated", "Massive Sulfide", "Stockwork", "Supergene")
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    minPresets.forEach { mt ->
+                        AssistChip(
+                            onClick = { mineralizationStyle = mt },
+                            label = { Text(mt, fontWeight = FontWeight.SemiBold) }
+                        )
+                    }
+                }
+
+                OutlinedTextField(
+                    value = mineralizationStyle,
+                    onValueChange = { mineralizationStyle = it },
+                    label = { Text("Mineralization Index Style") },
+                    placeholder = { Text("e.g. Disseminated Chalcopyrite in potassic zone") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                OutlinedTextField(
+                    value = associatedOreMinerals,
+                    onValueChange = { associatedOreMinerals = it },
+                    label = { Text("Associated Ore Minerals") },
+                    placeholder = { Text("e.g. Pyrite, Chalcopyrite, Bornite, Malachite") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                OutlinedTextField(
+                    value = gradeEstimate,
+                    onValueChange = { gradeEstimate = it },
+                    label = { Text("Field Visual Grade Estimate") },
+                    placeholder = { Text("e.g. 1.5% Cu, Trace Au") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+            else -> {
+                Text("GENERAL FIELD DISCOVERY FORM", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 11.sp, letterSpacing = 1.sp)
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text("Findings Description") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
             }
         }
 
@@ -3339,7 +4435,7 @@ fun AddObservationScreen(
                 ) {
                     Icon(Icons.Default.PhotoLibrary, null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Select Photo from Phone Storage (انتخاب عکس از حافظه گوشی)", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text("Select Photo from Phone Storage", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -3381,8 +4477,8 @@ fun AddObservationScreen(
                             mapDetails["alterationHostRock"] = altHostRock.ifBlank { "N/A" }
                             mapDetails["alterationMinerals"] = altMinerals.ifBlank { "N/A" }
                         }
-                        else -> {
-                            mapDetails["faultType"] = faultType.ifBlank { obsType }
+                        "Fault" -> {
+                            mapDetails["faultType"] = faultType.ifBlank { "Unnamed Fault" }
                             mapDetails["strike"] = strike.toIntOrNull()
                             mapDetails["dip"] = dip.toIntOrNull()
                             mapDetails["dipDirection"] = dipDirection.toIntOrNull()
@@ -3390,6 +4486,38 @@ fun AddObservationScreen(
                             mapDetails["rakeDirection"] = rakeDirection.ifBlank { null }
                             mapDetails["movement"] = movement.ifBlank { null }
                             mapDetails["width"] = width.toDoubleOrNull()
+                        }
+                        "Joint" -> {
+                            mapDetails["jointType"] = jointTypeInput.ifBlank { "Systematic Set" }
+                            mapDetails["jointSpacing"] = jointSpacingInput.toDoubleOrNull()
+                            mapDetails["strike"] = strike.toIntOrNull()
+                            mapDetails["dip"] = dip.toIntOrNull()
+                            mapDetails["dipDirection"] = dipDirection.toIntOrNull()
+                        }
+                        "Vein" -> {
+                            mapDetails["veinType"] = veinTypeInput.ifBlank { "Tension Vein" }
+                            mapDetails["veinMineralogy"] = veinMineralogyInput.ifBlank { "Quartz" }
+                            mapDetails["width"] = width.toDoubleOrNull()
+                            mapDetails["strike"] = strike.toIntOrNull()
+                            mapDetails["dip"] = dip.toIntOrNull()
+                            mapDetails["dipDirection"] = dipDirection.toIntOrNull()
+                        }
+                        "Structure" -> {
+                            mapDetails["structureType"] = foldStructureType.ifBlank { "Bedding S0" }
+                            mapDetails["strike"] = strike.toIntOrNull()
+                            mapDetails["dip"] = dip.toIntOrNull()
+                            mapDetails["dipDirection"] = dipDirection.toIntOrNull()
+                        }
+                        "Mineralization" -> {
+                            mapDetails["minStyle"] = mineralizationStyle.ifBlank { "Disseminated" }
+                            mapDetails["minAssociatedMinerals"] = associatedOreMinerals.ifBlank { "N/A" }
+                            mapDetails["minGradeEstimate"] = gradeEstimate.ifBlank { "N/A" }
+                        }
+                        else -> {
+                            mapDetails["faultType"] = obsType
+                            mapDetails["strike"] = strike.toIntOrNull()
+                            mapDetails["dip"] = dip.toIntOrNull()
+                            mapDetails["dipDirection"] = dipDirection.toIntOrNull()
                         }
                     }
 
@@ -3577,9 +4705,9 @@ fun shareFileWithApps(context: android.content.Context, fileName: String, mimeTy
             putExtra(android.content.Intent.EXTRA_SUBJECT, fileName)
             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(android.content.Intent.createChooser(intent, "صادر کردن فایل اطلاعات مسیر ضبط شده"))
+        context.startActivity(android.content.Intent.createChooser(intent, "Export Recorded Route Information File"))
     } catch (e: Exception) {
-        android.widget.Toast.makeText(context, "خطا در به اشتراک‌گذاری فایل: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+        android.widget.Toast.makeText(context, "Error sharing file: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
     }
 }
 
@@ -3597,221 +4725,335 @@ fun HomeDashboardContent(
     onNavigateToTab: (MainTab) -> Unit
 ) {
     val scrollState = rememberScrollState()
+    var isGuideExpanded by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(scrollState)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Welcoming Banner
+        // Welcoming Branding Banner
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer
-            )
+            ),
+            shape = RoundedCornerShape(16.dp)
         ) {
             Column(
-                modifier = Modifier.padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "GeoField Pro • Geological Field Mapping",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "GPS: ACTIVE",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
                 Text(
-                    text = "GeoField Pro — Geological & Mine Engineering Platform",
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-                Text(
-                    text = "Welcome to GeoField Pro. This modular platform implements high-precision geological field mapping, core borehole logging, geotechnical RMR calculations, and offline GPS sensor path mapping for engineering geologists and mining professionals.",
-                    fontSize = 12.sp,
+                    text = "Welcome to the field mapping and engineering geology system. This multi-purpose platform is optimized for outdoor and mining environments with high-contrast layouts.",
+                    fontSize = 11.5.sp,
                     color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
-                    lineHeight = 18.sp
+                    lineHeight = 17.sp
                 )
             }
         }
 
-        // Clickable Workspaces / Modules cards
-        Text(
-            text = "Exploration & Geotech Workspaces",
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
-        )
+        // Section Title: Workspaces
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Active Modules",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
 
+        // High-fidelity Grid List of modules (Using Row of Columns to stay nested safe and extremely clean)
         val workspaces = listOf(
-            Triple("General Projects List", "Configure active project workspaces, manage field properties, coordinate grids, and primary targets.", Icons.Default.Folder) to MainTab.GeologicalMapping,
-            Triple("Geological Mapping", "Define survey stations, describe rock Lithology, core Alterations, Fault/Joint/Vein coordinates, structures, and samples.", Icons.Default.Terrain) to MainTab.GeologicalMapping,
-            Triple("Borehole Core Logging", "Log drilling Core Runs, Core Recoveries, and automatically calculate geotechnical Rock Quality Designation (RQD).", Icons.Default.Layers) to MainTab.BoreholeLogging,
-            Triple("Rock Mechanics Classification", "Estimate continuous engineering Bieniawski RMR index scores based on 6 critical geotech parameters.", Icons.Default.Assessment) to MainTab.RockMechanics,
-            Triple("GPS Track Recording & Interactive Map", "Simulate walks, track active sensor GPS points on an interactive digital radar grid, and export standard GPX paths.", Icons.Default.Map) to MainTab.Map
+            Triple("Project Manager", "Projects List", Icons.Default.Folder) to MainTab.GeologicalMapping,
+            Triple("Field Mapping", "Geological Observations", Icons.Default.Terrain) to MainTab.GeologicalMapping,
+            Triple("Borehole Core Logging", "Core Runs Log", Icons.Default.Layers) to MainTab.BoreholeLogging,
+            Triple("Rock Mechanics (RMR)", "RMR Score Assessment", Icons.Default.Assessment) to MainTab.RockMechanics,
+            Triple("Interactive Web Map", "Spatial GPS GIS Map", Icons.Default.Map) to MainTab.Map
         )
 
-        workspaces.forEach { (meta, targetTab) ->
-            val (title, desc, icon) = meta
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onNavigateToTab(targetTab) },
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.Top
+        // Row 1 (first 2 items)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            listOf(workspaces[0], workspaces[1]).forEach { (meta, targetTab) ->
+                val (title, sub, icon) = meta
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onNavigateToTab(targetTab) },
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
-                        contentAlignment = Alignment.Center
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Icon(imageVector = icon, contentDescription = title, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Text(text = title, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
-                            Icon(imageVector = Icons.Default.ChevronRight, contentDescription = "Open", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.secondary)
+                            Icon(imageVector = icon, contentDescription = title, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                         }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(text = desc, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 16.sp)
+                        Text(text = title, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
+                        Text(text = sub, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
         }
 
-        // Section Title: Stats (اطلاعات کلی از بخش های مختلف)
-        Text(
-            text = "Field Operations Statistics",
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
-        )
-
-        // Grid-like layout for the statistics
+        // Row 2 (next 2 items)
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            StatCard(
-                title = "Projects Active",
-                count = projectsCount.toString(),
-                unit = "Proj",
-                icon = Icons.Default.Folder,
-                tint = Color(0xFF1E88E5),
-                modifier = Modifier.weight(1f)
-            )
-            StatCard(
-                title = "Stations Logged",
-                count = stationsCount.toString(),
-                unit = "Station",
-                icon = Icons.Default.Place,
-                tint = Color(0xFF43A047),
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            StatCard(
-                title = "Lith/Alteration Obs",
-                count = observationsCount.toString(),
-                unit = "Specs",
-                icon = Icons.Default.Terrain,
-                tint = Color(0xFFE65100),
-                modifier = Modifier.weight(1f)
-            )
-            StatCard(
-                title = "Mineral Samples",
-                count = samplesCount.toString(),
-                unit = "Specs",
-                icon = Icons.Default.Layers,
-                tint = Color(0xFF00ACC1),
-                modifier = Modifier.weight(1f)
-            )
-        }
-
-        Divider()
-
-        // Quick Tips Panel
-        Text(
-            text = "Detailed Engineering Guide & Specs",
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
-        )
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                GuideBullet(
-                    number = "1",
-                    title = "Geological Field Mapping",
-                    desc = "Initialize mapping campaigns, record coordinates, describe primary lithology attributes (Texture, Mineralogy), alterations index, and structure strike/dip angles."
-                )
-                GuideBullet(
-                    number = "2",
-                    title = "Drilling Borehole Core Logger",
-                    desc = "Maintain continuous core runs and daily drilling metrics. Input From/To core run intervals and total core recovered to compute recovery and Rock Quality Designation (RQD) instantly."
-                )
-                GuideBullet(
-                    number = "3",
-                    title = "Rock Geotechnical Mechanics",
-                    desc = "Assess rock masses using the Bieniawski RMR Index. Grade UCS, RQD, joint apertures, roughness, ground water inflows, and tunnels lineation orientations in real-time."
-                )
-                GuideBullet(
-                    number = "4",
-                    title = "GPS Track Recorder",
-                    desc = "Plot GPS sensor paths on the digital grid. Export track records directly in standard, shareable GPX, KML, and GeoJSON GIS spatial formats."
-                )
+            listOf(workspaces[2], workspaces[3]).forEach { (meta, targetTab) ->
+                val (title, sub, icon) = meta
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onNavigateToTab(targetTab) },
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(imageVector = icon, contentDescription = title, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                        }
+                        Text(text = title, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
+                        Text(text = sub, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-        Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
-        
-        // High-fidelity short app description
+        // Row 3 (last item spanning full width or looking extremely beautiful)
+        Row(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            val (meta, targetTab) = workspaces[4]
+            val (title, sub, icon) = meta
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateToTab(targetTab) },
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(imageVector = icon, contentDescription = title, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(text = title, fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurface)
+                        Text(text = sub, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Icon(imageVector = Icons.Default.ChevronRight, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.secondary)
+                }
+            }
+        }
+
+        // Section Title: Stats (Field statistics summary parameters)
+        Text(
+            text = "Field Statistics",
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        // High visibility, clean unified statistics panel
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .padding(12.dp)
+                    .fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                listOf(
+                    Triple("Projects", projectsCount, Color(0xFF1E88E5)),
+                    Triple("Stations", stationsCount, Color(0xFF43A047)),
+                    Triple("Observations", observationsCount, Color(0xFFE65100)),
+                    Triple("Samples", samplesCount, Color(0xFF00ACC1))
+                ).forEach { (label, count, color) ->
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = count.toString(),
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = color
+                        )
+                        Text(
+                            text = label,
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+        }
+
+        // Expandable Guidelines Accordion Panel (Keeps screen perfectly clean, professional and decluttered)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Column(
+                modifier = Modifier.animateContentSize()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { isGuideExpanded = !isGuideExpanded }
+                        .padding(14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.Assessment, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                        Text(
+                            text = "Geological & Mining Reference Guide",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Icon(
+                        imageVector = if (isGuideExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                if (isGuideExpanded) {
+                    Column(
+                        modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                        GuideBullet(
+                            number = "1",
+                            title = "Geological Field Mapping",
+                            desc = "Initialize mapping campaigns, record coordinates, describe primary lithology attributes (Texture, Mineralogy), alterations index, and structure strike/dip angles."
+                        )
+                        GuideBullet(
+                            number = "2",
+                            title = "Drilling Borehole Core Logger",
+                            desc = "Maintain continuous core runs and daily drilling metrics. Input From/To core run intervals and total core recovered to compute recovery and Rock Quality Designation (RQD) instantly."
+                        )
+                        GuideBullet(
+                            number = "3",
+                            title = "Rock Geotechnical Mechanics",
+                            desc = "Assess rock masses using the Bieniawski RMR Index. Grade UCS, RQD, joint apertures, roughness, ground water inflows, and tunnels lineation orientations"
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(6.dp))
+        Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+
         Text(
             text = "GeoField Pro is a modular, high-precision offline GIS logging and geotech analyzer tool engineered for field geologists, mining engineers, and exploration geophysicists.",
-            fontSize = 12.sp,
+            fontSize = 11.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            lineHeight = 18.sp,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)
+            lineHeight = 16.sp,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
         )
-        
+
         val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
         Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically
         ) {
             AssistChip(
                 onClick = { uriHandler.openUri("https://github.com/farzadf7/geofield-pro") },
-                label = { Text("GitHub Repo", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                leadingIcon = { Icon(Icons.Default.Code, contentDescription = "GitHub", modifier = Modifier.size(14.dp)) },
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+                label = { Text("GitHub Repo", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                leadingIcon = { Icon(Icons.Default.Code, contentDescription = "GitHub", modifier = Modifier.size(12.dp)) },
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
             )
             AssistChip(
                 onClick = { uriHandler.openUri("https://t.me/geofield_pro") },
-                label = { Text("Telegram Support", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                leadingIcon = { Icon(Icons.Default.Send, contentDescription = "Telegram", modifier = Modifier.size(14.dp)) },
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
+                label = { Text("Telegram Support", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                leadingIcon = { Icon(Icons.Default.Send, contentDescription = "Telegram", modifier = Modifier.size(12.dp)) },
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
             )
         }
     }
@@ -3905,16 +5147,16 @@ fun BoreholeLoggingContent() {
     var toDepth by remember { mutableStateOf("3.5") }
     var recoveryPercent by remember { mutableStateOf("95") }
     var rqdPercent by remember { mutableStateOf("80") }
-    var description by remember { mutableStateOf("سنگ شیست سیلیکاتی هوازده خاکستری تیره") }
+    var description by remember { mutableStateOf("Dark gray weathered silicate mica schist rock") }
 
     var expandedForm by remember { mutableStateOf(false) }
 
     var runsList by remember {
         mutableStateOf(
             listOf(
-                CoreRunLog("BH26-01", 1, 0.0, 3.5, 98.0, 85.0, "بخش فوقانی آبرفتی و شیست پودر شده همراه با رگه‌های ژیپس خاک‌آلود"),
-                CoreRunLog("BH26-01", 2, 3.5, 7.2, 94.0, 78.0, "شیست میکادار حاوی میکرو رگه‌های پیریتیزه"),
-                CoreRunLog("BH26-02", 1, 0.0, 4.0, 91.0, 64.0, "توده بازالت هوازده شدید حاوی کانی کلسیت ثانویه")
+                CoreRunLog("BH26-01", 1, 0.0, 3.5, 98.0, 85.0, "Upper alluvial section and powdered schist with dusty gypsum veins"),
+                CoreRunLog("BH26-01", 2, 3.5, 7.2, 94.0, 78.0, "Micaceous schist containing pyritized micro-veins"),
+                CoreRunLog("BH26-02", 1, 0.0, 4.0, 91.0, 64.0, "Severely weathered basalt mass containing secondary calcite mineralization")
             )
         )
     }
@@ -3941,15 +5183,15 @@ fun BoreholeLoggingContent() {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                    Text("حداکثر عمق گمانه", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Max Borehole Depth", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("${String.format(Locale.US, "%.2f", totalDepth)} m", fontSize = 15.sp, fontWeight = FontWeight.Bold)
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                    Text("میانگین بازیابی (Rec)", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Avg Recovery (Rec)", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("${String.format(Locale.US, "%.1f", avgRecovery)}%", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF43A047))
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.weight(1f)) {
-                    Text("میانگین فاکتور کیفی (RQD)", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Avg Quality Factor (RQD)", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("${String.format(Locale.US, "%.1f", avgRqd)}%", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E88E5))
                 }
             }
@@ -3963,7 +5205,7 @@ fun BoreholeLoggingContent() {
                 containerColor = if (expandedForm) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
             )
         ) {
-            Text(if (expandedForm) "بستن فرم ثبت" else "+ ثبت رکوردهای مته حفاری گمانه جدید", fontSize = 12.sp)
+            Text(if (expandedForm) "Close Logging Form" else "+ Log New Borehole Core Run", fontSize = 12.sp)
         }
 
         if (expandedForm) {
@@ -3979,13 +5221,13 @@ fun BoreholeLoggingContent() {
                         OutlinedTextField(
                             value = boreholeId,
                             onValueChange = { boreholeId = it },
-                            label = { Text("شناسه گمانه", fontSize = 10.sp) },
+                            label = { Text("Borehole ID", fontSize = 10.sp) },
                             modifier = Modifier.weight(1f)
                         )
                         OutlinedTextField(
                             value = runNo,
                             onValueChange = { runNo = it },
-                            label = { Text("شماره ران حفاری", fontSize = 10.sp) },
+                            label = { Text("Run Number", fontSize = 10.sp) },
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -3994,13 +5236,13 @@ fun BoreholeLoggingContent() {
                         OutlinedTextField(
                             value = fromDepth,
                             onValueChange = { fromDepth = it },
-                            label = { Text("از عمق (متر)", fontSize = 10.sp) },
+                            label = { Text("From Depth (meters)", fontSize = 10.sp) },
                             modifier = Modifier.weight(1f)
                         )
                         OutlinedTextField(
                             value = toDepth,
                             onValueChange = { toDepth = it },
-                            label = { Text("تا عمق (متر)", fontSize = 10.sp) },
+                            label = { Text("To Depth (meters)", fontSize = 10.sp) },
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -4009,13 +5251,13 @@ fun BoreholeLoggingContent() {
                         OutlinedTextField(
                             value = recoveryPercent,
                             onValueChange = { recoveryPercent = it },
-                            label = { Text("بازیابی مغزه (Rec %)", fontSize = 10.sp) },
+                            label = { Text("Core Recovery (Rec %)", fontSize = 10.sp) },
                             modifier = Modifier.weight(1f)
                         )
                         OutlinedTextField(
                             value = rqdPercent,
                             onValueChange = { rqdPercent = it },
-                            label = { Text("کیفیت توده سنگ (RQD %)", fontSize = 10.sp) },
+                            label = { Text("Rock Quality Factor (RQD %)", fontSize = 10.sp) },
                             modifier = Modifier.weight(1f)
                         )
                     }
@@ -4023,7 +5265,7 @@ fun BoreholeLoggingContent() {
                     OutlinedTextField(
                         value = description,
                         onValueChange = { description = it },
-                        label = { Text("شرح لیتولوژی مغزه‌ها دگرسانی و هوازدگی", fontSize = 11.sp) },
+                        label = { Text("Core Lithology, Alteration & Structural Description", fontSize = 11.sp) },
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -4035,7 +5277,7 @@ fun BoreholeLoggingContent() {
                             val rec = recoveryPercent.toDoubleOrNull() ?: 100.0
                             val rqd = rqdPercent.toDoubleOrNull() ?: 100.0
                             if (tD <= fD) {
-                                Toast.makeText(context, "خطا: عمق نهایی حفاری باید بزرگتر از عمق شروع باشد", Toast.LENGTH_LONG).show()
+                                Toast.makeText(context, "Error: Final depth must be greater than start depth.", Toast.LENGTH_LONG).show()
                                 return@Button
                             }
                             runsList = runsList + CoreRunLog(boreholeId, rNum, fD, tD, rec, rqd, description)
@@ -4043,11 +5285,11 @@ fun BoreholeLoggingContent() {
                             fromDepth = toDepth
                             toDepth = (tD + (tD - fD)).toString()
                             expandedForm = false
-                            Toast.makeText(context, "ران گمانه با موفقیت در جدول ثبت شد!", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, "Core run logged successfully in drill table!", Toast.LENGTH_SHORT).show()
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("ذخیره موقت ران و درج در جدول مته", fontSize = 12.sp)
+                        Text("Save Core Run and Add to Log Sheet", fontSize = 12.sp)
                     }
                 }
             }
@@ -4059,7 +5301,7 @@ fun BoreholeLoggingContent() {
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("لیست مقاطع مته برداشت شده", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            Text("Logged Borehole Core Runs Sheet", fontWeight = FontWeight.Bold, fontSize = 13.sp)
             
             IconButton(
                 onClick = {
@@ -4072,7 +5314,7 @@ fun BoreholeLoggingContent() {
                 }
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Icon(imageVector = Icons.Default.Share, contentDescription = "خروجی گمانه‌ها", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                    Icon(imageVector = Icons.Default.Share, contentDescription = "Export Borehole Core Runs Sheet", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                 }
             }
         }
@@ -4089,21 +5331,21 @@ fun BoreholeLoggingContent() {
                 ) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("گمانه: ${run.boreholeId} (ران ${run.runNo})", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                            Text("${run.fromDepth}m تا ${run.toDepth}m", fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium)
+                            Text("Borehole: ${run.boreholeId} (Run ${run.runNo})", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
+                            Text("${run.fromDepth}m to ${run.toDepth}m", fontSize = 11.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Medium)
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            Text("میزان بازیابی مغزه: ${run.recoveryPercent}%", fontSize = 11.sp, color = Color(0xFF43A047))
-                            Text("شاخص کیفی RQD: ${run.rqdPercent}%", fontSize = 11.sp, color = Color(0xFF1E88E5))
+                            Text("Core Recovery Rec: ${run.recoveryPercent}%", fontSize = 11.sp, color = Color(0xFF43A047))
+                            Text("Quality Factor RQD: ${run.rqdPercent}%", fontSize = 11.sp, color = Color(0xFF1E88E5))
                         }
-                        Text("شرح سنگی: ${run.description}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Lithology Description: ${run.description}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                             TextButton(
                                 onClick = { runsList = runsList.filter { it != run } },
                                 colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                             ) {
-                                Text("حذف رکورد", fontSize = 10.sp)
+                                Text("Delete Core Run Record", fontSize = 10.sp)
                             }
                         }
                     }
@@ -4126,7 +5368,7 @@ data class RmrLogEntry(
 @Composable
 fun RockMechanicsContent() {
     val context = LocalContext.current
-    var locationName by remember { mutableStateOf("ترانشه پله شمالی پیت معدن مس") }
+    var locationName by remember { mutableStateOf("Copper Mine Northern Bench Trench") }
     
     // Sliders / Options ratings state
     var ucsIndex by remember { mutableStateOf(12) } // rating values: 15, 12, 7, 4, 1
@@ -4926,7 +6168,7 @@ fun MapContent(viewModel: GeologyViewModel) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(260.dp)
+                .weight(3f)
                 .clip(RoundedCornerShape(12.dp))
                 .background(Color(0xFF0F1B16)) // Dark high-contrast cyber teal forest theme
                 .border(1.5.dp, MaterialTheme.colorScheme.primary)

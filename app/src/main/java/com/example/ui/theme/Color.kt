@@ -47,3 +47,43 @@ val OnSurfaceDark = Color(0xFFE1E3DF)
 val SurfaceVariantDark = Color(0xFF404943)
 val OnSurfaceVariantDark = Color(0xFFDCE5DD)
 val OutlineDark = Color(0xFF8B938D)
+
+// High-Contrast Outdoor Gold Theme (Sunlight Visibility)
+val PrimaryContrast = Color(0xFFFFEA00) // Neon Signal Yellow
+val OnPrimaryContrast = Color(0xFF000000) // Pure Black
+val PrimaryContainerContrast = Color(0xFF1E1E00)
+val OnPrimaryContainerContrast = Color(0xFFFFEA00)
+
+val SecondaryContrast = Color(0xFF00FFFF) // Cyber Cyan
+val OnSecondaryContrast = Color(0xFF000000)
+val SecondaryContainerContrast = Color(0xFF002222)
+val OnSecondaryContainerContrast = Color(0xFF00FFFF)
+
+val BackgroundContrast = Color(0xFF000000) // Solid Pure Black
+val OnBackgroundContrast = Color(0xFFFFFFFF) // Crisp White
+val SurfaceContrast = Color(0xFF000000)
+val OnSurfaceContrast = Color(0xFFFFFFFF)
+val SurfaceVariantContrast = Color(0xFF222222)
+val OnSurfaceVariantContrast = Color(0xFFFFFFFF)
+val OutlineContrast = Color(0xFFFFEA00)
+
+// Elegant Metallic Silver Theme (Silver/Slate & Electric Blue)
+val PrimarySilver = Color(0xFF1E293B) // Slate 800 - Deep charcoal black-metal
+val OnPrimarySilver = Color(0xFFFFFFFF)
+val PrimaryContainerSilver = Color(0xFFE2E8F0) // Slate 200 - Silver matte
+val OnPrimaryContainerSilver = Color(0xFF0F172A)
+
+val SecondarySilver = Color(0xFF0284C7) // Sky 600 - High-contrast electric silver-blue
+val OnSecondarySilver = Color(0xFFFFFFFF)
+val SecondaryContainerSilver = Color(0xFFE0F2FE) // Sky 100
+val OnSecondaryContainerSilver = Color(0xFF0369A1)
+
+val BackgroundSilver = Color(0xFFF1F5F9) // Slate 100 - Cool polished silver metal background
+val OnBackgroundSilver = Color(0xFF0F172A)
+val SurfaceSilver = Color(0xFFFFFFFF) // Crisp brilliant silver-white sheets
+val OnSurfaceSilver = Color(0xFF0F172A)
+val SurfaceVariantSilver = Color(0xFFE2E8F0) // Slate 200
+val OnSurfaceVariantSilver = Color(0xFF334155)
+val OutlineSilver = Color(0xFF94A3B8) // Slate 400
+
+

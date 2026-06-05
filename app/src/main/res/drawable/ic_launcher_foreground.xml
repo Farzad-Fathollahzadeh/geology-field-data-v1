@@ -3,6 +3,6 @@
     <item
         android:width="66dp"
         android:height="66dp"
-        android:drawable="@drawable/ic_geology_launcher_fg_1780578245102"
+        android:drawable="@drawable/ic_geofield_fg_1780657270971"
         android:gravity="center" />
 </layer-list>

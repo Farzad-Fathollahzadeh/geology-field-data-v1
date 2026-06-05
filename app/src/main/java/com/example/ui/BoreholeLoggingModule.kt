@@ -1,5 +1,8 @@
 package com.example.ui
 
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.sp
+import com.example.UtmConverter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,12 +24,32 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
+
+fun getScaledSize(baseValue: Float, sizeSetting: String): TextUnit {
+    val multiplier = when (sizeSetting) {
+        "Large" -> 1.25f
+        "Huge" -> 1.50f
+        else -> 1.0f
+    }
+    return (baseValue * multiplier).sp
+}
+
+fun formatCoordinates(lat: Double, lon: Double, systemSetting: String): String {
+    return if (systemSetting == "UTM") {
+        try {
+            UtmConverter.convertLatLngToUtm(lat, lon).toString()
+        } catch (e: Exception) {
+            String.format(Locale.US, "%.5f, %.5f", lat, lon)
+        }
+    } else {
+        String.format(Locale.US, "%.5f, %.5f", lat, lon)
+    }
+}
 
 @Composable
 fun BoreholeLoggingContent(
@@ -191,8 +214,12 @@ fun BoreholeWorkspace(
     val coroutineScope = rememberCoroutineScope()
     val boreholes by viewModel.getBoreholesForProject(projectId).collectAsStateWithLifecycle()
     val activeBorehole by viewModel.activeBorehole.collectAsStateWithLifecycle()
+    val fontSizeSetting by viewModel.fontSizeSetting.collectAsStateWithLifecycle()
+    val coordSystemSetting by viewModel.coordSystemSetting.collectAsStateWithLifecycle()
     
     var showCreateBoreholeDialog by remember { mutableStateOf(false) }
+    var showEditBoreholeDialog by remember { mutableStateOf(false) }
+    var editingBorehole by remember { mutableStateOf<Borehole?>(null) }
     var code by remember { mutableStateOf("") }
     var lat by remember { mutableStateOf("") }
     var lon by remember { mutableStateOf("") }
@@ -282,6 +309,21 @@ fun BoreholeWorkspace(
                                     }
                                 }
                                 Row(verticalAlignment = Alignment.CenterVertically) {
+                                    IconButton(
+                                        onClick = {
+                                            editingBorehole = bh
+                                            code = bh.boreholeCode
+                                            lat = bh.latitude.toString()
+                                            lon = bh.longitude.toString()
+                                            elev = bh.elevation.toString()
+                                            azimuth = bh.azimuth.toString()
+                                            dip = bh.dip.toString()
+                                            planned = bh.plannedDepth.toString()
+                                            showEditBoreholeDialog = true
+                                        }
+                                    ) {
+                                        Icon(Icons.Default.Edit, contentDescription = "Edit Borehole", tint = MaterialTheme.colorScheme.primary)
+                                    }
                                     IconButton(
                                         onClick = { viewModel.deleteBorehole(bh.id) }
                                     ) {
@@ -419,6 +461,144 @@ fun BoreholeWorkspace(
                 },
                 dismissButton = {
                     TextButton(onClick = { showCreateBoreholeDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
+        if (showEditBoreholeDialog) {
+            AlertDialog(
+                onDismissRequest = { 
+                    showEditBoreholeDialog = false
+                    editingBorehole = null
+                },
+                title = { Text("Edit Borehole Log") },
+                text = {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        item {
+                            OutlinedTextField(
+                                value = code,
+                                onValueChange = { code = it },
+                                label = { Text("Borehole Code (e.g. BH-01)") },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        item {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(
+                                    value = lat,
+                                    onValueChange = { lat = it },
+                                    label = { Text("Latitude") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = lon,
+                                    onValueChange = { lon = it },
+                                    label = { Text("Longitude") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                        item {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(
+                                    value = elev,
+                                    onValueChange = { elev = it },
+                                    label = { Text("Elevation (m)") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = planned,
+                                    onValueChange = { planned = it },
+                                    label = { Text("Planned Depth (m)") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                        item {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedTextField(
+                                    value = azimuth,
+                                    onValueChange = { azimuth = it },
+                                    label = { Text("Azimuth (0-360°)") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedTextField(
+                                    value = dip,
+                                    onValueChange = { dip = it },
+                                    label = { Text("Dip Angle (-90 to +90°)") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                        }
+                        item {
+                            Button(
+                                onClick = {
+                                    lat = "35.6892"
+                                    lon = "51.3890"
+                                    elev = "1200.0"
+                                    azimuth = "45.0"
+                                    dip = "-60.0"
+                                    planned = "150.0"
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.MyLocation, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Simulate Coordinates")
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val latD = lat.toDoubleOrNull() ?: 0.0
+                            val lonD = lon.toDoubleOrNull() ?: 0.0
+                            val elevD = elev.toDoubleOrNull() ?: 0.0
+                            val azD = azimuth.toDoubleOrNull() ?: 0.0
+                            val dipD = dip.toDoubleOrNull() ?: -90.0
+                            val plD = planned.toDoubleOrNull() ?: 100.0
+
+                            editingBorehole?.let { original ->
+                                viewModel.saveBorehole(
+                                    original.copy(
+                                        boreholeCode = code,
+                                        latitude = latD,
+                                        longitude = lonD,
+                                        elevation = elevD,
+                                        azimuth = azD,
+                                        dip = dipD,
+                                        plannedDepth = plD
+                                    )
+                                ) {
+                                    showEditBoreholeDialog = false
+                                    editingBorehole = null
+                                    code = ""
+                                    lat = ""
+                                    lon = ""
+                                    elev = ""
+                                    azimuth = ""
+                                    dip = ""
+                                }
+                            }
+                        }
+                    ) {
+                        Text("Save Changes")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { 
+                        showEditBoreholeDialog = false
+                        editingBorehole = null
+                    }) {
                         Text("Cancel")
                     }
                 }

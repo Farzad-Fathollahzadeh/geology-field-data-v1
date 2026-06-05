@@ -59,19 +59,60 @@ private val LightColorScheme = lightColorScheme(
     outline = OutlineLight
 )
 
+private val HighContrastColorScheme = darkColorScheme(
+    primary = PrimaryContrast,
+    onPrimary = OnPrimaryContrast,
+    primaryContainer = PrimaryContainerContrast,
+    onPrimaryContainer = OnPrimaryContainerContrast,
+    secondary = SecondaryContrast,
+    onSecondary = OnSecondaryContrast,
+    secondaryContainer = SecondaryContainerContrast,
+    onSecondaryContainer = OnSecondaryContainerContrast,
+    tertiary = PrimaryContrast,
+    onTertiary = OnPrimaryContrast,
+    tertiaryContainer = PrimaryContainerContrast,
+    onTertiaryContainer = OnPrimaryContainerContrast,
+    background = BackgroundContrast,
+    onBackground = OnBackgroundContrast,
+    surface = SurfaceContrast,
+    onSurface = OnSurfaceContrast,
+    surfaceVariant = SurfaceVariantContrast,
+    onSurfaceVariant = OnSurfaceVariantContrast,
+    outline = OutlineContrast
+)
+
+private val SilverColorScheme = lightColorScheme(
+    primary = PrimarySilver,
+    onPrimary = OnPrimarySilver,
+    primaryContainer = PrimaryContainerSilver,
+    onPrimaryContainer = OnPrimaryContainerSilver,
+    secondary = SecondarySilver,
+    onSecondary = OnSecondarySilver,
+    secondaryContainer = SecondaryContainerSilver,
+    onSecondaryContainer = OnSecondaryContainerSilver,
+    tertiary = SecondarySilver,
+    onTertiary = OnSecondarySilver,
+    tertiaryContainer = SecondaryContainerSilver,
+    onTertiaryContainer = OnSecondaryContainerSilver,
+    background = BackgroundSilver,
+    onBackground = OnBackgroundSilver,
+    surface = SurfaceSilver,
+    onSurface = OnSurfaceSilver,
+    surfaceVariant = SurfaceVariantSilver,
+    onSurfaceVariant = OnSurfaceVariantSilver,
+    outline = OutlineSilver
+)
+
 @Composable
 fun MyApplicationTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = false,
+    themeSetting: String = "Dark", // "Light", "Dark", "HighContrast", "Silver"
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
+    val colorScheme = when (themeSetting) {
+        "Light" -> LightColorScheme
+        "HighContrast" -> HighContrastColorScheme
+        "Silver" -> SilverColorScheme
+        else -> DarkColorScheme
     }
 
     val view = LocalView.current
@@ -80,10 +121,12 @@ fun MyApplicationTheme(
             val activity = view.context as? Activity
             activity?.window?.let { window ->
                 window.statusBarColor = colorScheme.background.toArgb()
-                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = 
+                    (themeSetting == "Light" || themeSetting == "Silver")
             }
         }
     }
+
 
     MaterialTheme(
         colorScheme = colorScheme,

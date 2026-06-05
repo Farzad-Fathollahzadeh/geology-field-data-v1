@@ -424,7 +424,7 @@ interface GeologyDao {
         BoreholeCoreRun::class,
         RockMechanicsEvaluation::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class GeologyDatabase : RoomDatabase() {
