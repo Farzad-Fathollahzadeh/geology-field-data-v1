@@ -235,6 +235,27 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun createProjectSilently(name: String, description: String, dateStr: String = "", utmZoneMode: String = "AUTO", utmZoneManual: String = "39N", onCompleted: (Int) -> Unit = {}) {
+        viewModelScope.launch {
+            val finalDate = if (dateStr.isBlank()) {
+                SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+            } else {
+                dateStr
+            }
+            val newProjId = dao.insertProject(
+                Project(
+                    name = name,
+                    description = description.ifBlank { null },
+                    date = finalDate,
+                    utmZoneMode = utmZoneMode,
+                    utmZoneManual = utmZoneManual
+                )
+            )
+            setActiveProject(newProjId.toInt())
+            onCompleted(newProjId.toInt())
+        }
+    }
+
     fun updateProjectSettings(projectId: Int, mode: String, manualZone: String) {
         viewModelScope.launch {
             val active = activeProject.value
@@ -1411,5 +1432,276 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
             return "\"" + field.replace("\"", "\"\"") + "\""
         }
         return field
+    }
+
+    fun seedDemoDataset(context: Context) {
+        viewModelScope.launch {
+            try {
+                // 1. Create Project
+                val projId = dao.insertProject(
+                    Project(
+                        name = "پروژه اکتشافات عمقی مس سرچشمه",
+                        description = "اکتشافات تکمیلی کانسار پورفیری منطقه کرمان - زون مس",
+                        date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
+                        utmZoneMode = "MANUAL",
+                        utmZoneManual = "40R"
+                    )
+                ).toInt()
+
+                // 2. Create Stations
+                val st1Id = dao.insertStation(
+                    Station(
+                        projectId = projId,
+                        stationCode = "SARCH-ST-001",
+                        prefix = "SARCH-ST",
+                        latitude = 29.9675,
+                        longitude = 55.8752,
+                        elevation = 1620.0,
+                        accuracy = 1.4,
+                        utmEasting = 412500.0,
+                        utmNorthing = 3315800.0,
+                        utmZone = "40R"
+                    )
+                ).toInt()
+
+                val st2Id = dao.insertStation(
+                    Station(
+                        projectId = projId,
+                        stationCode = "SARCH-ST-002",
+                        prefix = "SARCH-ST",
+                        latitude = 29.9682,
+                        longitude = 55.8761,
+                        elevation = 1635.0,
+                        accuracy = 2.1,
+                        utmEasting = 412610.0,
+                        utmNorthing = 3315910.0,
+                        utmZone = "40R"
+                    )
+                ).toInt()
+
+                // 3. Observations for Station 1
+                val obs1Id = dao.insertObservation(
+                    Observation(
+                        stationId = st1Id,
+                        observationType = "Lithology",
+                        notes = "رخنمون گرانیتوئید نیمه عمیق با دگرسانی شدید پتاسیک",
+                        lithologyType = "Granodiorite Porphyry",
+                        texture = "Porphyritic",
+                        color = "Light Gray",
+                        grainSize = "Medium-Coarse",
+                        lithologyAlteration = "Potassic",
+                        lithologyMineralization = "Chalcopyrite-Pyrite disseminated",
+                        photoPath = null
+                    )
+                ).toInt()
+
+                dao.insertSample(
+                    Sample(
+                        observationId = obs1Id,
+                        sampleCodeId = "SMP-SARCH-01",
+                        sampleType = "Hand specimen",
+                        description = "نمونه سنگ پرعیار پورفیری حاوی کانی مس",
+                        photoPath = null
+                    )
+                )
+
+                dao.insertObservation(
+                    Observation(
+                        stationId = st1Id,
+                        observationType = "Alteration",
+                        notes = "زون دگرسانی پتاسیک متمرکز پیرامون استوکهای پورفیری",
+                        alterationType = "Potassic",
+                        intensity = "Strong",
+                        hostRock = "Granodiorite",
+                        associatedMinerals = "K-Feldspar, Biotite, Magnetite",
+                        photoPath = null
+                    )
+                )
+
+                // Observations for Station 2
+                val obs2Id = dao.insertObservation(
+                    Observation(
+                        stationId = st2Id,
+                        observationType = "Fault",
+                        notes = "گسل برشی با شیب تند حاوی کانی‌سازی ثانویه مس",
+                        faultType = "Shear Zone",
+                        strike = 45,
+                        dip = 62,
+                        dipDirection = 135,
+                        rake = 30,
+                        rakeDirection = "SE",
+                        movement = "Strike-Slip Dextral",
+                        width = 1.2,
+                        photoPath = null
+                    )
+                ).toInt()
+
+                dao.insertObservation(
+                    Observation(
+                        stationId = st2Id,
+                        observationType = "Mineralization",
+                        notes = "کانی زایی مس ثانویه سولفیدی پرعیار",
+                        minStyle = "Stockwork Veinlets",
+                        minAssociatedMinerals = "Chalcopyrite, Chalcocite, Malachite",
+                        minGradeEstimate = "Cu 1.8% to 2.5%",
+                        photoPath = null
+                    )
+                )
+
+                // 4. Create Boreholes
+                val bhId = dao.insertBorehole(
+                    Borehole(
+                        projectId = projId,
+                        boreholeCode = "BH-SARCH-101",
+                        latitude = 29.9678,
+                        longitude = 55.8755,
+                        elevation = 1622.0,
+                        azimuth = 0.0,
+                        dip = -90.0,
+                        plannedDepth = 250.0
+                    )
+                ).toInt()
+
+                // Borehole Daily Reports
+                dao.insertDailyReport(
+                    BoreholeDailyReport(
+                        boreholeId = bhId,
+                        reportDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
+                        shift = "Day",
+                        progressMeters = 18.5,
+                        stoppagesHours = 1.5,
+                        problemsRemarks = "تعویض مته حفاری و رفع ریزش دیواره",
+                        shiftGeologist = "دکتر فاطمی",
+                        drillRigId = "XY-2B"
+                    )
+                )
+
+                dao.insertDailyReport(
+                    BoreholeDailyReport(
+                        boreholeId = bhId,
+                        reportDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
+                        shift = "Night",
+                        progressMeters = 22.0,
+                        stoppagesHours = 0.5,
+                        problemsRemarks = "حفاری بدون وقفه در سنگ سخت گرانودیوریتی",
+                        shiftGeologist = "مهندس مرادی",
+                        drillRigId = "XY-2B"
+                    )
+                )
+
+                // Borehole Core Runs
+                dao.insertCoreRun(
+                    BoreholeCoreRun(
+                        boreholeId = bhId,
+                        runNumber = 1,
+                        depthFrom = 0.0,
+                        depthTo = 12.0,
+                        recoveryPercent = 88.0,
+                        rqdPercent = 65.0,
+                        lithology = "Alluvium / Overburden",
+                        mineralization = "None",
+                        alteration = "None",
+                        fractureFrequency = 12,
+                        ucsMpa = 15.0
+                    )
+                )
+
+                dao.insertCoreRun(
+                    BoreholeCoreRun(
+                        boreholeId = bhId,
+                        runNumber = 2,
+                        depthFrom = 12.0,
+                        depthTo = 24.5,
+                        recoveryPercent = 95.5,
+                        rqdPercent = 82.0,
+                        lithology = "Andesite",
+                        mineralization = "Malachite stains",
+                        alteration = "Propylitic",
+                        fractureFrequency = 5,
+                        ucsMpa = 72.0
+                    )
+                )
+
+                dao.insertCoreRun(
+                    BoreholeCoreRun(
+                        boreholeId = bhId,
+                        runNumber = 3,
+                        depthFrom = 24.5,
+                        depthTo = 38.0,
+                        recoveryPercent = 98.2,
+                        rqdPercent = 91.5,
+                        lithology = "Granodiorite Porphyry",
+                        mineralization = "Chalcopyrite stockwork",
+                        alteration = "Potassic",
+                        fractureFrequency = 2,
+                        ucsMpa = 110.0
+                    )
+                )
+
+                // 5. Rock Mechanics evaluations
+                dao.insertRockMechanicsEvaluation(
+                    RockMechanicsEvaluation(
+                        projectId = projId,
+                        locationName = "دیواره غربی پیت معدن",
+                        evaluationType = "RMR",
+                        evaluationDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
+                        rmrUcsVal = 12.0,
+                        rmrRqdVal = 17.0,
+                        rmrSpacingVal = 15.0,
+                        rmrConditionVal = 22.0,
+                        rmrWaterVal = 10.0,
+                        rmrAdjustmentVal = -5.0,
+                        rmrScore = 71.0,
+                        rmrClass = "Class II: Good Rock (سنگ خوب)",
+                        notes = "ارزیابی مقاومت شیب در محدوده زون گرانیتی"
+                    )
+                )
+
+                dao.insertRockMechanicsEvaluation(
+                    RockMechanicsEvaluation(
+                        projectId = projId,
+                        locationName = "دیواره شمالی پیت معدن",
+                        evaluationType = "Hoek-Brown",
+                        evaluationDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
+                        hbSigci = 85.0,
+                        hbGsi = 55.0,
+                        hbMi = 15.0,
+                        hbD = 0.3,
+                        hbMb = 3.65,
+                        hbS = 0.0067,
+                        hbA = 0.504,
+                        hbSigmaci = 6.94,
+                        notes = "برآورد معیار هوک-براون سنگ بکر توده آندزیتی دگرسان شده"
+                    )
+                )
+
+                dao.insertRockMechanicsEvaluation(
+                    RockMechanicsEvaluation(
+                        projectId = projId,
+                        locationName = "تونل اکتشافی تراز ۱۵۰۰",
+                        evaluationType = "MRMR",
+                        evaluationDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
+                        mrmrRmrBasic = 65.0,
+                        mrmrWeatheringAdj = 0.9,
+                        mrmrJointOrientationAdj = 0.85,
+                        mrmrDrillingAdj = 0.95,
+                        mrmrScore = 47.3,
+                        mrmrClass = "Class IIIb: Fair Rock (سنگ متوسط شیب‌دار)",
+                        notes = "برآورد شاخص اصلاح شده MRMR برای حفر گالری مس پورفیری"
+                    )
+                )
+
+                // Automatically navigate and focus on the seeded project!
+                withContext(Dispatchers.Main) {
+                    setActiveProject(projId)
+                    navigateTo(Screen.ProjectDashboard(projId))
+                    Toast.makeText(context, "داده‌های غنی اکتشافی به دیتابیس تزریق شد!", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "خطا در تزریق داده‌ها: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
     }
 }

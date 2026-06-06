@@ -5,6 +5,7 @@ import androidx.compose.ui.unit.sp
 import com.example.UtmConverter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -176,7 +177,7 @@ fun BoreholeLoggingContent(
                     Button(
                         onClick = {
                             if (newProjectName.isNotBlank()) {
-                                viewModel.createProject(newProjectName, newProjectDesc)
+                                viewModel.createProjectSilently(newProjectName, newProjectDesc)
                                 showCreateProjectDialog = false
                                 newProjectName = ""
                                 newProjectDesc = ""
@@ -227,6 +228,7 @@ fun BoreholeWorkspace(
     var azimuth by remember { mutableStateOf("") }
     var dip by remember { mutableStateOf("") }
     var planned by remember { mutableStateOf("100.0") }
+    var isCodeError by remember { mutableStateOf(false) }
 
     if (activeBorehole == null) {
         Column(
@@ -340,15 +342,27 @@ fun BoreholeWorkspace(
 
         if (showCreateBoreholeDialog) {
             AlertDialog(
-                onDismissRequest = { showCreateBoreholeDialog = false },
+                onDismissRequest = { 
+                    showCreateBoreholeDialog = false
+                    isCodeError = false
+                },
                 title = { Text("Add New Borehole Log") },
                 text = {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         item {
                             OutlinedTextField(
                                 value = code,
-                                onValueChange = { code = it },
+                                onValueChange = { 
+                                    code = it 
+                                    isCodeError = it.isBlank()
+                                },
                                 label = { Text("Borehole Code (e.g. BH-01)") },
+                                isError = isCodeError,
+                                supportingText = {
+                                    if (isCodeError) {
+                                        Text("Borehole Code is required!", color = MaterialTheme.colorScheme.error)
+                                    }
+                                },
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
@@ -426,7 +440,10 @@ fun BoreholeWorkspace(
                 confirmButton = {
                     Button(
                         onClick = {
-                            if (code.isNotBlank()) {
+                            if (code.isBlank()) {
+                                isCodeError = true
+                            } else {
+                                isCodeError = false
                                 val latD = lat.toDoubleOrNull() ?: 0.0
                                 val lonD = lon.toDoubleOrNull() ?: 0.0
                                 val elevD = elev.toDoubleOrNull() ?: 0.0
@@ -739,6 +756,36 @@ fun DailyReportsPanel(
                 Text("No daily reports recorded. Keep track of shift advances.", fontSize = 13.sp, color = Color.Gray)
             }
         } else {
+            // High value drilling KPI dashboard
+            val totalM = reports.sumOf { it.progressMeters }
+            val totalH = reports.sumOf { it.stoppagesHours }
+            val avgSpeed = reports.map { it.progressMeters }.average()
+            
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(10.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Cumulative Drilled", fontSize = 9.sp, color = MaterialTheme.colorScheme.secondary)
+                        Text("${String.format(Locale.US, "%.1f", totalM)} m", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    }
+                    Box(modifier = Modifier.width(1.dp).height(24.dp).background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Avg Advance/Shift", fontSize = 9.sp, color = MaterialTheme.colorScheme.secondary)
+                        Text("${String.format(Locale.US, "%.1f", avgSpeed)} m/s", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    }
+                    Box(modifier = Modifier.width(1.dp).height(24.dp).background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Total Delays/Stops", fontSize = 9.sp, color = MaterialTheme.colorScheme.secondary)
+                        Text("${String.format(Locale.US, "%.1f", totalH)} hrs", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            }
+
             LazyColumn(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -994,6 +1041,9 @@ fun CoreRunsPanel(
                 Text("No core runs recorded. Tap 'Add Core Run' to log intervals.", fontSize = 13.sp, color = Color.Gray)
             }
         } else {
+            // Digital Core Box Tray Visualizer
+            CoreTrayVisualizer(runs = runs)
+
             LazyColumn(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -1042,6 +1092,28 @@ fun CoreRunsPanel(
                                 Column {
                                     Text("UCS Mass", fontSize = 10.sp, color = Color.Gray)
                                     Text("${run.ucsMpa} MPa", fontSize = 13.sp)
+                                }
+                            }
+                            
+                            // Visual linear charts for recovery and RQD
+                            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("Recovery:", fontSize = 9.sp, color = Color.Gray, modifier = Modifier.width(55.dp))
+                                    LinearProgressIndicator(
+                                        progress = (run.recoveryPercent / 100.0).toFloat().coerceIn(0f, 1f),
+                                        modifier = Modifier.weight(1f).height(6.dp).clip(RoundedCornerShape(3.dp)),
+                                        color = Color(0xFF43A047),
+                                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Text("RQD Index:", fontSize = 9.sp, color = Color.Gray, modifier = Modifier.width(55.dp))
+                                    LinearProgressIndicator(
+                                        progress = (run.rqdPercent / 100.0).toFloat().coerceIn(0f, 1f),
+                                        modifier = Modifier.weight(1f).height(6.dp).clip(RoundedCornerShape(3.dp)),
+                                        color = Color(0xFF1E88E5),
+                                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                    )
                                 }
                             }
                             
@@ -1273,4 +1345,126 @@ fun CoreRunsPanel(
 
 private fun fractalUcsStr(s: String): String {
     return s.filter { it.isDigit() }
+}
+
+@Composable
+fun CoreTrayVisualizer(runs: List<BoreholeCoreRun>) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Stratigraphic Core Box (جعبه مغزه دیجیتال)",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "Lanes color-coded by RQD",
+                    fontSize = 9.sp,
+                    color = MaterialTheme.colorScheme.secondary
+                )
+            }
+
+            // Grid Box representing wooden Core Box Tray
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFD7CCC8).copy(alpha = 0.3f)), // Wood-like beige
+                border = BorderStroke(1.5.dp, Color(0xFF8D6E63)), // Reddish brown border
+                shape = RoundedCornerShape(4.dp),
+                modifier = Modifier.fillMaxWidth().height(100.dp)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxSize().padding(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    val tookRuns = runs.take(4) // show up to 4 runs in rows
+                    tookRuns.forEach { run ->
+                        val recoveryVal = run.recoveryPercent
+                        val rqdVal = run.rqdPercent
+                        val color = when {
+                            rqdVal >= 90.0 -> Color(0xFF008080) // Teal
+                            rqdVal >= 75.0 -> Color(0xFF43A047) // Green
+                            rqdVal >= 50.0 -> Color(0xFFFBC02D) // Yellow
+                            rqdVal >= 25.0 -> Color(0xFFF57C00) // Orange
+                            else -> Color(0xFFD32F2F) // Red
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxWidth()
+                                .background(Color(0xFF3E2723).copy(alpha = 0.08f), RoundedCornerShape(2.dp))
+                                .border(0.5.dp, Color(0xFF5D4037).copy(alpha = 0.3f), RoundedCornerShape(2.dp)),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Cylinder label: depth info
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .width(70.dp)
+                                    .background(Color(0xFF8D6E63).copy(alpha = 0.15f))
+                                    .padding(horizontal = 4.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "R#${run.runNumber}: ${run.depthFrom}m",
+                                    fontSize = 7.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF5D4037)
+                                )
+                            }
+                            // Visual core representation
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(vertical = 1.dp, horizontal = 2.dp)
+                                    .background(color = Color.LightGray.copy(alpha = 0.15f), shape = RoundedCornerShape(10.dp)),
+                                horizontalArrangement = Arrangement.spacedBy(1.dp)
+                            ) {
+                                val pct = (recoveryVal / 100f).toFloat().coerceIn(0f, 1f)
+                                if (pct > 0f) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxHeight()
+                                            .fillMaxWidth(pct)
+                                            .background(
+                                                color = color,
+                                                shape = RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp)
+                                            )
+                                            .border(0.2.dp, Color.White.copy(0.25f), RoundedCornerShape(topStart = 8.dp, bottomStart = 8.dp))
+                                    ) {
+                                        Text(
+                                            "RQD: ${rqdVal.toInt()}% | Rec: ${recoveryVal.toInt()}%",
+                                            fontSize = 7.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            modifier = Modifier.align(Alignment.Center)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (tookRuns.size < 4) {
+                        for (i in tookRuns.size until 4) {
+                            Row(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth()
+                                    .background(Color.White.copy(alpha = 0.05f), RoundedCornerShape(2.dp)),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {}
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
