@@ -322,7 +322,7 @@ fun MainScreenContent(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Settings,
-                                        contentDescription = "تنظیمات نرم‌افزار",
+                                        contentDescription = "Software Settings",
                                         tint = MaterialTheme.colorScheme.onPrimaryContainer,
                                         modifier = Modifier.size(18.dp)
                                     )
@@ -348,7 +348,7 @@ fun MainScreenContent(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.ArrowBack,
-                                        contentDescription = "بازگشت",
+                                        contentDescription = "Go Back",
                                         tint = MaterialTheme.colorScheme.onSecondaryContainer,
                                         modifier = Modifier.size(18.dp)
                                     )
@@ -763,7 +763,7 @@ fun MainScreenContent(
                                     verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     Text(
-                                        text = "دریافت داده‌های اکتشافی سنگین و فرضی برای تست و یادگیری سناریوهای حفاری، نقشه‌برداری، گسل‌ها و کانی‌سازی پورفیری:",
+                                        text = "Load extensive exploratory and hypothetical demo data to test and master core logging drills, geological mappings, fault lines, and porphyry mineralization scenarios:",
                                         fontSize = 9.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -778,7 +778,7 @@ fun MainScreenContent(
                                     ) {
                                         Icon(Icons.Default.Storage, contentDescription = null, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(6.dp))
-                                        Text("تزریق داده‌های اکتشافی نمونه (Seeding)", fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                                        Text("Seed Exploratory Demo Dataset", fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
@@ -1204,7 +1204,7 @@ fun DeveloperSocialPanel(modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = "زمین‌پوی / ",
+                    text = "GeoField / ",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -4382,31 +4382,31 @@ fun StationDetailScreen(
 // 6. GEOLOGY TRANSLATING DICTIONARY AUTO-SUGGEST & FORM SCREEN
 // ==========================================================
 val GeologyDictionary = listOf(
-    "basalt" to "بازالت",
-    "andesite" to "آندزیت",
-    "fault" to "گسل",
-    "quartz" to "کوارتز",
-    "granite" to "گرانیت",
-    "tuff" to "توف",
-    "diorite" to "دیوریت",
-    "limestone" to "سنگ آهک",
-    "schist" to "شیست",
-    "vein" to "رگه",
-    "joint" to "درزه",
-    "strike" to "امتداد",
-    "dip" to "شیب",
-    "alteration" to "دگرسانی",
-    "argillic" to "آرژیلیک",
-    "potassic" to "پتاسیک",
-    "propyllitic" to "پروپیلتیک",
-    "phylic" to "فیلیک",
-    "chalcocite" to "کالکوسیت",
-    "chalcopyrite" to "کالکوپیریت",
-    "pyrite" to "پیریت",
-    "magnetite" to "مگنتیت",
-    "hematite" to "هماتیت",
-    "malachite" to "مالاکیت",
-    "porphyry" to "پورفیری"
+    "basalt" to "Basalt",
+    "andesite" to "Andesite",
+    "fault" to "Fault",
+    "quartz" to "Quartz",
+    "granite" to "Granite",
+    "tuff" to "Tuff",
+    "diorite" to "Diorite",
+    "limestone" to "Limestone",
+    "schist" to "Schist",
+    "vein" to "Vein",
+    "joint" to "Joint",
+    "strike" to "Strike",
+    "dip" to "Dip",
+    "alteration" to "Alteration",
+    "argillic" to "Argillic",
+    "potassic" to "Potassic",
+    "propyllitic" to "Propyllitic",
+    "phylic" to "Phylic",
+    "chalcocite" to "Chalcocite",
+    "chalcopyrite" to "Chalcopyrite",
+    "pyrite" to "Pyrite",
+    "magnetite" to "Magnetite",
+    "hematite" to "Hematite",
+    "malachite" to "Malachite",
+    "porphyry" to "Porphyry"
 )
 
 @Composable
@@ -4891,18 +4891,18 @@ fun AddObservationScreen(
                         if (showGrainSizeGuide) {
                             Spacer(Modifier.height(8.dp))
                             Text(
-                                "مقیاس استاندارد پتروگرافی دانه‌ها (سیستم Wentworth):",
+                                "Standard Petrographic Grain Size Scale (Wentworth System):",
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Spacer(Modifier.height(4.dp))
                             val scales = listOf(
-                                "Very Coarse (بسیار درشت) ➔ > 2 mm (شن و قلوه‌سنگ)",
-                                "Coarse (درشت) ➔ 1 mm - 2 mm (ماسه‌سنگ درشت)",
-                                "Medium (متوسط) ➔ 0.25 mm - 0.5 mm",
-                                "Fine (ریز) ➔ 0.1 mm - 0.25 mm (سیلت و ماسه‌ریز)",
-                                "Very Fine (بسیار ریز) ➔ < 0.06 mm (رس و لای)"
+                                "Very Coarse ➔ > 2 mm (Gravel & Cobbles)",
+                                "Coarse ➔ 1 mm - 2 mm (Coarse Sandstone)",
+                                "Medium ➔ 0.25 mm - 0.5 mm",
+                                "Fine ➔ 0.1 mm - 0.25 mm (Silt & Fine Sandstone)",
+                                "Very Fine ➔ < 0.06 mm (Clay & Mud)"
                             )
                             scales.forEach { scale ->
                                 Row(
@@ -6712,7 +6712,7 @@ fun RecentObservationsTimeline(
                         modifier = Modifier.size(18.dp)
                     )
                     Text(
-                        text = "Recent Field Journal (آخرین یادداشت‌ها)",
+                        text = "Recent Field Journal",
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.5.sp,
                         color = MaterialTheme.colorScheme.onSurface
@@ -6903,7 +6903,7 @@ fun GeotechnicalUnitConverter() {
                         modifier = Modifier.size(20.dp)
                     )
                     Text(
-                        text = "Geotechnical Unit Converter (تبدیل واحدها)",
+                        text = "Geotechnical Unit Converter",
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.5.sp,
                         color = MaterialTheme.colorScheme.onSurface
@@ -6923,7 +6923,7 @@ fun GeotechnicalUnitConverter() {
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "محاسب سریع و تبدیل واحدهای استاندارد سنگ و مکانیک سنگ در صحرا:",
+                        text = "Quick calculator and standard rock mechanics unit converter for field actions:",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -9611,7 +9611,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                                 OutlinedTextField(
                                     value = quickStationPrefix,
                                     onValueChange = { quickStationPrefix = it },
-                                    label = { Text("Prefix (پیشوند)", fontSize = 9.sp) },
+                                    label = { Text("Prefix", fontSize = 9.sp) },
                                     singleLine = true,
                                     modifier = Modifier.weight(1f),
                                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF00E5FF))
@@ -9619,7 +9619,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                                 OutlinedTextField(
                                     value = quickStationCode,
                                     onValueChange = { quickStationCode = it },
-                                    label = { Text("Station Code (کد)", fontSize = 9.sp) },
+                                    label = { Text("Station Code", fontSize = 9.sp) },
                                     singleLine = true,
                                     modifier = Modifier.weight(2f),
                                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF00E5FF))

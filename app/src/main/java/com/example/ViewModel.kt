@@ -1554,8 +1554,8 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                 // 1. Create Project
                 val projId = dao.insertProject(
                     Project(
-                        name = "پروژه اکتشافات عمقی مس سرچشمه",
-                        description = "اکتشافات تکمیلی کانسار پورفیری منطقه کرمان - زون مس",
+                        name = "Sarcheshmeh Deep Copper Exploration Project",
+                        description = "Supplementary exploration of Sarcheshmeh porphyry deposit, Kerman region - Copper Zone",
                         date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
                         utmZoneMode = "MANUAL",
                         utmZoneManual = "40R"
@@ -1598,7 +1598,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                     Observation(
                         stationId = st1Id,
                         observationType = "Lithology",
-                        notes = "رخنمون گرانیتوئید نیمه عمیق با دگرسانی شدید پتاسیک",
+                        notes = "Subvolcanic granitoid outcrop showing intense potassic alteration",
                         lithologyType = "Granodiorite Porphyry",
                         texture = "Porphyritic",
                         color = "Light Gray",
@@ -1614,7 +1614,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                         observationId = obs1Id,
                         sampleCodeId = "SMP-SARCH-01",
                         sampleType = "Hand specimen",
-                        description = "نمونه سنگ پرعیار پورفیری حاوی کانی مس",
+                        description = "High-grade porphyry copper core sample with chalcopyrite mineralization",
                         photoPath = null
                     )
                 )
@@ -1623,7 +1623,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                     Observation(
                         stationId = st1Id,
                         observationType = "Alteration",
-                        notes = "زون دگرسانی پتاسیک متمرکز پیرامون استوکهای پورفیری",
+                        notes = "Potassic alteration zone focused around the porphyry stocks",
                         alterationType = "Potassic",
                         intensity = "Strong",
                         hostRock = "Granodiorite",
@@ -1637,7 +1637,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                     Observation(
                         stationId = st2Id,
                         observationType = "Fault",
-                        notes = "گسل برشی با شیب تند حاوی کانی‌سازی ثانویه مس",
+                        notes = "High-angle shear fault zone hosting secondary copper mineralization",
                         faultType = "Shear Zone",
                         strike = 45,
                         dip = 62,
@@ -1654,7 +1654,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                     Observation(
                         stationId = st2Id,
                         observationType = "Mineralization",
-                        notes = "کانی زایی مس ثانویه سولفیدی پرعیار",
+                        notes = "High-grade secondary sulfide copper mineralization",
                         minStyle = "Stockwork Veinlets",
                         minAssociatedMinerals = "Chalcopyrite, Chalcocite, Malachite",
                         minGradeEstimate = "Cu 1.8% to 2.5%",
@@ -1684,8 +1684,8 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                         shift = "Day",
                         progressMeters = 18.5,
                         stoppagesHours = 1.5,
-                        problemsRemarks = "تعویض مته حفاری و رفع ریزش دیواره",
-                        shiftGeologist = "دکتر فاطمی",
+                        problemsRemarks = "Replaced drill bit and stabilized borehole wall collapse",
+                        shiftGeologist = "Dr. Fatemi",
                         drillRigId = "XY-2B"
                     )
                 )
@@ -1697,8 +1697,8 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                         shift = "Night",
                         progressMeters = 22.0,
                         stoppagesHours = 0.5,
-                        problemsRemarks = "حفاری بدون وقفه در سنگ سخت گرانودیوریتی",
-                        shiftGeologist = "مهندس مرادی",
+                        problemsRemarks = "Continuous smooth run in hard granodioritic rock",
+                        shiftGeologist = "Eng. Moradi",
                         drillRigId = "XY-2B"
                     )
                 )
@@ -1756,7 +1756,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                 dao.insertRockMechanicsEvaluation(
                     RockMechanicsEvaluation(
                         projectId = projId,
-                        locationName = "دیواره غربی پیت معدن",
+                        locationName = "West Pit Wall",
                         evaluationType = "RMR",
                         evaluationDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
                         rmrUcsVal = 12.0,
@@ -1766,15 +1766,15 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                         rmrWaterVal = 10.0,
                         rmrAdjustmentVal = -5.0,
                         rmrScore = 71.0,
-                        rmrClass = "Class II: Good Rock (سنگ خوب)",
-                        notes = "ارزیابی مقاومت شیب در محدوده زون گرانیتی"
+                        rmrClass = "Class II: Good Rock",
+                        notes = "Stability assessment of the slope within the granitic zone"
                     )
                 )
 
                 dao.insertRockMechanicsEvaluation(
                     RockMechanicsEvaluation(
                         projectId = projId,
-                        locationName = "دیواره شمالی پیت معدن",
+                        locationName = "North Pit Wall",
                         evaluationType = "Hoek-Brown",
                         evaluationDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
                         hbSigci = 85.0,
@@ -1785,14 +1785,14 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                         hbS = 0.0067,
                         hbA = 0.504,
                         hbSigmaci = 6.94,
-                        notes = "برآورد معیار هوک-براون سنگ بکر توده آندزیتی دگرسان شده"
+                        notes = "Hoek-Brown intact rock mass parameter estimation for altered andesite"
                     )
                 )
 
                 dao.insertRockMechanicsEvaluation(
                     RockMechanicsEvaluation(
                         projectId = projId,
-                        locationName = "تونل اکتشافی تراز ۱۵۰۰",
+                        locationName = "Exploration Tunnel Level 1500",
                         evaluationType = "MRMR",
                         evaluationDate = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()),
                         mrmrRmrBasic = 65.0,
@@ -1800,8 +1800,8 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                         mrmrJointOrientationAdj = 0.85,
                         mrmrDrillingAdj = 0.95,
                         mrmrScore = 47.3,
-                        mrmrClass = "Class IIIb: Fair Rock (سنگ متوسط شیب‌دار)",
-                        notes = "برآورد شاخص اصلاح شده MRMR برای حفر گالری مس پورفیری"
+                        mrmrClass = "Class IIIb: Fair Rock",
+                        notes = "Modified MRMR index estimation for mining gallery excavation in porphyry zone"
                     )
                 )
 
@@ -1809,11 +1809,11 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                 withContext(Dispatchers.Main) {
                     setActiveProject(projId)
                     navigateTo(Screen.ProjectDashboard(projId))
-                    Toast.makeText(context, "داده‌های غنی اکتشافی به دیتابیس تزریق شد!", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "Rich exploration demo dataset successfully seeded!", Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "خطا در تزریق داده‌ها: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "Seeding error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
                 }
             }
         }

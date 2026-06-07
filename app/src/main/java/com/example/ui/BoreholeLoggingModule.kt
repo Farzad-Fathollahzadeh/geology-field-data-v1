@@ -98,7 +98,7 @@ fun BoreholeLoggingContent(
                         modifier = Modifier.size(48.dp)
                     )
                     Text(
-                        text = "Core Logging Workspace (گمانه ها)",
+                        text = "Core Logging Workspace",
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
@@ -124,7 +124,7 @@ fun BoreholeLoggingContent(
             ) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text("New Project (پروژه جدید)", fontWeight = FontWeight.SemiBold)
+                Text("New Project", fontWeight = FontWeight.SemiBold)
             }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
@@ -260,7 +260,7 @@ fun BoreholeLoggingContent(
                                 newProjectName = it
                                 if (it.isNotBlank()) nameError = false
                             },
-                            label = { Text("Project Title (نام پروژه)") },
+                            label = { Text("Project Title") },
                             isError = nameError,
                             supportingText = {
                                 if (nameError) {
@@ -441,7 +441,7 @@ fun BoreholeWorkspace(
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
-                    Text("Add Borehole (گمانه جدید)", fontSize = 11.5.sp)
+                    Text("Add Borehole", fontSize = 11.5.sp)
                 }
 
                 if (boreholes.isNotEmpty()) {
@@ -462,7 +462,7 @@ fun BoreholeWorkspace(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "Active Borehole Logs (لیست گمانه ها):",
+                    text = "Active Borehole Logs:",
                     fontSize = 13.5.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -560,7 +560,7 @@ fun BoreholeWorkspace(
                                                 color = MaterialTheme.colorScheme.onSurface
                                             )
                                             Text(
-                                                text = "کد گمانه: ${bh.boreholeCode}",
+                                                text = "Borehole Code: ${bh.boreholeCode}",
                                                 fontSize = 10.5.sp,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
@@ -624,7 +624,7 @@ fun BoreholeWorkspace(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Column {
-                                        Text("Orientation (شیب/جهت)", fontSize = 9.sp, color = MaterialTheme.colorScheme.outline)
+                                        Text("Orientation (Dip/Dir)", fontSize = 9.sp, color = MaterialTheme.colorScheme.outline)
                                         Text(
                                             "Azimuth: ${bh.azimuth}° | Dip: ${bh.dip}°",
                                             fontSize = 12.sp,
@@ -633,7 +633,7 @@ fun BoreholeWorkspace(
                                         )
                                     }
                                     Column(horizontalAlignment = Alignment.End) {
-                                        Text("Planned Depth (عمق طرح)", fontSize = 9.sp, color = MaterialTheme.colorScheme.outline)
+                                        Text("Planned Depth", fontSize = 9.sp, color = MaterialTheme.colorScheme.outline)
                                         Text(
                                             "${bh.plannedDepth} meters",
                                             fontSize = 12.sp,
@@ -687,7 +687,7 @@ fun BoreholeWorkspace(
                             OutlinedTextField(
                                 value = code,
                                 onValueChange = { code = it },
-                                label = { Text("Borehole ID (کد گمانه)") },
+                                label = { Text("Borehole ID") },
                                 placeholder = { Text("e.g. BH-01") },
                                 isError = codeErr,
                                 supportingText = { if (codeErr) Text("Required identifier", color = MaterialTheme.colorScheme.error) },
@@ -699,7 +699,7 @@ fun BoreholeWorkspace(
                                 OutlinedTextField(
                                     value = lat,
                                     onValueChange = { lat = it },
-                                    label = { Text("Latitude (عرض)") },
+                                    label = { Text("Latitude") },
                                     isError = latErr,
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                     modifier = Modifier.weight(1f)
@@ -707,7 +707,7 @@ fun BoreholeWorkspace(
                                 OutlinedTextField(
                                     value = lon,
                                     onValueChange = { lon = it },
-                                    label = { Text("Longitude (طول)") },
+                                    label = { Text("Longitude") },
                                     isError = lonErr,
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                     modifier = Modifier.weight(1f)
@@ -769,7 +769,7 @@ fun BoreholeWorkspace(
                             ) {
                                 Icon(Icons.Default.MyLocation, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(Modifier.width(6.dp))
-                                Text("Auto GPS Coords (تهران)")
+                                Text("Auto GPS Coords (Tehran)")
                             }
                         }
                     }
@@ -820,7 +820,7 @@ fun BoreholeWorkspace(
                             OutlinedTextField(
                                 value = code,
                                 onValueChange = { code = it },
-                                label = { Text("Borehole ID (کد گمانه)") },
+                                label = { Text("Borehole ID") },
                                 isError = codeErr,
                                 supportingText = { if (codeErr) Text("Required identifier", color = MaterialTheme.colorScheme.error) },
                                 modifier = Modifier.fillMaxWidth()
@@ -1020,7 +1020,7 @@ fun BoreholeLoggingDetailsWorkspace(
             Tab(
                 selected = selectedSubTab == 1,
                 onClick = { selectedSubTab = 1 },
-                text = { Text("Core Log Runs (کیفیت)", fontSize = 11.5.sp, fontWeight = FontWeight.Bold) }
+                text = { Text("Core Log Runs (Quality)", fontSize = 11.5.sp, fontWeight = FontWeight.Bold) }
             )
         }
 
@@ -1217,11 +1217,11 @@ fun DailyReportsPanel(
                             }
                             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("Drill Progress (پیشرفت)", fontSize = 9.sp, color = Color.Gray)
+                                    Text("Drill Progress", fontSize = 9.sp, color = Color.Gray)
                                     Text("+${report.progressMeters} meters", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF43A047))
                                 }
                                 Column(modifier = Modifier.weight(1.5f)) {
-                                    Text("Stoppages & Downtime (توقف)", fontSize = 9.sp, color = Color.Gray)
+                                    Text("Stoppages & Downtime", fontSize = 9.sp, color = Color.Gray)
                                     Text("${report.stoppagesHours} hours delay", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
                                 }
                                 Column(modifier = Modifier.weight(1.3f)) {
@@ -1272,7 +1272,7 @@ fun DailyReportsPanel(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Shift Mode (شیفت کاری):", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                Text("Shift Mode:", fontSize = 13.sp, fontWeight = FontWeight.Medium)
                                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         RadioButton(selected = shift == "Day", onClick = { shift = "Day" })
@@ -1309,7 +1309,7 @@ fun DailyReportsPanel(
                             OutlinedTextField(
                                 value = shiftGeologist,
                                 onValueChange = { shiftGeologist = it },
-                                label = { Text("Shift Onsite Geologist (زمین شناس)") },
+                                label = { Text("Shift Onsite Geologist") },
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
@@ -1550,7 +1550,7 @@ fun CoreRunsPanel(
                                         color = MaterialTheme.colorScheme.primary
                                     )
                                     Text(
-                                        text = "رن شماره ${run.runNumber}: از ${run.depthFrom} تا ${run.depthTo} متری",
+                                        text = "Run #${run.runNumber}: from ${run.depthFrom} to ${run.depthTo} m",
                                         fontSize = 10.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -1568,11 +1568,11 @@ fun CoreRunsPanel(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Column {
-                                    Text("Recovery (بازیابی)", fontSize = 9.sp, color = Color.Gray)
+                                    Text("Recovery", fontSize = 9.sp, color = Color.Gray)
                                     Text("${String.format(Locale.US, "%.1f", run.recoveryPercent)}%", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF43A047))
                                 }
                                 Column {
-                                    Text("RQD Score (کیفیت)", fontSize = 9.sp, color = Color.Gray)
+                                    Text("RQD Score (Quality)", fontSize = 9.sp, color = Color.Gray)
                                     Text("${String.format(Locale.US, "%.1f", run.rqdPercent)}%", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E88E5))
                                 }
                                 Column {
@@ -1736,7 +1736,7 @@ fun CoreRunsPanel(
                                 OutlinedTextField(
                                     value = lithology,
                                     onValueChange = { lithology = it },
-                                    label = { Text("Lithology Type (نوع سنگ)") },
+                                    label = { Text("Lithology Type") },
                                     modifier = Modifier.fillMaxWidth(),
                                     trailingIcon = {
                                         IconButton(onClick = { showLithologyMenu = !showLithologyMenu }) {
@@ -1766,7 +1766,7 @@ fun CoreRunsPanel(
                                 OutlinedTextField(
                                     value = alteration,
                                     onValueChange = { alteration = it },
-                                    label = { Text("Alteration (دگرسانی)") },
+                                    label = { Text("Alteration") },
                                     modifier = Modifier.fillMaxWidth(),
                                     trailingIcon = {
                                         IconButton(onClick = { showAlterationMenu = !showAlterationMenu }) {
@@ -1863,7 +1863,7 @@ fun CoreTrayVisualizer(runs: List<BoreholeCoreRun>) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Stratigraphic Core Box (جعبه مغزه دیجیتال)",
+                    text = "Stratigraphic Core Box (Digital)",
                     fontWeight = FontWeight.Bold,
                     fontSize = 11.5.sp,
                     color = MaterialTheme.colorScheme.primary

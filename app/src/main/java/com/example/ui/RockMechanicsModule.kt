@@ -71,7 +71,7 @@ fun RockMechanicsContent(
             )
 
             Text(
-                text = "مکانیک سنگ و رده‌بندی ژئوتکنیکی",
+                text = "Rock Mechanics & Geotechnical Classification",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
@@ -79,7 +79,7 @@ fun RockMechanicsContent(
             )
 
             Text(
-                text = "یک پروژه اکتشافی یا مهندسی را جهت محاسبات ساختاری RMR، پارامترهای توده‌سنگ Hoek-Brown، رده‌بندی معدنی MRMR و شاخص RMi توده‌سنگ انتخاب کنید.",
+                text = "Select an exploration or engineering project for structural RMR calculations, Hoek-Brown rock mass parameters, miner MRMR classification, and rock mass RMi index calculations.",
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -92,13 +92,13 @@ fun RockMechanicsContent(
             ) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text("تعریف پروژه جدید ژئوتکنیک")
+                Text("Define New Geotechnical Project")
             }
 
             Divider()
 
             Text(
-                text = "پروژه‌های در دسترس:",
+                text = "Available Projects:",
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.align(Alignment.Start)
@@ -109,7 +109,7 @@ fun RockMechanicsContent(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("هیچ پروژه‌ای تعریف نشده است.", color = Color.Gray, fontSize = 13.sp)
+                    Text("No projects defined yet.", color = Color.Gray, fontSize = 13.sp)
                 }
             } else {
                 LazyColumn(
@@ -133,7 +133,7 @@ fun RockMechanicsContent(
                                 Spacer(Modifier.width(16.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(project.name, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                                    Text(project.description ?: "پروژه عمومی ژئوتکنیک", fontSize = 12.sp, color = Color.Gray)
+                                    Text(project.description ?: "General Geotechnical Project", fontSize = 12.sp, color = Color.Gray)
                                 }
                                 Icon(Icons.Default.ChevronRight, contentDescription = null)
                             }
@@ -146,7 +146,7 @@ fun RockMechanicsContent(
         if (showCreateProjDialog) {
             AlertDialog(
                 onDismissRequest = { showCreateProjDialog = false },
-                title = { Text("تعریف پروژه ژئوتکنیک جدید") },
+                title = { Text("Define New Geotechnical Project") },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         OutlinedTextField(
@@ -315,15 +315,15 @@ fun LogJournalPanel(
                             "Q-System" -> {
                                 Text("Barton's Q-Value: ${String.format(Locale.US, "%.4f", log.rmiValue)}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 13.sp)
                                 val qText = when {
-                                    log.rmiValue < 0.01 -> "Exceptionally poor (سنگ فوق‌العاده ضعیف)"
-                                    log.rmiValue < 0.1 -> "Extremely poor (سنگ بسیار بسیار ضعیف)"
-                                    log.rmiValue < 1.0 -> "Very poor (سنگ بسیار ضعیف)"
-                                    log.rmiValue < 4.0 -> "Poor (سنگ ضعیف)"
-                                    log.rmiValue < 10.0 -> "Fair (سنگ متوسط)"
-                                    log.rmiValue < 40.0 -> "Good (سنگ خوب)"
-                                    log.rmiValue < 100.0 -> "Very good (سنگ بسیار خوب)"
-                                    log.rmiValue < 400.0 -> "Extremely good (سنگ فوق‌العاده خوب)"
-                                    else -> "Exceptionally good (سنگ استثنایی)"
+                                    log.rmiValue < 0.01 -> "Exceptionally poor"
+                                    log.rmiValue < 0.1 -> "Extremely poor"
+                                    log.rmiValue < 1.0 -> "Very poor"
+                                    log.rmiValue < 4.0 -> "Poor"
+                                    log.rmiValue < 10.0 -> "Fair"
+                                    log.rmiValue < 40.0 -> "Good"
+                                    log.rmiValue < 100.0 -> "Very good"
+                                    log.rmiValue < 400.0 -> "Extremely good"
+                                    else -> "Exceptionally good"
                                 }
                                 Text("Classification: $qText | RQD equivalent: ${log.rmiUcs.toInt()}%", fontSize = 11.sp, color = Color.Gray)
                             }
@@ -1043,15 +1043,15 @@ fun QSystemPanel(
     val qScore = (if (rqd <= 0.0) 10.0 else rqd) / jnSelected * (jrSelected / jaSelected) * (jwSelected / srfSelected)
 
     val qClass = when {
-        qScore < 0.01 -> "Exceptionally poor (سنگ فوق‌العاده ضعیف)"
-        qScore < 0.1 -> "Extremely poor (سنگ بسیار بسیار ضعیف)"
-        qScore < 1.0 -> "Very poor (سنگ بسیار ضعیف)"
-        qScore < 4.0 -> "Poor (سنگ ضعیف)"
-        qScore < 10.0 -> "Fair (سنگ متوسط)"
-        qScore < 40.0 -> "Good (سنگ خوب)"
-        qScore < 100.0 -> "Very good (سنگ بسیار خوب)"
-        qScore < 400.0 -> "Extremely good (سنگ فوق‌العاده خوب)"
-        else -> "Exceptionally good (سنگ استثنایی)"
+        qScore < 0.01 -> "Exceptionally poor"
+        qScore < 0.1 -> "Extremely poor"
+        qScore < 1.0 -> "Very poor"
+        qScore < 4.0 -> "Poor"
+        qScore < 10.0 -> "Fair"
+        qScore < 40.0 -> "Good"
+        qScore < 100.0 -> "Very good"
+        qScore < 400.0 -> "Extremely good"
+        else -> "Exceptionally good"
     }
 
     val jnOptions = listOf(
@@ -1111,9 +1111,9 @@ fun QSystemPanel(
             ) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("Barton's Q-System Geotechnical Calculator", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
-                    Text("فرمول محاسباتی: Q = (RQD/Jn) * (Jr/Ja) * (Jw/SRF)", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Computational Formula: Q = (RQD/Jn) * (Jr/Ja) * (Jw/SRF)", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(Modifier.height(4.dp))
-                    Text("نرم‌افزار صحرایی طبقه‌بندی کیفی توده‌سنگ‌های ساختاری به منظور ارزیابی پایداری مغزه‌ها و حفریات معدنی.", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Field tool for structural rock mass quality classification to assess borehole core and underground mine stability.", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -1299,7 +1299,7 @@ fun QSystemPanel(
                         else -> "Excellent Rock Mass: Normally unsupported (no major structural reinforcement required for standard mining spans)."
                     }
                     Text(
-                        text = "Tunnel Support Advisory (سیستم نگهداری پیشنهادی):",
+                        text = "Tunnel Support Advisory:",
                         fontWeight = FontWeight.Bold,
                         fontSize = 9.5.sp,
                         color = MaterialTheme.colorScheme.primary
