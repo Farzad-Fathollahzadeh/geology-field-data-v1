@@ -8218,6 +8218,8 @@ fun MapContent(viewModel: GeologyViewModel) {
     var isJournalPanelVisible by remember { mutableStateOf(false) }
     var isSettingsPanelVisible by remember { mutableStateOf(false) }
     var isAddPointDialogVisible by remember { mutableStateOf(false) }
+    var isOutdoorMode by remember { mutableStateOf(false) }
+    var showSimulator by remember { mutableStateOf(false) }
 
     // GNSS values & custom settings
     var satelliteCount by remember { mutableStateOf(16) }
@@ -8377,10 +8379,11 @@ fun MapContent(viewModel: GeologyViewModel) {
     }
 
     // Main Full-screen Box
+    val mapBgColor = if (isOutdoorMode) Color(0xFFF5F6F5) else Color(0xFF0C100D)
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0C100D)) // High visibility slate/dark field background
+            .background(mapBgColor)
     ) {
         // -------------------------------------------------------------
         // LAYER 1: THE MAP CANVAS / WEBVIEW (OCCUPIES 100% SIZE)
@@ -8403,7 +8406,7 @@ fun MapContent(viewModel: GeologyViewModel) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val w = size.width
                 val h = size.height
-                val strokeColor = Color(0x3300E5FF) // Cyber cyan grid lines
+                val strokeColor = if (isOutdoorMode) Color(0xFFB0BEC5) else Color(0x3300E5FF) // High-contrast steel-gray or neon cyber cyan grid lines
 
                 // Render vector grids
                 for (x in 0..w.toInt() step 60) {
@@ -8428,20 +8431,28 @@ fun MapContent(viewModel: GeologyViewModel) {
                     val cx = toCanvasX(station.longitude)
                     val cy = toCanvasY(station.latitude)
                     if (cx in 0f..w && cy in 0f..h) {
+                        val outerColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)
+                        val innerColor = if (isOutdoorMode) Color(0xFFFAFAFA) else Color(0xFF0B1411)
+                        val dotColor = if (isOutdoorMode) Color(0xFFFF6D00) else Color(0xFFFFB300)
+
                         // Diamond polygon outer shape representing geological points
-                        drawCircle(color = Color(0xFF00E5FF), radius = 8f, center = androidx.compose.ui.geometry.Offset(cx, cy))
-                        drawCircle(color = Color(0xFF0B1411), radius = 4.5f, center = androidx.compose.ui.geometry.Offset(cx, cy))
-                        drawCircle(color = Color(0xFFFFB300), radius = 2f, center = androidx.compose.ui.geometry.Offset(cx, cy))
+                        drawCircle(color = outerColor, radius = 8f, center = androidx.compose.ui.geometry.Offset(cx, cy))
+                        drawCircle(color = innerColor, radius = 4.5f, center = androidx.compose.ui.geometry.Offset(cx, cy))
+                        drawCircle(color = dotColor, radius = 2.5f, center = androidx.compose.ui.geometry.Offset(cx, cy))
                         
                         drawContext.canvas.nativeCanvas.drawText(
                             station.stationCode,
                             cx + 14f,
                             cy + 8f,
                             android.graphics.Paint().apply {
-                                color = android.graphics.Color.WHITE
+                                color = if (isOutdoorMode) android.graphics.Color.BLACK else android.graphics.Color.WHITE
                                 textSize = 24f
                                 isFakeBoldText = true
-                                setShadowLayer(4f, 2f, 2f, android.graphics.Color.BLACK)
+                                if (isOutdoorMode) {
+                                    setShadowLayer(2f, 1f, 1f, android.graphics.Color.WHITE)
+                                } else {
+                                    setShadowLayer(4f, 2f, 2f, android.graphics.Color.BLACK)
+                                }
                             }
                         )
                     }
@@ -8449,7 +8460,7 @@ fun MapContent(viewModel: GeologyViewModel) {
 
                 // Draw Track recorded paths
                 if (activePointsList.size >= 2) {
-                    val pathColor = Color(0xFFFF3D00)
+                    val pathColor = if (isOutdoorMode) Color(0xFFD50000) else Color(0xFFFF3D00)
                     for (i in 0 until activePointsList.size - 1) {
                         val p1 = activePointsList[i]
                         val p2 = activePointsList[i+1]
@@ -8472,7 +8483,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                             val endX = cx + lineLength * Math.sin(angleRad).toFloat()
                             val endY = cy - lineLength * Math.cos(angleRad).toFloat()
                             drawLine(
-                                color = Color(0xFF00E5FF),
+                                color = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
                                 start = androidx.compose.ui.geometry.Offset(cx, cy),
                                 end = androidx.compose.ui.geometry.Offset(endX, endY),
                                 strokeWidth = 3f,
@@ -8481,8 +8492,8 @@ fun MapContent(viewModel: GeologyViewModel) {
                         }
 
                         val pxAccRadius = (gpsAccuracy * (scale / 111320.0)).toFloat()
-                        drawCircle(color = Color(0x1A00E5FF), radius = Math.max(16f, pxAccRadius), center = androidx.compose.ui.geometry.Offset(cx, cy))
-                        drawCircle(color = Color(0xFF00B0FF), radius = 10f, center = androidx.compose.ui.geometry.Offset(cx, cy))
+                        drawCircle(color = if (isOutdoorMode) Color(0x3300796B) else Color(0x1A00E5FF), radius = Math.max(16f, pxAccRadius), center = androidx.compose.ui.geometry.Offset(cx, cy))
+                        drawCircle(color = if (isOutdoorMode) Color(0xFF0288D1) else Color(0xFF00B0FF), radius = 10f, center = androidx.compose.ui.geometry.Offset(cx, cy))
                         drawCircle(color = Color.White, radius = 4f, center = androidx.compose.ui.geometry.Offset(cx, cy))
                     }
                 }
@@ -8514,8 +8525,8 @@ fun MapContent(viewModel: GeologyViewModel) {
                 .padding(bottom = 8.dp)
                 .align(Alignment.BottomCenter)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xE6101512)) // Dark slate semitransparent
-                .border(1.dp, Color(0xFF00E5FF).copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                .background(if (isOutdoorMode) Color.White else Color(0xE6101512)) // Dynamic background
+                .border(2.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF).copy(alpha = 0.3f), RoundedCornerShape(8.dp))
                 .padding(horizontal = 12.dp, vertical = 6.dp)
         ) {
             val centerLat = if (lockGpsCenter && isRealPositionEnabled) currentLat else (if (stationsToShow.isNotEmpty()) stationsToShow.map { it.latitude }.average() else currentLat)
@@ -8524,22 +8535,22 @@ fun MapContent(viewModel: GeologyViewModel) {
             
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "CENTER COORDS (مختصات مرکز نشانه روی)",
+                    text = "CENTER COORDINATES",
                     fontSize = 8.sp,
-                    color = Color.Gray,
+                    color = if (isOutdoorMode) Color.DarkGray else Color.Gray,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
                     text = "LAT: ${String.format(Locale.US, "%.6f°N", centerLat)} | LON: ${String.format(Locale.US, "%.6f°E", centerLon)}",
                     fontSize = 11.sp,
-                    color = Color(0xFF00FFE0),
+                    color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0),
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace
                 )
                 Text(
                     text = "UTM Grid: $utmResult",
                     fontSize = 9.sp,
-                    color = Color.White.copy(alpha = 0.8f),
+                    color = if (isOutdoorMode) Color.Black else Color.White.copy(alpha = 0.8f),
                     fontFamily = FontFamily.Monospace
                 )
             }
@@ -8550,24 +8561,32 @@ fun MapContent(viewModel: GeologyViewModel) {
         // -------------------------------------------------------------
         if (positioningStatus && isRealPositionEnabled) {
             val isAccuracyGood = gpsAccuracy <= 2.5
-            val accuracyColor = if (isAccuracyGood) Color(0xFF00FF00) else Color(0xFFFF5252)
+            val accuracyColor = if (isAccuracyGood) {
+                if (isOutdoorMode) Color(0xFF2E7D32) else Color(0xFF00FF00)
+            } else {
+                Color(0xFFFF5252)
+            }
+            var isTelemetryExpanded by remember { mutableStateOf(true) }
             
             Card(
                 modifier = Modifier
                     .padding(12.dp)
                     .align(Alignment.TopStart)
-                    .width(220.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xCC151B17)), // Dark military green-gray transparency
-                border = BorderStroke(1.dp, Color(0xFF00E5FF).copy(alpha = 0.4f)),
+                    .width(if (isTelemetryExpanded) 220.dp else 120.dp)
+                    .clickable { isTelemetryExpanded = !isTelemetryExpanded },
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isOutdoorMode) Color.White else Color(0xCC151B17)
+                ),
+                border = BorderStroke(2.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF).copy(alpha = 0.4f)),
                 shape = RoundedCornerShape(10.dp)
             ) {
-                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             // Pulsing active solid LED accuracy lock status dot
                             var ledAlpha by remember { mutableStateOf(1f) }
                             LaunchedEffect(Unit) {
@@ -8581,59 +8600,68 @@ fun MapContent(viewModel: GeologyViewModel) {
 
                             Box(
                                 modifier = Modifier
-                                    .size(10.dp)
+                                    .size(8.dp)
                                     .background(accuracyColor.copy(alpha = ledAlpha), CircleShape)
-                                    .border(1.dp, Color.White, CircleShape)
+                                    .border(1.dp, if (isOutdoorMode) Color.Black else Color.White, CircleShape)
                             )
                             
                             Text(
-                                text = if (isAccuracyGood) "GNSS LOCK: 3D RTK" else "GNSS POOR ACCY",
-                                fontSize = 9.sp,
+                                text = if (isTelemetryExpanded) {
+                                    if (isAccuracyGood) "GNSS LOCK: 3D RTK" else "GNSS POOR ACCY"
+                                } else "GNSS RTK",
+                                fontSize = 8.5.sp,
                                 color = accuracyColor,
                                 fontWeight = FontWeight.Bold
                             )
                         }
                         
-                        Box(
-                            modifier = Modifier
-                                .background(Color(0xFF00E5FF).copy(0.15f), RoundedCornerShape(4.dp))
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
-                        ) {
-                            Text(
-                                text = "Sats: $satelliteCount",
-                                color = Color(0xFF00E5FF),
-                                fontSize = 8.5.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                        if (isTelemetryExpanded) {
+                            Box(
+                                modifier = Modifier
+                                    .background(if (isOutdoorMode) Color(0xFFEEEEEE) else Color(0xFF00E5FF).copy(0.15f), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    text = "Sats: $satelliteCount",
+                                    color = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF),
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(2.dp))
-                    
-                    Text("LAT: ${String.format(Locale.US, "%.5f°N", currentLat)}", fontSize = 9.sp, color = Color.White, fontFamily = FontFamily.Monospace)
-                    Text("LON: ${String.format(Locale.US, "%.5f°E", currentLon)}", fontSize = 9.sp, color = Color.White, fontFamily = FontFamily.Monospace)
-                    Text("ALTITUDE: 1210m MSL", fontSize = 9.sp, color = Color.White, fontFamily = FontFamily.Monospace)
-                    Text("PRECISION: ±${String.format(Locale.US, "%.1f", gpsAccuracy)} meters", fontSize = 8.5.sp, color = accuracyColor)
-                    
-                    if (isTrackRecordingEnabled) {
-                        val minutes = recordingDurationSec / 60
-                        val seconds = recordingDurationSec % 60
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color(0xFFFF3D00).copy(0.12f), RoundedCornerShape(4.dp))
-                                .padding(4.dp)
-                        ) {
-                            Box(modifier = Modifier.size(6.dp).background(Color.Red, CircleShape))
-                            Text(
-                                "REC TIMER: ${String.format("%02d:%02d", minutes, seconds)}",
-                                fontSize = 8.5.sp,
-                                color = Color(0xFFFF5252),
-                                fontWeight = FontWeight.Bold
-                            )
+                    if (isTelemetryExpanded) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        val labelTextCol = if (isOutdoorMode) Color.Black else Color.White
+                        
+                        Text("LAT: ${String.format(Locale.US, "%.5f°N", currentLat)}", fontSize = 9.sp, color = labelTextCol, fontFamily = FontFamily.Monospace)
+                        Text("LON: ${String.format(Locale.US, "%.5f°E", currentLon)}", fontSize = 9.sp, color = labelTextCol, fontFamily = FontFamily.Monospace)
+                        Text("ALTITUDE: 1210m MSL", fontSize = 9.sp, color = labelTextCol, fontFamily = FontFamily.Monospace)
+                        Text("PRECISION: ±${String.format(Locale.US, "%.1f", gpsAccuracy)} meters", fontSize = 8.5.sp, color = accuracyColor)
+                        
+                        if (isTrackRecordingEnabled) {
+                            val minutes = recordingDurationSec / 60
+                            val seconds = recordingDurationSec % 60
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFFFF3D00).copy(0.12f), RoundedCornerShape(4.dp))
+                                    .padding(4.dp)
+                            ) {
+                                Box(modifier = Modifier.size(6.dp).background(Color.Red, CircleShape))
+                                Text(
+                                    "REC TIMER: ${String.format("%02d:%02d", minutes, seconds)}",
+                                    fontSize = 8.5.sp,
+                                    color = Color(0xFFFF5252),
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
+                    } else {
+                        Text("Click to expand", fontSize = 7.5.sp, color = if (isOutdoorMode) Color.Black else Color.Gray)
                     }
                 }
             }
@@ -8642,26 +8670,32 @@ fun MapContent(viewModel: GeologyViewModel) {
         // -------------------------------------------------------------
         // LAYER 5: MAIN FLOATING GIS VERTICAL BAR (TOP-RIGHT)
         // -------------------------------------------------------------
+        val toolbarBgColor = if (isOutdoorMode) Color.White else Color(0xCC1E2522)
+        val toolbarBorderColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF).copy(0.4f)
+        val toolbarIconColorOpen = if (isOutdoorMode) Color.White else Color.Black
+        val toolbarBgOpen = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)
+        val toolbarIconColorClosed = if (isOutdoorMode) Color.Black else Color.White
+
         Column(
             modifier = Modifier
-                .padding(12.dp)
+                .padding(top = 12.dp, end = 12.dp)
                 .align(Alignment.TopEnd),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Quick Add Point / Save Station (Large turquoise touch target button)
+            // Quick Add Point / Save Station (Large touch target button)
             IconButton(
                 onClick = { isAddPointDialogVisible = true },
                 modifier = Modifier
-                    .size(54.dp)
-                    .background(Color(0xFF00E5FF), RoundedCornerShape(12.dp))
-                    .border(2.dp, Color.White, RoundedCornerShape(12.dp))
+                    .size(44.dp)
+                    .background(if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), RoundedCornerShape(10.dp))
+                    .border(1.5.dp, if (isOutdoorMode) Color.Black else Color.White, RoundedCornerShape(10.dp))
             ) {
                 Icon(
                     imageVector = Icons.Default.AddLocation,
                     contentDescription = "Quick Add Geological Station Point",
-                    tint = Color.Black,
-                    modifier = Modifier.size(28.dp)
+                    tint = if (isOutdoorMode) Color.White else Color.Black,
+                    modifier = Modifier.size(24.dp)
                 )
             }
 
@@ -8674,15 +8708,15 @@ fun MapContent(viewModel: GeologyViewModel) {
                     isSettingsPanelVisible = false
                 },
                 modifier = Modifier
-                    .size(48.dp)
-                    .background(if (isMapLayerPanelVisible) Color(0xFF00E5FF) else Color(0xCC1E2522), CircleShape)
-                    .border(1.dp, if (isMapLayerPanelVisible) Color.White else Color(0xFF00E5FF).copy(0.4f), CircleShape)
+                    .size(40.dp)
+                    .background(if (isMapLayerPanelVisible) toolbarBgOpen else toolbarBgColor, CircleShape)
+                    .border(1.dp, if (isMapLayerPanelVisible) Color.White else toolbarBorderColor, CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Default.Layers,
                     contentDescription = "Map Layer Switcher",
-                    tint = if (isMapLayerPanelVisible) Color.Black else Color.White,
-                    modifier = Modifier.size(22.dp)
+                    tint = if (isMapLayerPanelVisible) toolbarIconColorOpen else toolbarIconColorClosed,
+                    modifier = Modifier.size(20.dp)
                 )
             }
 
@@ -8690,15 +8724,15 @@ fun MapContent(viewModel: GeologyViewModel) {
             IconButton(
                 onClick = { lockGpsCenter = !lockGpsCenter },
                 modifier = Modifier
-                    .size(48.dp)
-                    .background(if (lockGpsCenter) Color(0xFF00B0FF) else Color(0xCC1E2522), CircleShape)
-                    .border(1.dp, if (lockGpsCenter) Color.White else Color(0xFF00E5FF).copy(0.4f), CircleShape)
+                    .size(40.dp)
+                    .background(if (lockGpsCenter) (if (isOutdoorMode) Color(0xFF0288D1) else Color(0xFF00B0FF)) else toolbarBgColor, CircleShape)
+                    .border(1.dp, if (lockGpsCenter) Color.White else toolbarBorderColor, CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Default.GpsFixed,
                     contentDescription = "Lock Camera to GNSS Center",
                     tint = if (lockGpsCenter) Color.White else Color.Gray,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(18.dp)
                 )
             }
 
@@ -8708,15 +8742,31 @@ fun MapContent(viewModel: GeologyViewModel) {
                     onTrackRecordingChanged(!isTrackRecordingEnabled)
                 },
                 modifier = Modifier
-                    .size(48.dp)
-                    .background(if (isTrackRecordingEnabled) Color(0xFFFF3030) else Color(0xCC1E2522), CircleShape)
-                    .border(1.dp, if (isTrackRecordingEnabled) Color.White else Color(0xFF00E5FF).copy(0.4f), CircleShape)
+                    .size(40.dp)
+                    .background(if (isTrackRecordingEnabled) Color(0xFFFF3030) else toolbarBgColor, CircleShape)
+                    .border(1.dp, if (isTrackRecordingEnabled) Color.White else toolbarBorderColor, CircleShape)
             ) {
                 Icon(
                     imageVector = if (isTrackRecordingEnabled) Icons.Default.Stop else Icons.Default.RadioButtonChecked,
                     contentDescription = "Track Recorder Play Toggle",
                     tint = if (isTrackRecordingEnabled) Color.White else Color(0xFFFF5252),
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            // Walk Simulator Toggle button
+            IconButton(
+                onClick = { showSimulator = !showSimulator },
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(if (showSimulator) toolbarBgOpen else toolbarBgColor, CircleShape)
+                    .border(1.dp, if (showSimulator) Color.White else toolbarBorderColor, CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.DirectionsWalk,
+                    contentDescription = "Simulator Walk Controller Toggle",
+                    tint = if (showSimulator) toolbarIconColorOpen else toolbarIconColorClosed,
+                    modifier = Modifier.size(20.dp)
                 )
             }
 
@@ -8729,15 +8779,15 @@ fun MapContent(viewModel: GeologyViewModel) {
                     isSettingsPanelVisible = false
                 },
                 modifier = Modifier
-                    .size(48.dp)
-                    .background(if (isSurveyorPanelVisible) Color(0xFF00E5FF) else Color(0xCC1E2522), CircleShape)
-                    .border(1.dp, if (isSurveyorPanelVisible) Color.White else Color(0xFF00E5FF).copy(0.4f), CircleShape)
+                    .size(40.dp)
+                    .background(if (isSurveyorPanelVisible) toolbarBgOpen else toolbarBgColor, CircleShape)
+                    .border(1.dp, if (isSurveyorPanelVisible) Color.White else toolbarBorderColor, CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Default.Explore,
                     contentDescription = "Surveyor Calculator Overlay",
-                    tint = if (isSurveyorPanelVisible) Color.Black else Color.White,
-                    modifier = Modifier.size(20.dp)
+                    tint = if (isSurveyorPanelVisible) toolbarIconColorOpen else toolbarIconColorClosed,
+                    modifier = Modifier.size(18.dp)
                 )
             }
 
@@ -8750,15 +8800,15 @@ fun MapContent(viewModel: GeologyViewModel) {
                     isSettingsPanelVisible = false
                 },
                 modifier = Modifier
-                    .size(48.dp)
-                    .background(if (isJournalPanelVisible) Color(0xFF00E5FF) else Color(0xCC1E2522), CircleShape)
-                    .border(1.dp, if (isJournalPanelVisible) Color.White else Color(0xFF00E5FF).copy(0.4f), CircleShape)
+                    .size(40.dp)
+                    .background(if (isJournalPanelVisible) toolbarBgOpen else toolbarBgColor, CircleShape)
+                    .border(1.dp, if (isJournalPanelVisible) Color.White else toolbarBorderColor, CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Default.List,
                     contentDescription = "Field Logs Track Journal list",
-                    tint = if (isJournalPanelVisible) Color.Black else Color.White,
-                    modifier = Modifier.size(20.dp)
+                    tint = if (isJournalPanelVisible) toolbarIconColorOpen else toolbarIconColorClosed,
+                    modifier = Modifier.size(18.dp)
                 )
             }
 
@@ -8771,116 +8821,136 @@ fun MapContent(viewModel: GeologyViewModel) {
                     isJournalPanelVisible = false
                 },
                 modifier = Modifier
-                    .size(48.dp)
-                    .background(if (isSettingsPanelVisible) Color(0xFF00E5FF) else Color(0xCC1E2522), CircleShape)
-                    .border(1.dp, if (isSettingsPanelVisible) Color.White else Color(0xFF00E5FF).copy(0.4f), CircleShape)
+                    .size(40.dp)
+                    .background(if (isSettingsPanelVisible) toolbarBgOpen else toolbarBgColor, CircleShape)
+                    .border(1.dp, if (isSettingsPanelVisible) Color.White else toolbarBorderColor, CircleShape)
             ) {
                 Icon(
                     imageVector = Icons.Default.Settings,
                     contentDescription = "Advanced System Options",
-                    tint = if (isSettingsPanelVisible) Color.Black else Color.White,
-                    modifier = Modifier.size(20.dp)
+                    tint = if (isSettingsPanelVisible) toolbarIconColorOpen else toolbarIconColorClosed,
+                    modifier = Modifier.size(18.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Zoom Controller Box Group
-            Column(
+            // Outdoor Legibility Sunlight Contrast switcher
+            IconButton(
+                onClick = { isOutdoorMode = !isOutdoorMode },
                 modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xE61E2522))
-                    .border(1.dp, Color(0xFF00E5FF).copy(0.3f), RoundedCornerShape(8.dp)),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .size(40.dp)
+                    .background(if (isOutdoorMode) Color(0xFFFFD54F) else toolbarBgColor, CircleShape)
+                    .border(1.dp, if (isOutdoorMode) Color.Black else toolbarBorderColor, CircleShape)
             ) {
-                IconButton(
-                    onClick = { if (zoomLevel < 8) zoomLevel++ },
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Zoom In", tint = Color.White, modifier = Modifier.size(16.dp))
-                }
-                Box(
-                    modifier = Modifier
-                        .background(Color.Black.copy(0.2f))
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
-                ) {
-                    Text("x$zoomLevel", color = Color(0xFF00FFE0), fontSize = 8.5.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                }
-                IconButton(
-                    onClick = { if (zoomLevel > 1) zoomLevel-- },
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(Icons.Default.Remove, contentDescription = "Zoom Out", tint = Color.White, modifier = Modifier.size(16.dp))
-                }
+                Icon(
+                    imageVector = if (isOutdoorMode) Icons.Default.WbSunny else Icons.Default.BrightnessMedium,
+                    contentDescription = "Toggle Outdoor High-Contrast Mode",
+                    tint = if (isOutdoorMode) Color.Black else Color(0xFFFFD54F),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Compact Zoom In/Out separate buttons
+            IconButton(
+                onClick = { if (zoomLevel < 8) zoomLevel++ },
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(toolbarBgColor, RoundedCornerShape(4.dp))
+                    .border(0.5.dp, toolbarBorderColor, RoundedCornerShape(4.dp))
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Zoom In", tint = toolbarIconColorClosed, modifier = Modifier.size(16.dp))
+            }
+            Text(
+                text = "x$zoomLevel", 
+                color = if (isOutdoorMode) Color.Black else Color(0xFF00FFE0), 
+                fontSize = 8.sp, 
+                fontWeight = FontWeight.Bold, 
+                fontFamily = FontFamily.Monospace
+            )
+            IconButton(
+                onClick = { if (zoomLevel > 1) zoomLevel-- },
+                modifier = Modifier
+                    .size(36.dp)
+                    .background(toolbarBgColor, RoundedCornerShape(4.dp))
+                    .border(0.5.dp, toolbarBorderColor, RoundedCornerShape(4.dp))
+            ) {
+                Icon(Icons.Default.Remove, contentDescription = "Zoom Out", tint = toolbarIconColorClosed, modifier = Modifier.size(16.dp))
             }
         }
 
         // -------------------------------------------------------------
         // LAYER 6: FLOATING SIMULATED WALK D-PAD CONTROLLER (BOTTOM-RIGHT)
         // -------------------------------------------------------------
-        Card(
+        AnimatedVisibility(
+            visible = showSimulator,
+            enter = fadeIn() + expandIn(),
+            exit = fadeOut() + shrinkOut(),
             modifier = Modifier
                 .padding(12.dp)
                 .align(Alignment.BottomEnd)
-                .width(135.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xE61E2522)),
-            border = BorderStroke(1.dp, Color(0xFF00E5FF).copy(alpha = 0.2f)),
-            shape = RoundedCornerShape(12.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(6.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+            Card(
+                modifier = Modifier.width(135.dp),
+                colors = CardDefaults.cardColors(containerColor = if (isOutdoorMode) Color.White else Color(0xE61E2522)),
+                border = BorderStroke(2.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF).copy(alpha = 0.2f)),
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Text(
-                    text = "WALK SIMULATOR", 
-                    fontSize = 7.5.sp, 
-                    fontWeight = FontWeight.Bold, 
-                    color = Color.LightGray
-                )
-                
-                // N key on top row
-                IconButton(
-                    onClick = { simulateWalkMove("NORTH") },
-                    modifier = Modifier
-                        .size(34.dp)
-                        .background(Color(0xFF263238), CircleShape)
+                Column(
+                    modifier = Modifier.padding(6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Text("N", fontSize = 11.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
-                }
-                
-                // West and East middle row
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                    Text(
+                        text = "WALK SIMULATOR", 
+                        fontSize = 7.5.sp, 
+                        fontWeight = FontWeight.Bold, 
+                        color = if (isOutdoorMode) Color.Black else Color.LightGray
+                    )
+                    
+                    // N key on top row
                     IconButton(
-                        onClick = { simulateWalkMove("WEST") },
+                        onClick = { simulateWalkMove("NORTH") },
                         modifier = Modifier
                             .size(34.dp)
                             .background(Color(0xFF263238), CircleShape)
                     ) {
-                        Text("W", fontSize = 11.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
+                        Text("N", fontSize = 11.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
                     }
-                    Spacer(modifier = Modifier.width(4.dp))
+                    
+                    // West and East middle row
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = { simulateWalkMove("WEST") },
+                            modifier = Modifier
+                                .size(34.dp)
+                                .background(Color(0xFF263238), CircleShape)
+                        ) {
+                            Text("W", fontSize = 11.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        IconButton(
+                            onClick = { simulateWalkMove("EAST") },
+                            modifier = Modifier
+                                .size(34.dp)
+                                .background(Color(0xFF263238), CircleShape)
+                        ) {
+                            Text("E", fontSize = 11.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
+                        }
+                    }
+                    
+                    // South key on bottom row
                     IconButton(
-                        onClick = { simulateWalkMove("EAST") },
+                        onClick = { simulateWalkMove("SOUTH") },
                         modifier = Modifier
                             .size(34.dp)
                             .background(Color(0xFF263238), CircleShape)
                     ) {
-                        Text("E", fontSize = 11.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
+                        Text("S", fontSize = 11.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
                     }
-                }
-                
-                // South key on bottom row
-                IconButton(
-                    onClick = { simulateWalkMove("SOUTH") },
-                    modifier = Modifier
-                        .size(34.dp)
-                        .background(Color(0xFF263238), CircleShape)
-                ) {
-                    Text("S", fontSize = 11.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -8915,30 +8985,30 @@ fun MapContent(viewModel: GeologyViewModel) {
         ) {
             Card(
                 modifier = Modifier.width(260.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFA1A201C)),
-                border = BorderStroke(1.5.dp, Color(0xFF00E5FF)),
+                colors = CardDefaults.cardColors(containerColor = if (isOutdoorMode) Color.White else Color(0xFA1A201C)),
+                border = BorderStroke(1.5.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF)),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "Map Layer Provider (تغییر لایه نقشه)",
+                        text = "Map Layer Provider",
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp,
-                        color = Color(0xFF00E5FF)
+                        color = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)
                     )
                     
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color.Black.copy(0.3f), RoundedCornerShape(6.dp))
+                            .background(if (isOutdoorMode) Color(0xFFF1F1F1) else Color.Black.copy(0.3f), RoundedCornerShape(6.dp))
                             .padding(4.dp)
                     ) {
                         Button(
                             onClick = { mapMode = MapMode.ONLINE },
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (mapMode == MapMode.ONLINE) Color(0xFF00E5FF) else Color.Transparent,
-                                contentColor = if (mapMode == MapMode.ONLINE) Color.Black else Color.White
+                                containerColor = if (mapMode == MapMode.ONLINE) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)) else Color.Transparent,
+                                contentColor = if (mapMode == MapMode.ONLINE) (if (isOutdoorMode) Color.White else Color.Black) else (if (isOutdoorMode) Color.Black else Color.White)
                             ),
                             contentPadding = PaddingValues(0.dp),
                             shape = RoundedCornerShape(4.dp)
@@ -8949,8 +9019,8 @@ fun MapContent(viewModel: GeologyViewModel) {
                             onClick = { mapMode = MapMode.OFFLINE },
                             modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = if (mapMode == MapMode.OFFLINE) Color(0xFF00E5FF) else Color.Transparent,
-                                contentColor = if (mapMode == MapMode.OFFLINE) Color.Black else Color.White
+                                containerColor = if (mapMode == MapMode.OFFLINE) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)) else Color.Transparent,
+                                contentColor = if (mapMode == MapMode.OFFLINE) (if (isOutdoorMode) Color.White else Color.Black) else (if (isOutdoorMode) Color.Black else Color.White)
                             ),
                             contentPadding = PaddingValues(0.dp),
                             shape = RoundedCornerShape(4.dp)
@@ -8973,7 +9043,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                                             isMapLayerPanelVisible = false
                                         }
                                         .background(
-                                            if (selected) Color(0xFF00E5FF).copy(0.12f) else Color.Transparent,
+                                            if (selected) (if (isOutdoorMode) Color(0xFF00796B).copy(0.12f) else Color(0xFF00E5FF).copy(0.12f)) else Color.Transparent,
                                             RoundedCornerShape(4.dp)
                                         )
                                         .padding(8.dp),
@@ -8982,14 +9052,14 @@ fun MapContent(viewModel: GeologyViewModel) {
                                     Icon(
                                         imageVector = if (selected) Icons.Default.CheckCircle else Icons.Default.Layers,
                                         contentDescription = null,
-                                        tint = if (selected) Color(0xFF00E5FF) else Color.Gray,
+                                        tint = if (selected) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)) else Color.Gray,
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text(
                                         text = provider.label,
                                         fontSize = 11.sp,
-                                        color = if (selected) Color(0xFF00FFE0) else Color.White
+                                        color = if (selected) (if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0)) else (if (isOutdoorMode) Color.Black else Color.White)
                                     )
                                 }
                             }
@@ -8997,12 +9067,12 @@ fun MapContent(viewModel: GeologyViewModel) {
                     } else {
                         // Offline specifications
                         Column(modifier = Modifier.padding(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Offline Vector Grid Grid Mode Active", fontSize = 10.sp, color = Color.LightGray)
+                            Text("Offline Vector Grid Mode Active", fontSize = 10.sp, color = if (isOutdoorMode) Color.Black else Color.LightGray)
                             Text("Allows field recording of tracks and targets cleanly without high-resolution base layers if remote signal is offline.", fontSize = 9.sp, color = Color.Gray, lineHeight = 13.sp)
                         }
                     }
                     
-                    Divider(color = Color.White.copy(0.15f))
+                    Divider(color = if (isOutdoorMode) Color.LightGray else Color.White.copy(0.15f))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -9014,13 +9084,13 @@ fun MapContent(viewModel: GeologyViewModel) {
                                 onClick = { openBrowserLink(context, "https://www.google.com/maps/search/?api=1&query=$currentLat,$currentLon") },
                                 modifier = Modifier.size(24.dp)
                             ) {
-                                Icon(Icons.Default.Language, contentDescription = "Google Maps Web", tint = Color(0xFF00E5FF), modifier = Modifier.size(14.dp))
+                                Icon(Icons.Default.Language, contentDescription = "Google Maps Web", tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), modifier = Modifier.size(14.dp))
                             }
                             IconButton(
                                 onClick = { openBrowserLink(context, "https://www.openstreetmap.org/#map=17/$currentLat/$currentLon") },
                                 modifier = Modifier.size(24.dp)
                             ) {
-                                Icon(Icons.Default.Explore, contentDescription = "OSM Web", tint = Color(0xFF00E5FF), modifier = Modifier.size(14.dp))
+                                Icon(Icons.Default.Explore, contentDescription = "OSM Web", tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), modifier = Modifier.size(14.dp))
                             }
                         }
                     }
@@ -9064,8 +9134,8 @@ fun MapContent(viewModel: GeologyViewModel) {
 
             Card(
                 modifier = Modifier.width(280.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF161C19)),
-                border = BorderStroke(1.5.dp, Color(0xFF00E5FF)),
+                colors = CardDefaults.cardColors(containerColor = if (isOutdoorMode) Color.White else Color(0xFF161C19)),
+                border = BorderStroke(1.5.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF)),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -9075,8 +9145,8 @@ fun MapContent(viewModel: GeologyViewModel) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Icon(Icons.Default.Explore, contentDescription = null, tint = Color(0xFF00E5FF), modifier = Modifier.size(18.dp))
-                            Text("Bearing & Distance Surveyor", fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = Color.White)
+                            Icon(Icons.Default.Explore, contentDescription = null, tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), modifier = Modifier.size(18.dp))
+                            Text("Bearing & Distance Surveyor", fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = if (isOutdoorMode) Color.Black else Color.White)
                         }
                         IconButton(onClick = { isSurveyorPanelVisible = false }, modifier = Modifier.size(20.dp)) {
                             Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray, modifier = Modifier.size(16.dp))
@@ -9084,9 +9154,9 @@ fun MapContent(viewModel: GeologyViewModel) {
                     }
                     
                     Text(
-                        text = "محاسبه گرای ژئودزیک دقیق و فاصله افقی تا نقطه گمانه هدف",
+                        text = "High-precision geodesic distance to borehole target",
                         fontSize = 9.sp,
-                        color = Color.LightGray,
+                        color = if (isOutdoorMode) Color.DarkGray else Color.LightGray,
                         lineHeight = 13.sp
                     )
 
@@ -9094,31 +9164,33 @@ fun MapContent(viewModel: GeologyViewModel) {
                         OutlinedTextField(
                             value = targetLatStr,
                             onValueChange = { targetLatStr = it },
-                            label = { Text("Target Lat (°)", fontSize = 8.sp, color = Color.LightGray) },
-                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp, color = Color.White, fontFamily = FontFamily.Monospace),
+                            label = { Text("Target Lat (°)", fontSize = 8.sp, color = if (isOutdoorMode) Color.Black else Color.LightGray) },
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp, color = if (isOutdoorMode) Color.Black else Color.White, fontFamily = FontFamily.Monospace),
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.weight(1f),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color(0xFF00E5FF),
+                                focusedBorderColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF),
                                 unfocusedBorderColor = Color.Gray.copy(0.5f),
-                                focusedContainerColor = Color.Black.copy(0.2f),
-                                unfocusedContainerColor = Color.Black.copy(0.2f)
+                                focusedLabelColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF),
+                                focusedContainerColor = if (isOutdoorMode) Color(0xFFF1F1F1) else Color.Black.copy(0.2f),
+                                unfocusedContainerColor = if (isOutdoorMode) Color(0xFFF5F5F5) else Color.Black.copy(0.2f)
                             )
                         )
                         OutlinedTextField(
                             value = targetLonStr,
                             onValueChange = { targetLonStr = it },
-                            label = { Text("Target Lng (°)", fontSize = 8.sp, color = Color.LightGray) },
-                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp, color = Color.White, fontFamily = FontFamily.Monospace),
+                            label = { Text("Target Lng (°)", fontSize = 8.sp, color = if (isOutdoorMode) Color.Black else Color.LightGray) },
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp, color = if (isOutdoorMode) Color.Black else Color.White, fontFamily = FontFamily.Monospace),
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.weight(1f),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color(0xFF00E5FF),
+                                focusedBorderColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF),
                                 unfocusedBorderColor = Color.Gray.copy(0.5f),
-                                focusedContainerColor = Color.Black.copy(0.2f),
-                                unfocusedContainerColor = Color.Black.copy(0.2f)
+                                focusedLabelColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF),
+                                focusedContainerColor = if (isOutdoorMode) Color(0xFFF1F1F1) else Color.Black.copy(0.2f),
+                                unfocusedContainerColor = if (isOutdoorMode) Color(0xFFF5F5F5) else Color.Black.copy(0.2f)
                             )
                         )
                     }
@@ -9130,8 +9202,8 @@ fun MapContent(viewModel: GeologyViewModel) {
                                 onClick = { snapExpanded = !snapExpanded },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(6.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF00E5FF)),
-                                border = BorderStroke(0.5.dp, Color(0xFF00E5FF).copy(0.6f)),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF)),
+                                border = BorderStroke(0.5.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF).copy(0.6f)),
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                             ) {
                                 Text("Snap targeting to mapped station", fontSize = 10.sp)
@@ -9142,11 +9214,11 @@ fun MapContent(viewModel: GeologyViewModel) {
                             DropdownMenu(
                                 expanded = snapExpanded,
                                 onDismissRequest = { snapExpanded = false },
-                                modifier = Modifier.background(Color(0xFF161C19)).border(1.dp, Color(0xFF00E5FF))
+                                modifier = Modifier.background(if (isOutdoorMode) Color.White else Color(0xFF161C19)).border(1.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF))
                             ) {
                                 stationsToShow.forEach { s ->
                                     DropdownMenuItem(
-                                        text = { Text("${s.stationCode} (Lat: ${s.latitude})", fontSize = 11.sp, color = Color.White) },
+                                        text = { Text("${s.stationCode} (Lat: ${s.latitude})", fontSize = 11.sp, color = if (isOutdoorMode) Color.Black else Color.White) },
                                         onClick = {
                                             targetLatStr = s.latitude.toString()
                                             targetLonStr = s.longitude.toString()
@@ -9159,8 +9231,8 @@ fun MapContent(viewModel: GeologyViewModel) {
                     }
 
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(0.4f)),
-                        border = BorderStroke(0.5.dp, Color(0xFF00E5FF).copy(alpha = 0.2f))
+                        colors = CardDefaults.cardColors(containerColor = if (isOutdoorMode) Color(0xFFEEEEEE) else Color.Black.copy(0.4f)),
+                        border = BorderStroke(0.5.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF).copy(alpha = 0.2f))
                     ) {
                         Row(
                             modifier = Modifier
@@ -9175,12 +9247,12 @@ fun MapContent(viewModel: GeologyViewModel) {
                                 } else {
                                     "${computedDistanceMeters.toInt()} m"
                                 }
-                                Text(dStr, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00FFE0))
+                                Text(dStr, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0))
                             }
-                            Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color.White.copy(0.12f)))
+                            Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color.Gray.copy(0.5f)))
                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                 Text("True Bearing", fontSize = 8.5.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                                Text("${String.format(Locale.US, "%.1f° N", bearingDeg)}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00FFE0))
+                                Text("${String.format(Locale.US, "%.1f° N", bearingDeg)}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0))
                             }
                         }
                     }
@@ -9201,8 +9273,8 @@ fun MapContent(viewModel: GeologyViewModel) {
         ) {
             Card(
                 modifier = Modifier.width(280.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF151817)),
-                border = BorderStroke(1.5.dp, Color(0xFF00E5FF)),
+                colors = CardDefaults.cardColors(containerColor = if (isOutdoorMode) Color.White else Color(0xFF151817)),
+                border = BorderStroke(1.5.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF)),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(
@@ -9215,8 +9287,8 @@ fun MapContent(viewModel: GeologyViewModel) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Icon(Icons.Default.Settings, contentDescription = null, tint = Color(0xFF00E5FF), modifier = Modifier.size(18.dp))
-                            Text("Advanced GIS Configs", fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = Color.White)
+                            Icon(Icons.Default.Settings, contentDescription = null, tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), modifier = Modifier.size(18.dp))
+                            Text("Advanced GIS Configs", fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = if (isOutdoorMode) Color.Black else Color.White)
                         }
                         IconButton(onClick = { isSettingsPanelVisible = false }, modifier = Modifier.size(20.dp)) {
                             Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray, modifier = Modifier.size(16.dp))
@@ -9224,18 +9296,18 @@ fun MapContent(viewModel: GeologyViewModel) {
                     }
 
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("MAPPING TELEMETRIES:", fontSize = 9.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
+                        Text("MAPPING TELEMETRIES:", fontSize = 9.sp, color = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
                         
                         Row(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Live GNSS lock positioning", fontSize = 10.5.sp, color = Color.White)
+                            Text("Live GNSS lock positioning", fontSize = 10.5.sp, color = if (isOutdoorMode) Color.Black else Color.White)
                             Checkbox(
                                 checked = isRealPositionEnabled, 
                                 onCheckedChange = { onRealPositionChanged(it) },
-                                colors = CheckboxDefaults.colors(checkedColor = Color(0xFF00E5FF))
+                                colors = CheckboxDefaults.colors(checkedColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF))
                             )
                         }
                         
@@ -9244,11 +9316,11 @@ fun MapContent(viewModel: GeologyViewModel) {
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Compass map auto orientation", fontSize = 10.5.sp, color = Color.White)
+                            Text("Compass map auto orientation", fontSize = 10.5.sp, color = if (isOutdoorMode) Color.Black else Color.White)
                             Checkbox(
                                 checked = rotateMapUsingGnss, 
                                 onCheckedChange = { rotateMapUsingGnss = it },
-                                colors = CheckboxDefaults.colors(checkedColor = Color(0xFF00E5FF))
+                                colors = CheckboxDefaults.colors(checkedColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF))
                             )
                         }
 
@@ -9257,11 +9329,11 @@ fun MapContent(viewModel: GeologyViewModel) {
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Line of sight dashed indicator", fontSize = 10.5.sp, color = Color.White)
+                            Text("Line of sight dashed indicator", fontSize = 10.5.sp, color = if (isOutdoorMode) Color.Black else Color.White)
                             Checkbox(
                                 checked = displayLineFromPosition, 
                                 onCheckedChange = { displayLineFromPosition = it },
-                                colors = CheckboxDefaults.colors(checkedColor = Color(0xFF00E5FF))
+                                colors = CheckboxDefaults.colors(checkedColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF))
                             )
                         }
 
@@ -9270,65 +9342,65 @@ fun MapContent(viewModel: GeologyViewModel) {
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text("Telemetry status overlays", fontSize = 10.5.sp, color = Color.White)
+                            Text("Telemetry status overlays", fontSize = 10.5.sp, color = if (isOutdoorMode) Color.Black else Color.White)
                             Checkbox(
                                 checked = positioningStatus, 
                                 onCheckedChange = { positioningStatus = it },
-                                colors = CheckboxDefaults.colors(checkedColor = Color(0xFF00E5FF))
+                                colors = CheckboxDefaults.colors(checkedColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF))
                             )
                         }
                     }
 
-                    Divider(color = Color.White.copy(0.12f))
+                    Divider(color = if (isOutdoorMode) Color.LightGray else Color.White.copy(0.12f))
 
                     // Mapbox details
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("MAPBOX TILES INTEGRATION API:", fontSize = 9.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
+                        Text("MAPBOX TILES INTEGRATION API:", fontSize = 9.sp, color = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
                         Text("Required for outdoor satellite topo overlays:", fontSize = 8.5.sp, color = Color.Gray, lineHeight = 12.sp)
                         
                         OutlinedTextField(
                             value = mapboxTokenInput,
                             onValueChange = { mapboxTokenInput = it },
-                            label = { Text("Mapbox Private Key", fontSize = 8.5.sp, color = Color.LightGray) },
+                            label = { Text("Mapbox Private Key", fontSize = 8.5.sp, color = if (isOutdoorMode) Color.Black else Color.LightGray) },
                             singleLine = true,
-                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = Color.White),
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = if (isOutdoorMode) Color.Black else Color.White),
                             modifier = Modifier.fillMaxWidth(),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color(0xFF00E5FF),
+                                focusedBorderColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF),
                                 unfocusedBorderColor = Color.Gray.copy(0.4f),
-                                focusedLabelColor = Color(0xFF00E5FF)
+                                focusedLabelColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF)
                             ),
                             trailingIcon = {
                                 IconButton(onClick = { mapboxTokenInput = "pk.eyJ1IjoiZmFyemFkZiIsImEiOiJjbHpiaXdwZ3cwMTF5MndzYzhvdzBoMHp1In0.6R0R9z84Vd-M208r_6oY7g" }) {
-                                    Icon(Icons.Default.Refresh, contentDescription = "Default Token", tint = Color(0xFF00E5FF), modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Default.Refresh, contentDescription = "Default Token", tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), modifier = Modifier.size(16.dp))
                                 }
                             }
                         )
                     }
                     
-                    Divider(color = Color.White.copy(0.12f))
+                    Divider(color = if (isOutdoorMode) Color.LightGray else Color.White.copy(0.12f))
 
                     // Simulated settings
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("SIMULATED CONSTELLATION:", fontSize = 9.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
+                        Text("SIMULATED CONSTELLATION:", fontSize = 9.sp, color = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                            Text("Sats lock count: $satelliteCount", fontSize = 10.sp, color = Color.White, modifier = Modifier.weight(1f))
+                            Text("Sats lock count: $satelliteCount", fontSize = 10.sp, color = if (isOutdoorMode) Color.Black else Color.White, modifier = Modifier.weight(1f))
                             Slider(
                                 value = satelliteCount.toFloat(),
                                 onValueChange = { satelliteCount = it.toInt() },
                                 valueRange = 4f..24f,
                                 modifier = Modifier.width(130.dp),
-                                colors = SliderDefaults.colors(activeTrackColor = Color(0xFF00E5FF), thumbColor = Color(0xFF00E5FF))
+                                colors = SliderDefaults.colors(activeTrackColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), thumbColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF))
                             )
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                            Text("GPS error radius: ±${String.format(Locale.US, "%.1f", gpsAccuracy)}m", fontSize = 10.sp, color = Color.White, modifier = Modifier.weight(1f))
+                            Text("GPS error radius: ±${String.format(Locale.US, "%.1f", gpsAccuracy)}m", fontSize = 10.sp, color = if (isOutdoorMode) Color.Black else Color.White, modifier = Modifier.weight(1f))
                             Slider(
                                 value = gpsAccuracy.toFloat(),
                                 onValueChange = { gpsAccuracy = it.toDouble() },
                                 valueRange = 0.5f..12.0f,
                                 modifier = Modifier.width(130.dp),
-                                colors = SliderDefaults.colors(activeTrackColor = Color(0xFF00E5FF), thumbColor = Color(0xFF00E5FF))
+                                colors = SliderDefaults.colors(activeTrackColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), thumbColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF))
                             )
                         }
                     }
@@ -9349,8 +9421,8 @@ fun MapContent(viewModel: GeologyViewModel) {
         ) {
             Card(
                 modifier = Modifier.width(310.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFC111513)),
-                border = BorderStroke(1.5.dp, Color(0xFF00E5FF)),
+                colors = CardDefaults.cardColors(containerColor = if (isOutdoorMode) Color.White else Color(0xFC111513)),
+                border = BorderStroke(1.5.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF)),
                 shape = RoundedCornerShape(12.dp)
             ) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -9360,15 +9432,15 @@ fun MapContent(viewModel: GeologyViewModel) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Icon(Icons.Default.List, contentDescription = null, tint = Color(0xFF00E5FF), modifier = Modifier.size(18.dp))
-                            Text("Saved Paths Journal", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                            Icon(Icons.Default.List, contentDescription = null, tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), modifier = Modifier.size(18.dp))
+                            Text("Saved Paths Journal", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = if (isOutdoorMode) Color.Black else Color.White)
                         }
                         IconButton(onClick = { isJournalPanelVisible = false }, modifier = Modifier.size(20.dp)) {
                             Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray, modifier = Modifier.size(16.dp))
                         }
                     }
 
-                    Divider(color = Color.White.copy(0.12f))
+                    Divider(color = if (isOutdoorMode) Color.LightGray else Color.White.copy(0.12f))
 
                     LazyColumn(
                         modifier = Modifier
@@ -9385,7 +9457,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                                     Text(
                                         text = "No saved field GPS paths. Tap the red record indicator widget to log walks.",
                                         fontSize = 10.sp,
-                                        color = Color.LightGray,
+                                        color = if (isOutdoorMode) Color.DarkGray else Color.LightGray,
                                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                                     )
                                 }
@@ -9394,8 +9466,8 @@ fun MapContent(viewModel: GeologyViewModel) {
                             items(savedTracks) { track ->
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E2521)),
-                                    border = BorderStroke(0.5.dp, Color(0xFF00E5FF).copy(alpha = 0.2f))
+                                    colors = CardDefaults.cardColors(containerColor = if (isOutdoorMode) Color(0xFFEEEEEE) else Color(0xFF1E2521)),
+                                    border = BorderStroke(0.5.dp, if (isOutdoorMode) Color.Gray else Color(0xFF00E5FF).copy(alpha = 0.2f))
                                 ) {
                                     Column(modifier = Modifier.padding(8.dp)) {
                                         Row(
@@ -9403,9 +9475,9 @@ fun MapContent(viewModel: GeologyViewModel) {
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text(track.name, fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = Color(0xFF00E5FF))
+                                            Text(track.name, fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00E5FF))
                                             val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(track.createdAt))
-                                            Text(dateStr, fontSize = 8.sp, color = Color.Gray, fontFamily = FontFamily.Monospace)
+                                            Text(dateStr, fontSize = 8.sp, color = if (isOutdoorMode) Color.DarkGray else Color.Gray, fontFamily = FontFamily.Monospace)
                                         }
                                         
                                         Spacer(modifier = Modifier.height(2.dp))
@@ -9415,7 +9487,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text("Len: ${track.lengthMeters.toInt()}m | Dur: ${track.durationSeconds / 60}m ${track.durationSeconds % 60}s", fontSize = 9.sp, color = Color.LightGray)
+                                            Text("Len: ${track.lengthMeters.toInt()}m | Dur: ${track.durationSeconds / 60}m ${track.durationSeconds % 60}s", fontSize = 9.sp, color = if (isOutdoorMode) Color.Black else Color.LightGray)
                                             IconButton(
                                                 onClick = { viewModel.deleteTrack(track.id) },
                                                 modifier = Modifier.size(24.dp)
@@ -9438,9 +9510,9 @@ fun MapContent(viewModel: GeologyViewModel) {
                                                 contentPadding = PaddingValues(horizontal = 4.dp, vertical = 1.dp),
                                                 modifier = Modifier.height(24.dp)
                                             ) {
-                                                Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(10.dp), tint = Color(0xFF00FFE0))
+                                                Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(10.dp), tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00FFE0))
                                                 Spacer(Modifier.width(2.dp))
-                                                Text("Rename", fontSize = 9.sp, color = Color(0xFF00FFE0))
+                                                Text("Rename", fontSize = 9.sp, color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0))
                                             }
                                             Spacer(Modifier.width(8.dp))
                                             TextButton(
@@ -9459,9 +9531,9 @@ fun MapContent(viewModel: GeologyViewModel) {
                                                 contentPadding = PaddingValues(horizontal = 4.dp, vertical = 1.dp),
                                                 modifier = Modifier.height(24.dp)
                                             ) {
-                                                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(10.dp), tint = Color(0xFF00FFE0))
+                                                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(10.dp), tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00FFE0))
                                                 Spacer(Modifier.width(2.dp))
-                                                Text("Share ($exportFormatChoice)", fontSize = 9.sp, color = Color(0xFF00FFE0))
+                                                Text("Share ($exportFormatChoice)", fontSize = 9.sp, color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0))
                                             }
                                         }
                                     }
@@ -9483,10 +9555,10 @@ fun MapContent(viewModel: GeologyViewModel) {
                                     onClick = { exportFormatChoice = format },
                                     label = { Text(format, fontSize = 8.sp, fontWeight = FontWeight.Bold) },
                                     colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = Color(0xFF00E5FF),
-                                        selectedLabelColor = Color.Black,
-                                        containerColor = Color.White.copy(0.1f),
-                                        labelColor = Color.White
+                                        selectedContainerColor = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00E5FF),
+                                        selectedLabelColor = if (isOutdoorMode) Color.White else Color.Black,
+                                        containerColor = if (isOutdoorMode) Color(0xFFE0E0E0) else Color.White.copy(0.1f),
+                                        labelColor = if (isOutdoorMode) Color.Black else Color.White
                                     )
                                 )
                             }
