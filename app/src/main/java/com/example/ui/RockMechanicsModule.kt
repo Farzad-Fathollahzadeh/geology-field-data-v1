@@ -35,8 +35,21 @@ fun RockMechanicsContent(
     viewModel: GeologyViewModel,
     modifier: Modifier = Modifier
 ) {
-    val activeProject by viewModel.activeProject.collectAsStateWithLifecycle()
+    val globalActiveProject by viewModel.activeProject.collectAsStateWithLifecycle()
     val projectList by viewModel.projects.collectAsStateWithLifecycle()
+
+    // Decoupled tab-specific project selection to avoid trapping the user in a single project
+    var localSelectedProjectId by remember { mutableStateOf<Int?>(null) }
+    var lastSyncedGlobalProjectId by remember { mutableStateOf<Int?>(null) }
+
+    LaunchedEffect(globalActiveProject) {
+        if (globalActiveProject != null && globalActiveProject?.id != lastSyncedGlobalProjectId) {
+            localSelectedProjectId = globalActiveProject?.id
+            lastSyncedGlobalProjectId = globalActiveProject?.id
+        }
+    }
+
+    val activeProject = projectList.find { it.id == localSelectedProjectId }
 
     var showCreateProjDialog by remember { mutableStateOf(false) }
     var projName by remember { mutableStateOf("") }
@@ -58,16 +71,18 @@ fun RockMechanicsContent(
             )
 
             Text(
-                text = "Rock Mechanics & Geotech Ratings",
+                text = "مکانیک سنگ و رده‌بندی ژئوتکنیکی",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.Center
             )
 
             Text(
-                text = "Select an exploration project to manage spatial RMR, Hoek-Brown state, MRMR mining scales, and RMi indexes.",
+                text = "یک پروژه اکتشافی یا مهندسی را جهت محاسبات ساختاری RMR، پارامترهای توده‌سنگ Hoek-Brown، رده‌بندی معدنی MRMR و شاخص RMi توده‌سنگ انتخاب کنید.",
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 16.dp)
             )
 
@@ -77,13 +92,13 @@ fun RockMechanicsContent(
             ) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
-                Text("Create New Project")
+                Text("تعریف پروژه جدید ژئوتکنیک")
             }
 
             Divider()
 
             Text(
-                text = "Available Projects:",
+                text = "پروژه‌های در دسترس:",
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.align(Alignment.Start)
@@ -94,7 +109,7 @@ fun RockMechanicsContent(
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("No projects yet.")
+                    Text("هیچ پروژه‌ای تعریف نشده است.", color = Color.Gray, fontSize = 13.sp)
                 }
             } else {
                 LazyColumn(
@@ -106,7 +121,7 @@ fun RockMechanicsContent(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    viewModel.setActiveProject(project.id)
+                                    localSelectedProjectId = project.id
                                 },
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                         ) {
@@ -118,7 +133,7 @@ fun RockMechanicsContent(
                                 Spacer(Modifier.width(16.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(project.name, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                                    Text(project.description ?: "General Geotechnical Project", fontSize = 12.sp, color = Color.Gray)
+                                    Text(project.description ?: "پروژه عمومی ژئوتکنیک", fontSize = 12.sp, color = Color.Gray)
                                 }
                                 Icon(Icons.Default.ChevronRight, contentDescription = null)
                             }
@@ -131,7 +146,7 @@ fun RockMechanicsContent(
         if (showCreateProjDialog) {
             AlertDialog(
                 onDismissRequest = { showCreateProjDialog = false },
-                title = { Text("Create Geotech Project") },
+                title = { Text("تعریف پروژه ژئوتکنیک جدید") },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         OutlinedTextField(
@@ -152,7 +167,9 @@ fun RockMechanicsContent(
                     Button(
                         onClick = {
                             if (projName.isNotBlank()) {
-                                viewModel.createProjectSilently(projName, projDesc)
+                                viewModel.createProjectSilently(projName, projDesc) { newId ->
+                                    localSelectedProjectId = newId
+                                }
                                 showCreateProjDialog = false
                                 projName = ""
                                 projDesc = ""
@@ -172,8 +189,9 @@ fun RockMechanicsContent(
     } else {
         GeotechnicalWorkspace(
             viewModel = viewModel,
-            projectId = activeProject!!.id,
-            projectName = activeProject!!.name,
+            projectId = activeProject.id,
+            projectName = activeProject.name,
+            onBack = { localSelectedProjectId = null },
             modifier = modifier
         )
     }
@@ -184,9 +202,11 @@ fun GeotechnicalWorkspace(
     viewModel: GeologyViewModel,
     projectId: Int,
     projectName: String,
+    onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val evaluations by viewModel.getRockMechanicsEvaluationsForProject(projectId).collectAsStateWithLifecycle()
+    val evaluationsFlow = remember(projectId) { viewModel.getRockMechanicsEvaluationsForProject(projectId) }
+    val evaluations by evaluationsFlow.collectAsStateWithLifecycle()
     var selectedTab by remember { mutableStateOf(0) } // 0 = Saved Logs, 1 = RMR Calculator, 2 = Hoek-Brown Solver, 3 = MRMR & RMi
     
     Column(
@@ -205,7 +225,7 @@ fun GeotechnicalWorkspace(
                 Text("Geotechnical Evaluator HUD", fontSize = 12.sp, color = Color.Gray)
             }
             TextButton(
-                onClick = { viewModel.setActiveProject(-1) },
+                onClick = onBack,
                 colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
             ) {
                 Text("Back")

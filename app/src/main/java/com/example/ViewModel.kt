@@ -1323,6 +1323,120 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun exportBoreholesCsv(context: Context, projectId: Int) {
+        viewModelScope.launch {
+            try {
+                val csvString = withContext(Dispatchers.IO) {
+                    val boreholes = dao.getBoreholesForProjectSync(projectId)
+                    val sb = StringBuilder()
+                    sb.append("BoreholeCode,Latitude,Longitude,Elevation,Azimuth,Dip,PlannedDepthM\n")
+                    boreholes.forEach { bh ->
+                        sb.append("${bh.boreholeCode},${bh.latitude},${bh.longitude},${bh.elevation},${bh.azimuth},${bh.dip},${bh.plannedDepth}\n")
+                    }
+                    sb.toString()
+                }
+
+                val fileName = "Project_${projectId}_Boreholes.csv"
+                val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
+                val file = File(dir, fileName)
+                file.writeText(csvString)
+
+                val authority = "${context.packageName}.fileprovider"
+                val fileUri: Uri = FileProvider.getUriForFile(context, authority, file)
+
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/csv"
+                    putExtra(Intent.EXTRA_STREAM, fileUri)
+                    putExtra(Intent.EXTRA_SUBJECT, "Project Boreholes Directory")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                val chooser = Intent.createChooser(intent, "Share Boreholes CSV")
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(chooser)
+
+                Toast.makeText(context, "Exported: ${fileName}", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun exportBoreholeLogsCsv(context: Context, boreholeId: Int, boreholeCode: String) {
+        viewModelScope.launch {
+            try {
+                val csvString = withContext(Dispatchers.IO) {
+                    val runs = dao.getCoreRunsForBoreholeSync(boreholeId)
+                    val sb = StringBuilder()
+                    sb.append("RunNo,DepthFrom,DepthTo,RecoveryPercent,RqdPercent,Lithology,Alteration,Mineralization,FracturesPerM,UCS_Mpa\n")
+                    runs.forEach { r ->
+                        sb.append("${r.runNumber},${r.depthFrom},${r.depthTo},${r.recoveryPercent},${r.rqdPercent},\"${r.lithology}\",\"${r.alteration}\",\"${r.mineralization}\",${r.fractureFrequency},${r.ucsMpa}\n")
+                    }
+                    sb.toString()
+                }
+
+                val fileName = "Borehole_${boreholeCode}_CoreRuns.csv"
+                val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
+                val file = File(dir, fileName)
+                file.writeText(csvString)
+
+                val authority = "${context.packageName}.fileprovider"
+                val fileUri: Uri = FileProvider.getUriForFile(context, authority, file)
+
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/csv"
+                    putExtra(Intent.EXTRA_STREAM, fileUri)
+                    putExtra(Intent.EXTRA_SUBJECT, "Borehole Core Runs Log")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                val chooser = Intent.createChooser(intent, "Share Core Runs CSV")
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(chooser)
+
+                Toast.makeText(context, "Exported: ${fileName}", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun exportBoreholeDailyReportsCsv(context: Context, boreholeId: Int, boreholeCode: String) {
+        viewModelScope.launch {
+            try {
+                val csvString = withContext(Dispatchers.IO) {
+                    val reports = dao.getDailyReportsForBoreholeSync(boreholeId)
+                    val sb = StringBuilder()
+                    sb.append("ReportDate,Shift,DrillAdvanceM,StoppageHours,ProblemsAndRemarks,ShiftGeologist\n")
+                    reports.forEach { rp ->
+                        sb.append("${rp.reportDate},${rp.shift},${rp.progressMeters},${rp.stoppagesHours},\"${rp.problemsRemarks}\",\"${rp.shiftGeologist}\"\n")
+                    }
+                    sb.toString()
+                }
+
+                val fileName = "Borehole_${boreholeCode}_DailyReports.csv"
+                val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
+                val file = File(dir, fileName)
+                file.writeText(csvString)
+
+                val authority = "${context.packageName}.fileprovider"
+                val fileUri: Uri = FileProvider.getUriForFile(context, authority, file)
+
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/csv"
+                    putExtra(Intent.EXTRA_STREAM, fileUri)
+                    putExtra(Intent.EXTRA_SUBJECT, "Borehole Daily Shift Reports")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                val chooser = Intent.createChooser(intent, "Share Drilling Reports CSV")
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(chooser)
+
+                Toast.makeText(context, "Exported: ${fileName}", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
     // Boreholes, Daily Reports, Core Runs, and Rock Mechanics operations
     private val activeBoreholeId = MutableStateFlow<Int?>(null)
     

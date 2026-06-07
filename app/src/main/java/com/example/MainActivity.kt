@@ -59,6 +59,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.BoreholeLoggingContent
 import com.example.ui.RockMechanicsContent
+import com.example.ui.ToolsContent
 import com.google.accompanist.permissions.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -210,7 +211,7 @@ fun getGeologyTypeInfo(type: String): GeologyTypeInfo {
 }
 
 enum class MainTab {
-    Home, GeologicalMapping, BoreholeLogging, RockMechanics, Map
+    Home, GeologicalMapping, BoreholeLogging, RockMechanics, Map, Tools
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
@@ -277,6 +278,7 @@ fun MainScreenContent(
             MainTab.BoreholeLogging -> "Borehole Core Logging"
             MainTab.RockMechanics -> "Rock Geotechnical Mechanics"
             MainTab.Map -> "Spatial Navigation Map"
+            MainTab.Tools -> "Geotech Field Tools"
         }
 
         Scaffold(
@@ -427,6 +429,12 @@ fun MainScreenContent(
                         label = { Text("Map", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                         icon = { Icon(Icons.Default.Map, contentDescription = "Interactive grid map") }
                     )
+                    NavigationBarItem(
+                        selected = activeTab == MainTab.Tools,
+                        onClick = { activeTab = MainTab.Tools },
+                        label = { Text("Tools", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                        icon = { Icon(Icons.Default.Build, contentDescription = "Field tools and contact links") }
+                    )
                 }
             },
             contentWindowInsets = WindowInsets.safeDrawing
@@ -457,6 +465,9 @@ fun MainScreenContent(
                     }
                     MainTab.Map -> {
                         MapContent(viewModel)
+                    }
+                    MainTab.Tools -> {
+                        ToolsContent(viewModel)
                     }
                     MainTab.GeologicalMapping -> {
                         AnimatedContent(
@@ -6109,8 +6120,9 @@ fun HomeDashboardContent(
             Triple("Project Manager", "Projects List", Icons.Default.Folder) to MainTab.GeologicalMapping,
             Triple("Field Mapping", "Geological Observations", Icons.Default.Terrain) to MainTab.GeologicalMapping,
             Triple("Borehole Core Logging", "Core Runs Log", Icons.Default.Layers) to MainTab.BoreholeLogging,
-            Triple("Rock Mechanics (RMR)", "RMR Score Assessment", Icons.Default.Assessment) to MainTab.RockMechanics,
-            Triple("Interactive Web Map", "Spatial GPS GIS Map", Icons.Default.Map) to MainTab.Map
+            Triple("Rock Mechanics & RMR", "Geotech Rate assessment", Icons.Default.Assessment) to MainTab.RockMechanics,
+            Triple("Interactive Web Map", "Spatial GPS GIS Map", Icons.Default.Map) to MainTab.Map,
+            Triple("Geotech Field Tools", "Mineralogy, Rocks, Converters", Icons.Default.Build) to MainTab.Tools
         )
 
         // Row 1 (first 2 items)
@@ -6183,39 +6195,37 @@ fun HomeDashboardContent(
             }
         }
 
-        // Row 3 (last item spanning full width or looking extremely beautiful)
+        // Row 3 (items 4 and 5)
         Row(
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            val (meta, targetTab) = workspaces[4]
-            val (title, sub, icon) = meta
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onNavigateToTab(targetTab) },
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            listOf(workspaces[4], workspaces[5]).forEach { (meta, targetTab) ->
+                val (title, sub, icon) = meta
+                Card(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable { onNavigateToTab(targetTab) },
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Icon(imageVector = icon, contentDescription = title, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(text = title, fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurface)
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(imageVector = icon, contentDescription = title, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                        }
+                        Text(text = title, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
                         Text(text = sub, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    Icon(imageVector = Icons.Default.ChevronRight, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.secondary)
                 }
             }
         }
@@ -8194,16 +8204,26 @@ fun MapContent(viewModel: GeologyViewModel) {
     val projectStations by viewModel.activeProjectStations.collectAsStateWithLifecycle()
     val allStationsList by viewModel.allStations.collectAsStateWithLifecycle()
     val savedTracks by viewModel.tracks.collectAsStateWithLifecycle()
+    val activeProject by viewModel.activeProject.collectAsStateWithLifecycle()
 
     val stationsToShow = if (projectStations.isNotEmpty()) projectStations else allStationsList
     var zoomLevel by remember { mutableStateOf(4) } // 1 to 8, default 4
     var mapMode by remember { mutableStateOf(if (isInternetAvailable(context)) MapMode.ONLINE else MapMode.OFFLINE) }
     var mapLayer by remember { mutableStateOf(MapLayerProvider.GOOGLE_SATELLITE) }
     var mapboxTokenInput by remember { mutableStateOf("pk.eyJ1IjoiZmFyemFkZiIsImEiOiJjbHpiaXdwZ3cwMTF5MndzYzhvdzBoMHp1In0.6R0R9z84Vd-M208r_6oY7g") }
-    var isMapboxConfigExpanded by remember { mutableStateOf(false) }
-    var satelliteCount by remember { mutableStateOf(14) }
-    var gpsAccuracy by remember { mutableStateOf(2.4) }
+    
+    // UI Panel Panels states
+    var isMapLayerPanelVisible by remember { mutableStateOf(false) }
+    var isSurveyorPanelVisible by remember { mutableStateOf(false) }
+    var isJournalPanelVisible by remember { mutableStateOf(false) }
+    var isSettingsPanelVisible by remember { mutableStateOf(false) }
+    var isAddPointDialogVisible by remember { mutableStateOf(false) }
+
+    // GNSS values & custom settings
+    var satelliteCount by remember { mutableStateOf(16) }
+    var gpsAccuracy by remember { mutableStateOf(1.8) }
     var lockGpsCenter by remember { mutableStateOf(true) }
+    
     val scale = remember(zoomLevel) {
         when (zoomLevel) {
             1 -> 40000.0
@@ -8219,17 +8239,16 @@ fun MapContent(viewModel: GeologyViewModel) {
     }
 
     // Interactive switches
-    var isRealPositionEnabled by remember { mutableStateOf(false) }
+    var isRealPositionEnabled by remember { mutableStateOf(true) } // Enable lock on position by default for GIS mapping
     var isTrackRecordingEnabled by remember { mutableStateOf(false) }
 
     // Option switches
-    var rotateMapUsingGnss by remember { mutableStateOf(false) }
-    var displayLineFromPosition by remember { mutableStateOf(false) }
-    var positioningStatus by remember { mutableStateOf(false) }
+    var rotateMapUsingGnss by remember { mutableStateOf(true) }
+    var displayLineFromPosition by remember { mutableStateOf(true) }
+    var positioningStatus by remember { mutableStateOf(true) }
     var trackRecording by remember { mutableStateOf(false) }
 
     // GNSS linked rules
-    // Rule 1: Turning on real position sets the first three options to true
     fun onRealPositionChanged(enabled: Boolean) {
         isRealPositionEnabled = enabled
         if (enabled) {
@@ -8237,7 +8256,6 @@ fun MapContent(viewModel: GeologyViewModel) {
             displayLineFromPosition = true
             positioningStatus = true
         } else {
-            // Uncheck track recording automatically
             if (isTrackRecordingEnabled) {
                 isTrackRecordingEnabled = false
                 trackRecording = false
@@ -8245,9 +8263,22 @@ fun MapContent(viewModel: GeologyViewModel) {
         }
     }
 
-    // Rule 2: Turning on track recording sets all four options to true
+    // Track Recording points list and timing
     val activePointsList = remember { mutableStateListOf<TrackPoint>() }
     var recordingStartTime by remember { mutableStateOf(0L) }
+    var recordingDurationSec by remember { mutableStateOf(0L) }
+
+    // Auto-update timer for active recording
+    LaunchedEffect(isTrackRecordingEnabled, recordingStartTime) {
+        if (isTrackRecordingEnabled) {
+            while (true) {
+                kotlinx.coroutines.delay(1000L)
+                recordingDurationSec = (System.currentTimeMillis() - recordingStartTime) / 1000
+            }
+        } else {
+            recordingDurationSec = 0L
+        }
+    }
 
     var showSaveDialog by remember { mutableStateOf(false) }
     var tempTrackPointsJson by remember { mutableStateOf("") }
@@ -8265,31 +8296,24 @@ fun MapContent(viewModel: GeologyViewModel) {
             displayLineFromPosition = true
             positioningStatus = true
             
-            // Start recording coordinates
             activePointsList.clear()
             recordingStartTime = System.currentTimeMillis()
-            // Add initial point
             activePointsList.add(TrackPoint(35.6943, 51.4215, 1210.0, System.currentTimeMillis(), 45.0))
         } else {
-            // Turning OFF triggers save dialog
             if (activePointsList.size >= 1) {
-                // Compute parameters
                 val duration = (System.currentTimeMillis() - recordingStartTime) / 1000
                 tempTrackDuration = if (duration <= 0) 120 else duration
                 
-                // Compute total approximate distance length (meters)
                 var distanceMeters = 0.0
                 for (i in 0 until activePointsList.size - 1) {
                     val p1 = activePointsList[i]
                     val p2 = activePointsList[i+1]
-                    // Rough lat/lon degree to meter conversion delta
                     val dx = (p2.lon - p1.lon) * 111320.0 * Math.cos(Math.toRadians(p1.lat))
                     val dy = (p2.lat - p1.lat) * 111320.0
                     distanceMeters += Math.sqrt(dx*dx + dy*dy)
                 }
                 tempTrackLength = if (distanceMeters <= 0.0) 245.0 else distanceMeters
                 
-                // Serialize points as JSON array string "[[lat,lon,ele,time,heading],...]"
                 val sb = StringBuilder("[")
                 activePointsList.forEachIndexed { i, pt ->
                     sb.append("[${pt.lat},${pt.lon},${pt.ele},${pt.time},${pt.heading}]")
@@ -8307,11 +8331,10 @@ fun MapContent(viewModel: GeologyViewModel) {
     // Coordinates Simulation Walker
     var currentLat by remember { mutableStateOf(35.69439) }
     var currentLon by remember { mutableStateOf(51.42151) }
-    var currentHeading by remember { mutableStateOf(45.0) } // Azimuth sight bearing
+    var currentHeading by remember { mutableStateOf(45.0) }
 
-    // Live position appending on movement
     fun simulateWalkMove(direction: String) {
-        val stepSize = 0.00015 // equivalent to ~15-20 meters steps
+        val stepSize = 0.00015
         val headingAngle = when (direction) {
             "NORTH" -> 0.0
             "SOUTH" -> 180.0
@@ -8325,9 +8348,8 @@ fun MapContent(viewModel: GeologyViewModel) {
         currentLat += stepSize * Math.cos(rad)
         currentLon += stepSize * Math.sin(rad)
         
-        // Randomize physical satellite telemetry values dynamically when simulated movement takes place
-        satelliteCount = (12..19).random()
-        gpsAccuracy = 1.2 + Math.random() * 2.5
+        satelliteCount = (12..21).random()
+        gpsAccuracy = 1.1 + Math.random() * 1.8
 
         if (isTrackRecordingEnabled) {
             activePointsList.add(
@@ -8336,823 +8358,1271 @@ fun MapContent(viewModel: GeologyViewModel) {
         }
     }
 
-    // Saved Track editing inline states
+    // Saved track editing inline states
     var editTrackItem by remember { mutableStateOf<Track?>(null) }
     var editTrackItemName by remember { mutableStateOf("") }
     var showEditDialog by remember { mutableStateOf(false) }
 
-    Column(
+    // Add Point Dialog variables
+    var quickStationCode by remember { mutableStateOf("") }
+    var quickStationPrefix by remember { mutableStateOf("ST") }
+    
+    LaunchedEffect(quickStationPrefix, activeProject, isAddPointDialogVisible) {
+        val projId = activeProject?.id
+        if (projId != null && isAddPointDialogVisible) {
+            viewModel.getNextStationCodeForPrefix(projId, quickStationPrefix) { generated ->
+                quickStationCode = generated
+            }
+        }
+    }
+
+    // Main Full-screen Box
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+            .background(Color(0xFF0C100D)) // High visibility slate/dark field background
     ) {
-        // Toggles Header Panel
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
-            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.6f))
-        ) {
-            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(imageVector = Icons.Default.GpsFixed, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Text("Real Position (GPS Locator)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                    }
-                    Switch(
-                        checked = isRealPositionEnabled,
-                        onCheckedChange = { onRealPositionChanged(it) }
-                    )
-                }
-                
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(imageVector = Icons.Default.RadioButtonChecked, contentDescription = null, tint = if (isTrackRecordingEnabled) Color.Red else MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("Track Recorder Toggle", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                    }
-                    Switch(
-                        checked = isTrackRecordingEnabled,
-                        onCheckedChange = { onTrackRecordingChanged(it) }
-                    )
-                }
-            }
-        }
+        // -------------------------------------------------------------
+        // LAYER 1: THE MAP CANVAS / WEBVIEW (OCCUPIES 100% SIZE)
+        // -------------------------------------------------------------
+        if (mapMode == MapMode.ONLINE) {
+            WebViewMap(
+                stations = stationsToShow,
+                trackPoints = activePointsList,
+                isRealPos = isRealPositionEnabled,
+                currentLat = currentLat,
+                currentLon = currentLon,
+                zoom = zoomLevel,
+                tileUrl = mapLayer.url,
+                gpsAccuracy = gpsAccuracy,
+                lockGpsCenter = lockGpsCenter,
+                mapboxToken = mapboxTokenInput,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val w = size.width
+                val h = size.height
+                val strokeColor = Color(0x3300E5FF) // Cyber cyan grid lines
 
-        // Mapbox Engine & Custom / Default Token Configurator card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Column(modifier = Modifier.animateContentSize()) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { isMapboxConfigExpanded = !isMapboxConfigExpanded }
-                        .padding(12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(imageVector = Icons.Default.Settings, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
-                        Text("Mapbox Engine & API Token config", fontWeight = FontWeight.Bold, fontSize = 11.5.sp)
-                    }
-                    Icon(
-                        imageVector = if (isMapboxConfigExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.size(20.dp)
-                    )
+                // Render vector grids
+                for (x in 0..w.toInt() step 60) {
+                    drawLine(color = strokeColor, start = androidx.compose.ui.geometry.Offset(x.toFloat(), 0f), end = androidx.compose.ui.geometry.Offset(x.toFloat(), h), strokeWidth = 0.5f)
                 }
-                
-                if (isMapboxConfigExpanded) {
-                    Column(
-                        modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "To access high-resolution Mapbox Satellite Imagery & Outdoors topographic layers, paste your private Mapbox API key or use our secure default fallback token:",
-                            fontSize = 9.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(0.85f),
-                            lineHeight = 13.sp
-                        )
+                for (y in 0..h.toInt() step 60) {
+                    drawLine(color = strokeColor, start = androidx.compose.ui.geometry.Offset(0f, y.toFloat()), end = androidx.compose.ui.geometry.Offset(w, y.toFloat()), strokeWidth = 0.5f)
+                }
+
+                val baseLat = if (lockGpsCenter && isRealPositionEnabled) currentLat else (if (stationsToShow.isNotEmpty()) stationsToShow.map { it.latitude }.average() else currentLat)
+                val baseLon = if (lockGpsCenter && isRealPositionEnabled) currentLon else (if (stationsToShow.isNotEmpty()) stationsToShow.map { it.longitude }.average() else currentLon)
+
+                fun toCanvasX(longitude: Double): Float {
+                    return (w / 2f + (longitude - baseLon) * scale * Math.cos(Math.toRadians(baseLat))).toFloat()
+                }
+                fun toCanvasY(latitude: Double): Float {
+                    return (h / 2f - (latitude - baseLat) * scale).toFloat()
+                }
+
+                // Draw logged stations
+                stationsToShow.forEach { station ->
+                    val cx = toCanvasX(station.longitude)
+                    val cy = toCanvasY(station.latitude)
+                    if (cx in 0f..w && cy in 0f..h) {
+                        // Diamond polygon outer shape representing geological points
+                        drawCircle(color = Color(0xFF00E5FF), radius = 8f, center = androidx.compose.ui.geometry.Offset(cx, cy))
+                        drawCircle(color = Color(0xFF0B1411), radius = 4.5f, center = androidx.compose.ui.geometry.Offset(cx, cy))
+                        drawCircle(color = Color(0xFFFFB300), radius = 2f, center = androidx.compose.ui.geometry.Offset(cx, cy))
                         
-                        OutlinedTextField(
-                            value = mapboxTokenInput,
-                            onValueChange = { mapboxTokenInput = it },
-                            label = { Text("Mapbox Access Token", fontSize = 9.sp) },
-                            singleLine = true,
-                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 10.sp, fontFamily = FontFamily.Monospace),
-                            modifier = Modifier.fillMaxWidth(),
-                            trailingIcon = {
-                                IconButton(onClick = { mapboxTokenInput = "pk.eyJ1IjoiZmFyemFkZiIsImEiOiJjbHpiaXdwZ3cwMTF5MndzYzhvdzBoMHp1In0.6R0R9z84Vd-M208r_6oY7g" }) {
-                                    Icon(imageVector = Icons.Default.Refresh, contentDescription = "Reset Default Token", modifier = Modifier.size(16.dp))
-                                }
+                        drawContext.canvas.nativeCanvas.drawText(
+                            station.stationCode,
+                            cx + 14f,
+                            cy + 8f,
+                            android.graphics.Paint().apply {
+                                color = android.graphics.Color.WHITE
+                                textSize = 24f
+                                isFakeBoldText = true
+                                setShadowLayer(4f, 2f, 2f, android.graphics.Color.BLACK)
                             }
                         )
-                        
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = Color.Green, modifier = Modifier.size(11.dp))
-                            Text("Full Mapbox Engine integration loaded & active", fontSize = 8.5.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                        }
                     }
                 }
-            }
-        }
 
-        // Horizontal Panel Options (قابلیت خاموش روشن کردن دستی برای کاربر فراهم باشد)
-        Card(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("GNSS Navigation Options:", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("1. Rotate map using GNSS sensor (Rotate)", fontSize = 11.sp)
-                    Checkbox(checked = rotateMapUsingGnss, onCheckedChange = { rotateMapUsingGnss = it })
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("2. Display line of sight from position (Line)", fontSize = 11.sp)
-                    Checkbox(checked = displayLineFromPosition, onCheckedChange = { displayLineFromPosition = it })
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("3. Navigation Coordinates Status HUD (Status)", fontSize = 11.sp)
-                    Checkbox(checked = positioningStatus, onCheckedChange = { positioningStatus = it })
-                }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("4. Sensor Track Recording (Track)", fontSize = 11.sp)
-                    Checkbox(checked = trackRecording, onCheckedChange = { if (it) onTrackRecordingChanged(true) else onTrackRecordingChanged(false) })
-                }
-            }
-        }
-
-        // Interactive Map View Selector
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                .padding(4.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Button(
-                onClick = { mapMode = MapMode.ONLINE },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (mapMode == MapMode.ONLINE) MaterialTheme.colorScheme.primary else Color.Transparent,
-                    contentColor = if (mapMode == MapMode.ONLINE) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                ),
-                contentPadding = PaddingValues(vertical = 4.dp),
-                shape = RoundedCornerShape(6.dp)
-            ) {
-                Icon(imageVector = Icons.Default.Language, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Online Map Toggle", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            }
-            
-            Button(
-                onClick = { mapMode = MapMode.OFFLINE },
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (mapMode == MapMode.OFFLINE) MaterialTheme.colorScheme.primary else Color.Transparent,
-                    contentColor = if (mapMode == MapMode.OFFLINE) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                ),
-                contentPadding = PaddingValues(vertical = 4.dp),
-                shape = RoundedCornerShape(6.dp)
-            ) {
-                Icon(imageVector = Icons.Default.GridOn, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Offline Vector Grid", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            }
-        }
-
-        // Online Multi-Layer Map Provider Scrollable Selection (Satisfies "تعداد نقشه ها بیشتر بشه" & adds Google Satellite, Hybrid, OpenTopoMap)
-        if (mapMode == MapMode.ONLINE) {
-            androidx.compose.foundation.lazy.LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp)
-            ) {
-                items(MapLayerProvider.values()) { provider ->
-                    val isSelected = mapLayer == provider
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { mapLayer = provider },
-                        label = { 
-                            Text(
-                                text = provider.label, 
-                                fontSize = 9.sp, 
-                                fontWeight = FontWeight.Bold
-                            ) 
-                        },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primary,
-                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                            labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    )
-                }
-            }
-        }
-
-        // External Link Quick Navigation Portal (Satisfies "گوگل و لینک" browser action)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f), RoundedCornerShape(6.dp))
-                .padding(vertical = 4.dp, horizontal = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("External Mapping Links:", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-            
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(
-                    onClick = { openBrowserLink(context, "https://www.google.com/maps/search/?api=1&query=$currentLat,$currentLon") },
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                    modifier = Modifier.height(24.dp)
-                ) {
-                    Icon(imageVector = Icons.Default.Language, contentDescription = null, modifier = Modifier.size(10.dp))
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text("Google Maps Web", fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                }
-                
-                TextButton(
-                    onClick = { openBrowserLink(context, "https://www.openstreetmap.org/#map=17/$currentLat/$currentLon") },
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
-                    modifier = Modifier.height(24.dp)
-                ) {
-                    Icon(imageVector = Icons.Default.Language, contentDescription = null, modifier = Modifier.size(10.dp))
-                    Spacer(modifier = Modifier.width(3.dp))
-                    Text("OSM Web Link", fontSize = 8.sp, fontWeight = FontWeight.Bold)
-                }
-            }
-        }
-
-        // Live GIS Map Canvas
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(3f)
-                .clip(RoundedCornerShape(12.dp))
-                .background(Color(0xFF0F1B16)) // Dark high-contrast cyber teal forest theme
-                .border(1.5.dp, MaterialTheme.colorScheme.primary)
-        ) {
-            if (mapMode == MapMode.ONLINE) {
-                WebViewMap(
-                    stations = stationsToShow,
-                    trackPoints = activePointsList,
-                    isRealPos = isRealPositionEnabled,
-                    currentLat = currentLat,
-                    currentLon = currentLon,
-                    zoom = zoomLevel,
-                    tileUrl = mapLayer.url,
-                    gpsAccuracy = gpsAccuracy,
-                    lockGpsCenter = lockGpsCenter,
-                    mapboxToken = mapboxTokenInput,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val w = size.width
-                    val h = size.height
-                    
-                    // Draw coordinate scale lines (radar grid grids)
-                    val strokeColor = Color(0xFF225544)
-                    for (x in 20..w.toInt() step 50) {
-                        drawLine(color = strokeColor, start = androidx.compose.ui.geometry.Offset(x.toFloat(), 0f), end = androidx.compose.ui.geometry.Offset(x.toFloat(), h), strokeWidth = 0.5f)
+                // Draw Track recorded paths
+                if (activePointsList.size >= 2) {
+                    val pathColor = Color(0xFFFF3D00)
+                    for (i in 0 until activePointsList.size - 1) {
+                        val p1 = activePointsList[i]
+                        val p2 = activePointsList[i+1]
+                        val x1 = toCanvasX(p1.lon)
+                        val y1 = toCanvasY(p1.lat)
+                        val x2 = toCanvasX(p2.lon)
+                        val y2 = toCanvasY(p2.lat)
+                        drawLine(color = pathColor, start = androidx.compose.ui.geometry.Offset(x1, y1), end = androidx.compose.ui.geometry.Offset(x2, y2), strokeWidth = 5f)
                     }
-                    for (y in 20..h.toInt() step 50) {
-                        drawLine(color = strokeColor, start = androidx.compose.ui.geometry.Offset(0f, y.toFloat()), end = androidx.compose.ui.geometry.Offset(w, y.toFloat()), strokeWidth = 0.5f)
-                    }
+                }
 
-                    // Reference coordinates setup center (Dynamic centering or lock GPS)
-                    val baseLat = if (lockGpsCenter && isRealPositionEnabled) currentLat else (if (stationsToShow.isNotEmpty()) stationsToShow.map { it.latitude }.average() else currentLat)
-                    val baseLon = if (lockGpsCenter && isRealPositionEnabled) currentLon else (if (stationsToShow.isNotEmpty()) stationsToShow.map { it.longitude }.average() else currentLon)
-
-                    fun toCanvasX(longitude: Double): Float {
-                        return (w / 2f + (longitude - baseLon) * scale * Math.cos(Math.toRadians(baseLat))).toFloat()
-                    }
-                    fun toCanvasY(latitude: Double): Float {
-                        return (h / 2f - (latitude - baseLat) * scale).toFloat()
-                    }
-
-                    // Plot Project's Stations as small triangles/dots with text code
-                    stationsToShow.forEach { station ->
-                        val cx = toCanvasX(station.longitude)
-                        val cy = toCanvasY(station.latitude)
-                        if (cx in 0f..w && cy in 0f..h) {
-                            drawCircle(color = Color(0xFFFFB300), radius = 6f, center = androidx.compose.ui.geometry.Offset(cx, cy))
-                            drawCircle(color = Color.Black, radius = 2f, center = androidx.compose.ui.geometry.Offset(cx, cy))
-                            
-                            // Render station labels on map canvas
-                            drawContext.canvas.nativeCanvas.drawText(
-                                station.stationCode,
-                                cx + 10f,
-                                cy + 8f,
-                                android.graphics.Paint().apply {
-                                    color = android.graphics.Color.YELLOW
-                                    textSize = 22f
-                                    isFakeBoldText = true
-                                }
+                // Simulated sight line & user radar
+                if (isRealPositionEnabled) {
+                    val cx = toCanvasX(currentLon)
+                    val cy = toCanvasY(currentLat)
+                    if (cx in 0f..w && cy in 0f..h) {
+                        if (displayLineFromPosition) {
+                            val lineLength = 160f
+                            val angleRad = Math.toRadians(currentHeading)
+                            val endX = cx + lineLength * Math.sin(angleRad).toFloat()
+                            val endY = cy - lineLength * Math.cos(angleRad).toFloat()
+                            drawLine(
+                                color = Color(0xFF00E5FF),
+                                start = androidx.compose.ui.geometry.Offset(cx, cy),
+                                end = androidx.compose.ui.geometry.Offset(endX, endY),
+                                strokeWidth = 3f,
+                                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(12f, 6f), 0f)
                             )
                         }
-                    }
 
-                    // Draw Track recorder line segment path
-                    if (activePointsList.size >= 2) {
-                        val pathColor = Color(0xFFFF3D00)
-                        for (i in 0 until activePointsList.size -1) {
-                            val p1 = activePointsList[i]
-                            val p2 = activePointsList[i+1]
-                            val x1 = toCanvasX(p1.lon)
-                            val y1 = toCanvasY(p1.lat)
-                            val x2 = toCanvasX(p2.lon)
-                            val y2 = toCanvasY(p2.lat)
-                            drawLine(color = pathColor, start = androidx.compose.ui.geometry.Offset(x1, y1), end = androidx.compose.ui.geometry.Offset(x2, y2), strokeWidth = 5f)
-                        }
-                    }
-
-                    // Show Current Pulsing Position Marker
-                    if (isRealPositionEnabled) {
-                        val cx = toCanvasX(currentLon)
-                        val cy = toCanvasY(currentLat)
-                        if (cx in 0f..w && cy in 0f..h) {
-                            // Sight direction lines
-                            if (displayLineFromPosition) {
-                                val lineLength = 120f
-                                val angleRad = Math.toRadians(currentHeading)
-                                val endX = cx + lineLength * Math.sin(angleRad).toFloat()
-                                val endY = cy - lineLength * Math.cos(angleRad).toFloat()
-                                drawLine(
-                                    color = Color(0xFF00E5FF),
-                                    start = androidx.compose.ui.geometry.Offset(cx, cy),
-                                    end = androidx.compose.ui.geometry.Offset(endX, endY),
-                                    strokeWidth = 3f,
-                                    pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 5f), 0f)
-                                )
-                            }
-
-                            // Pulsing accuracy circle & center tracker marker
-                            val pxAccRadius = (gpsAccuracy * (scale / 111320.0)).toFloat()
-                            drawCircle(color = Color(0x2200E5FF), radius = Math.max(12f, pxAccRadius), center = androidx.compose.ui.geometry.Offset(cx, cy))
-                            drawCircle(color = Color(0xFF29B6F6), radius = 8f, center = androidx.compose.ui.geometry.Offset(cx, cy))
-                            drawCircle(color = Color.White, radius = 3f, center = androidx.compose.ui.geometry.Offset(cx, cy))
-                        }
+                        val pxAccRadius = (gpsAccuracy * (scale / 111320.0)).toFloat()
+                        drawCircle(color = Color(0x1A00E5FF), radius = Math.max(16f, pxAccRadius), center = androidx.compose.ui.geometry.Offset(cx, cy))
+                        drawCircle(color = Color(0xFF00B0FF), radius = 10f, center = androidx.compose.ui.geometry.Offset(cx, cy))
+                        drawCircle(color = Color.White, radius = 4f, center = androidx.compose.ui.geometry.Offset(cx, cy))
                     }
                 }
             }
+        }
 
-            // --- ALPINEQUEST target crosshair central indicator overlay ---
-            Box(
-                modifier = Modifier
-                    .size(26.dp)
-                    .align(Alignment.Center)
-            ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val color = Color(0xFF39FF14) // Neon Green AlpineQuest crosshair style
-                    val stroke = 1.25.dp.toPx()
-                    // Horizontal hair
-                    drawLine(color = color.copy(alpha = 0.7f), start = androidx.compose.ui.geometry.Offset(0f, size.height / 2), end = androidx.compose.ui.geometry.Offset(size.width, size.height / 2), strokeWidth = stroke)
-                    // Vertical hair
-                    drawLine(color = color.copy(alpha = 0.7f), start = androidx.compose.ui.geometry.Offset(size.width / 2, 0f), end = androidx.compose.ui.geometry.Offset(size.width / 2, size.height), strokeWidth = stroke)
-                    // Lens indicator
-                    drawCircle(color = color, radius = 4.dp.toPx(), style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke))
-                }
+        // -------------------------------------------------------------
+        // LAYER 2: ALPINEQUEST TARGET CENTRAL CROSSHAIR INDEX
+        // -------------------------------------------------------------
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .align(Alignment.Center)
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val color = Color(0xFF00FFE0) // Neon turquoise target index crosshair
+                val stroke = 1.5.dp.toPx()
+                drawLine(color = color.copy(alpha = 0.6f), start = androidx.compose.ui.geometry.Offset(0f, size.height / 2), end = androidx.compose.ui.geometry.Offset(size.width, size.height / 2), strokeWidth = stroke)
+                drawLine(color = color.copy(alpha = 0.6f), start = androidx.compose.ui.geometry.Offset(size.width / 2, 0f), end = androidx.compose.ui.geometry.Offset(size.width / 2, size.height), strokeWidth = stroke)
+                drawCircle(color = color, radius = 6.dp.toPx(), style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke))
             }
+        }
 
-            // AlpineQuest-like Dynamic Map Center Coordinates HUD (Displays bottom center coordinates of the crosshair target)
-            Box(
-                modifier = Modifier
-                    .padding(bottom = 6.dp)
-                    .align(Alignment.BottomCenter)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color.Black.copy(alpha = 0.65f))
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-            ) {
-                val centerLat = if (lockGpsCenter && isRealPositionEnabled) currentLat else (if (stationsToShow.isNotEmpty()) stationsToShow.map { it.latitude }.average() else currentLat)
-                val centerLon = if (lockGpsCenter && isRealPositionEnabled) currentLon else (if (stationsToShow.isNotEmpty()) stationsToShow.map { it.longitude }.average() else currentLon)
+        // -------------------------------------------------------------
+        // LAYER 3: FLOATING SIGHT CENTER COORDINATE STATUS RIBBON (BOTTOM CENTER)
+        // -------------------------------------------------------------
+        Box(
+            modifier = Modifier
+                .padding(bottom = 8.dp)
+                .align(Alignment.BottomCenter)
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0xE6101512)) // Dark slate semitransparent
+                .border(1.dp, Color(0xFF00E5FF).copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+        ) {
+            val centerLat = if (lockGpsCenter && isRealPositionEnabled) currentLat else (if (stationsToShow.isNotEmpty()) stationsToShow.map { it.latitude }.average() else currentLat)
+            val centerLon = if (lockGpsCenter && isRealPositionEnabled) currentLon else (if (stationsToShow.isNotEmpty()) stationsToShow.map { it.longitude }.average() else currentLon)
+            val utmResult = UtmConverter.convertLatLngToUtm(centerLat, centerLon)
+            
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "TARGET CENTER: ${String.format(Locale.US, "%.5f", centerLat)}°N , ${String.format(Locale.US, "%.5f", centerLon)}°E",
-                    fontSize = 7.5.sp,
-                    color = Color(0xFF39FF14), // AlpineQuest styled neon label
+                    text = "CENTER COORDS (مختصات مرکز نشانه روی)",
+                    fontSize = 8.sp,
+                    color = Color.Gray,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "LAT: ${String.format(Locale.US, "%.6f°N", centerLat)} | LON: ${String.format(Locale.US, "%.6f°E", centerLon)}",
+                    fontSize = 11.sp,
+                    color = Color(0xFF00FFE0),
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace
                 )
+                Text(
+                    text = "UTM Grid: $utmResult",
+                    fontSize = 9.sp,
+                    color = Color.White.copy(alpha = 0.8f),
+                    fontFamily = FontFamily.Monospace
+                )
             }
+        }
 
-            // Interactive Zoom controls / lock center buttons overlay (top/mid left in mapping canvas)
-            Column(
+        // -------------------------------------------------------------
+        // LAYER 4: GNSS TELEMETRY HEADS-UP DISPLAY (TOP-LEFT FLOATING CARD)
+        // -------------------------------------------------------------
+        if (positioningStatus && isRealPositionEnabled) {
+            val isAccuracyGood = gpsAccuracy <= 2.5
+            val accuracyColor = if (isAccuracyGood) Color(0xFF00FF00) else Color(0xFFFF5252)
+            
+            Card(
                 modifier = Modifier
-                    .padding(8.dp)
-                    .align(Alignment.CenterStart),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .padding(12.dp)
+                    .align(Alignment.TopStart)
+                    .width(220.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xCC151B17)), // Dark military green-gray transparency
+                border = BorderStroke(1.dp, Color(0xFF00E5FF).copy(alpha = 0.4f)),
+                shape = RoundedCornerShape(10.dp)
             ) {
-                IconButton(
-                    onClick = { if (zoomLevel < 8) zoomLevel++ },
-                    modifier = Modifier.size(28.dp).background(Color.Black.copy(alpha = 0.5f), CircleShape)
-                ) {
-                    Icon(imageVector = Icons.Default.Add, contentDescription = "Zoom In", tint = Color.White, modifier = Modifier.size(16.dp))
-                }
-                IconButton(
-                    onClick = { if (zoomLevel > 1) zoomLevel-- },
-                    modifier = Modifier.size(28.dp).background(Color.Black.copy(alpha = 0.5f), CircleShape)
-                ) {
-                    Icon(imageVector = Icons.Default.Remove, contentDescription = "Zoom Out", tint = Color.White, modifier = Modifier.size(16.dp))
-                }
-                
-                // Real-time Zoom label
-                Box(
-                    modifier = Modifier
-                        .background(Color.Black.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 4.dp, vertical = 1.dp)
-                ) {
-                    Text(
-                        text = "x$zoomLevel",
-                        color = Color.White,
-                        fontSize = 8.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            // Pulsing active solid LED accuracy lock status dot
+                            var ledAlpha by remember { mutableStateOf(1f) }
+                            LaunchedEffect(Unit) {
+                                while(true) {
+                                    ledAlpha = 0.3f
+                                    delay(400L)
+                                    ledAlpha = 1f
+                                    delay(400L)
+                                }
+                            }
 
-                // AlpineQuest GPS Lock-On Camera center toggle (extremely powerful positioning anchor)
-                IconButton(
-                    onClick = { lockGpsCenter = !lockGpsCenter },
-                    modifier = Modifier
-                        .size(28.dp)
-                        .background(if (lockGpsCenter && isRealPositionEnabled) Color(0xFF39FF14).copy(alpha = 0.25f) else Color.Black.copy(alpha = 0.5f), CircleShape)
-                        .border(1.dp, if (lockGpsCenter && isRealPositionEnabled) Color(0xFF39FF14) else Color.Transparent, CircleShape)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.GpsFixed,
-                        contentDescription = "Lock GPS Center",
-                        tint = if (lockGpsCenter && isRealPositionEnabled) Color(0xFF39FF14) else Color.White,
-                        modifier = Modifier.size(14.dp)
-                    )
-                }
-            }
-
-            // HUD overlay (Positioning Status & Multi-GNSS satellite count dashboard)
-            if (positioningStatus && isRealPositionEnabled) {
-                val utmResult = UtmConverter.convertLatLngToUtm(currentLat, currentLon)
-                // Accuracy color-grading system based on user instructions (Good accuracy = Neon Green, otherwise Red/Orange)
-                val accuracyColor = when {
-                    gpsAccuracy <= 2.8 -> Color(0xFF39FF14) // Neon green "سبز" (Excellent accuracy)
-                    gpsAccuracy <= 5.5 -> Color(0xFFFFB020) // Orange (Warning accuracy)
-                    else -> Color(0xFFFF3030) // Red (Poor accuracy)
-                }
-                
-                Card(
-                    modifier = Modifier
-                        .padding(8.dp)
-                        .align(Alignment.TopStart),
-                    colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.75f))
-                ) {
-                    Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            // Pulsing active solid LED accuracy lock status dot (satisfying "هنگام دقت خوب آیکون سبز و در غیر این صورت قرمز")
                             Box(
                                 modifier = Modifier
-                                    .size(7.dp)
-                                    .background(accuracyColor, CircleShape)
-                                    .border(0.5.dp, Color.White, CircleShape)
+                                    .size(10.dp)
+                                    .background(accuracyColor.copy(alpha = ledAlpha), CircleShape)
+                                    .border(1.dp, Color.White, CircleShape)
                             )
+                            
                             Text(
-                                text = "GNSS Fix: 3D RTK Loc",
-                                fontSize = 8.sp,
+                                text = if (isAccuracyGood) "GNSS LOCK: 3D RTK" else "GNSS POOR ACCY",
+                                fontSize = 9.sp,
                                 color = accuracyColor,
                                 fontWeight = FontWeight.Bold
                             )
                         }
                         
-                        Text("Lat: ${String.format(Locale.US, "%.5f°N", currentLat)} | Lon: ${String.format(Locale.US, "%.5f°E", currentLon)}", fontSize = 7.5.sp, color = Color.White, fontFamily = FontFamily.Monospace)
-                        Text("UTM Metric: $utmResult", fontSize = 7.5.sp, color = Color.White, fontFamily = FontFamily.Monospace)
-                        
-                        // Active physical satellites displaying ("در بخش مپ تعداد ماهواره ها رو نشون بدهد")
-                        Text(
-                            text = "Satellites: $satelliteCount GNSS Locked | Dir: ${currentHeading.toInt()}° N",
-                            fontSize = 7.5.sp,
-                            color = Color.LightGray,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            text = "Altitude: 1210m MSL | Accuracy: ±${String.format(Locale.US, "%.1f", gpsAccuracy)}m",
-                            fontSize = 7.sp,
-                            color = accuracyColor
-                        )
+                        Box(
+                            modifier = Modifier
+                                .background(Color(0xFF00E5FF).copy(0.15f), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                        ) {
+                            Text(
+                                text = "Sats: $satelliteCount",
+                                color = Color(0xFF00E5FF),
+                                fontSize = 8.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
-                }
-            }
 
-            // Interactive walk controls overlay (Simulate Movement)
-            Row(
-                modifier = Modifier
-                    .padding(8.dp)
-                    .align(Alignment.BottomEnd),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                IconButton(
-                    onClick = { simulateWalkMove("WEST") },
-                    modifier = Modifier.size(24.dp).background(Color.White.copy(alpha = 0.2f), CircleShape)
-                ) {
-                    Text("W", fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    IconButton(
-                        onClick = { simulateWalkMove("NORTH") },
-                        modifier = Modifier.size(24.dp).background(Color.White.copy(alpha = 0.2f), CircleShape)
-                    ) {
-                        Text("N", fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(2.dp))
+                    
+                    Text("LAT: ${String.format(Locale.US, "%.5f°N", currentLat)}", fontSize = 9.sp, color = Color.White, fontFamily = FontFamily.Monospace)
+                    Text("LON: ${String.format(Locale.US, "%.5f°E", currentLon)}", fontSize = 9.sp, color = Color.White, fontFamily = FontFamily.Monospace)
+                    Text("ALTITUDE: 1210m MSL", fontSize = 9.sp, color = Color.White, fontFamily = FontFamily.Monospace)
+                    Text("PRECISION: ±${String.format(Locale.US, "%.1f", gpsAccuracy)} meters", fontSize = 8.5.sp, color = accuracyColor)
+                    
+                    if (isTrackRecordingEnabled) {
+                        val minutes = recordingDurationSec / 60
+                        val seconds = recordingDurationSec % 60
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFFFF3D00).copy(0.12f), RoundedCornerShape(4.dp))
+                                .padding(4.dp)
+                        ) {
+                            Box(modifier = Modifier.size(6.dp).background(Color.Red, CircleShape))
+                            Text(
+                                "REC TIMER: ${String.format("%02d:%02d", minutes, seconds)}",
+                                fontSize = 8.5.sp,
+                                color = Color(0xFFFF5252),
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
-                    IconButton(
-                        onClick = { simulateWalkMove("SOUTH") },
-                        modifier = Modifier.size(24.dp).background(Color.White.copy(alpha = 0.2f), CircleShape)
-                    ) {
-                        Text("S", fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                    }
                 }
-                IconButton(
-                    onClick = { simulateWalkMove("EAST") },
-                    modifier = Modifier.size(24.dp).background(Color.White.copy(alpha = 0.2f), CircleShape)
-                ) {
-                    Text("E", fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                }
-            }
-
-            // Quick instruction badge
-            Box(
-                modifier = Modifier
-                    .padding(8.dp)
-                    .align(Alignment.BottomStart)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color.Black.copy(alpha = 0.5f))
-                    .padding(4.dp)
-            ) {
-                Text("Walk Simulator: Tap arrow keys to walk", fontSize = 7.5.sp, color = Color.White)
             }
         }
 
-        // Bearing & Great-Circle Distance Tactical Survey Tool (Pocket Surveyor Calculator)
-        var showSurveyCalc by remember { mutableStateOf(false) }
-        var targetLatStr by remember { mutableStateOf("35.7000") }
-        var targetLonStr by remember { mutableStateOf("51.4300") }
+        // -------------------------------------------------------------
+        // LAYER 5: MAIN FLOATING GIS VERTICAL BAR (TOP-RIGHT)
+        // -------------------------------------------------------------
+        Column(
+            modifier = Modifier
+                .padding(12.dp)
+                .align(Alignment.TopEnd),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Quick Add Point / Save Station (Large turquoise touch target button)
+            IconButton(
+                onClick = { isAddPointDialogVisible = true },
+                modifier = Modifier
+                    .size(54.dp)
+                    .background(Color(0xFF00E5FF), RoundedCornerShape(12.dp))
+                    .border(2.dp, Color.White, RoundedCornerShape(12.dp))
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AddLocation,
+                    contentDescription = "Quick Add Geological Station Point",
+                    tint = Color.Black,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
 
-        val targetLat = targetLatStr.toDoubleOrNull() ?: 35.7
-        val targetLon = targetLonStr.toDoubleOrNull() ?: 51.43
+            // Map Layer switcher button
+            IconButton(
+                onClick = { 
+                    isMapLayerPanelVisible = !isMapLayerPanelVisible
+                    isSurveyorPanelVisible = false
+                    isJournalPanelVisible = false
+                    isSettingsPanelVisible = false
+                },
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(if (isMapLayerPanelVisible) Color(0xFF00E5FF) else Color(0xCC1E2522), CircleShape)
+                    .border(1.dp, if (isMapLayerPanelVisible) Color.White else Color(0xFF00E5FF).copy(0.4f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Layers,
+                    contentDescription = "Map Layer Switcher",
+                    tint = if (isMapLayerPanelVisible) Color.Black else Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
 
-        // Great circle distance (Haversine formula in meters)
-        val lat1Rad = Math.toRadians(currentLat)
-        val lat2Rad = Math.toRadians(targetLat)
-        val deltaLatRad = Math.toRadians(targetLat - currentLat)
-        val deltaLonRad = Math.toRadians(targetLon - currentLon)
-        val a = Math.sin(deltaLatRad / 2.0) * Math.sin(deltaLatRad / 2.0) +
-                Math.cos(lat1Rad) * Math.cos(lat2Rad) *
-                Math.sin(deltaLonRad / 2.0) * Math.sin(deltaLonRad / 2.0)
-        val cVal = 2.0 * Math.atan2(Math.sqrt(a), Math.sqrt(1.0 - a))
-        val computedDistanceMeters = 6371000.0 * cVal
+            // GPS Lock re-center button
+            IconButton(
+                onClick = { lockGpsCenter = !lockGpsCenter },
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(if (lockGpsCenter) Color(0xFF00B0FF) else Color(0xCC1E2522), CircleShape)
+                    .border(1.dp, if (lockGpsCenter) Color.White else Color(0xFF00E5FF).copy(0.4f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.GpsFixed,
+                    contentDescription = "Lock Camera to GNSS Center",
+                    tint = if (lockGpsCenter) Color.White else Color.Gray,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
 
-        // Forward Azimuth Bearing (degrees)
-        val yAzimuth = Math.sin(deltaLonRad) * Math.cos(lat2Rad)
-        val xAzimuth = Math.cos(lat1Rad) * Math.sin(lat2Rad) -
-                Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(deltaLonRad)
-        val bearingDeg = (Math.toDegrees(Math.atan2(yAzimuth, xAzimuth)) + 360.0) % 360.0
+            // Track recording button
+            IconButton(
+                onClick = { 
+                    onTrackRecordingChanged(!isTrackRecordingEnabled)
+                },
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(if (isTrackRecordingEnabled) Color(0xFFFF3030) else Color(0xCC1E2522), CircleShape)
+                    .border(1.dp, if (isTrackRecordingEnabled) Color.White else Color(0xFF00E5FF).copy(0.4f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = if (isTrackRecordingEnabled) Icons.Default.Stop else Icons.Default.RadioButtonChecked,
+                    contentDescription = "Track Recorder Play Toggle",
+                    tint = if (isTrackRecordingEnabled) Color.White else Color(0xFFFF5252),
+                    modifier = Modifier.size(22.dp)
+                )
+            }
 
+            // Surveyor Distance & Bearing Calculator
+            IconButton(
+                onClick = { 
+                    isSurveyorPanelVisible = !isSurveyorPanelVisible
+                    isMapLayerPanelVisible = false
+                    isJournalPanelVisible = false
+                    isSettingsPanelVisible = false
+                },
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(if (isSurveyorPanelVisible) Color(0xFF00E5FF) else Color(0xCC1E2522), CircleShape)
+                    .border(1.dp, if (isSurveyorPanelVisible) Color.White else Color(0xFF00E5FF).copy(0.4f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Explore,
+                    contentDescription = "Surveyor Calculator Overlay",
+                    tint = if (isSurveyorPanelVisible) Color.Black else Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            // Saved Journals database track list
+            IconButton(
+                onClick = { 
+                    isJournalPanelVisible = !isJournalPanelVisible
+                    isMapLayerPanelVisible = false
+                    isSurveyorPanelVisible = false
+                    isSettingsPanelVisible = false
+                },
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(if (isJournalPanelVisible) Color(0xFF00E5FF) else Color(0xCC1E2522), CircleShape)
+                    .border(1.dp, if (isJournalPanelVisible) Color.White else Color(0xFF00E5FF).copy(0.4f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.List,
+                    contentDescription = "Field Logs Track Journal list",
+                    tint = if (isJournalPanelVisible) Color.Black else Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            // Advanced GIS Engine Settings Toggle
+            IconButton(
+                onClick = { 
+                    isSettingsPanelVisible = !isSettingsPanelVisible
+                    isMapLayerPanelVisible = false
+                    isSurveyorPanelVisible = false
+                    isJournalPanelVisible = false
+                },
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(if (isSettingsPanelVisible) Color(0xFF00E5FF) else Color(0xCC1E2522), CircleShape)
+                    .border(1.dp, if (isSettingsPanelVisible) Color.White else Color(0xFF00E5FF).copy(0.4f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = "Advanced System Options",
+                    tint = if (isSettingsPanelVisible) Color.Black else Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Zoom Controller Box Group
+            Column(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xE61E2522))
+                    .border(1.dp, Color(0xFF00E5FF).copy(0.3f), RoundedCornerShape(8.dp)),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                IconButton(
+                    onClick = { if (zoomLevel < 8) zoomLevel++ },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Zoom In", tint = Color.White, modifier = Modifier.size(16.dp))
+                }
+                Box(
+                    modifier = Modifier
+                        .background(Color.Black.copy(0.2f))
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                ) {
+                    Text("x$zoomLevel", color = Color(0xFF00FFE0), fontSize = 8.5.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                }
+                IconButton(
+                    onClick = { if (zoomLevel > 1) zoomLevel-- },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(Icons.Default.Remove, contentDescription = "Zoom Out", tint = Color.White, modifier = Modifier.size(16.dp))
+                }
+            }
+        }
+
+        // -------------------------------------------------------------
+        // LAYER 6: FLOATING SIMULATED WALK D-PAD CONTROLLER (BOTTOM-RIGHT)
+        // -------------------------------------------------------------
         Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+            modifier = Modifier
+                .padding(12.dp)
+                .align(Alignment.BottomEnd)
+                .width(135.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xE61E2522)),
+            border = BorderStroke(1.dp, Color(0xFF00E5FF).copy(alpha = 0.2f)),
             shape = RoundedCornerShape(12.dp)
         ) {
-            Column(modifier = Modifier.animateContentSize()) {
-                Row(
+            Column(
+                modifier = Modifier.padding(6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "WALK SIMULATOR", 
+                    fontSize = 7.5.sp, 
+                    fontWeight = FontWeight.Bold, 
+                    color = Color.LightGray
+                )
+                
+                // N key on top row
+                IconButton(
+                    onClick = { simulateWalkMove("NORTH") },
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showSurveyCalc = !showSurveyCalc }
-                        .padding(12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                        .size(34.dp)
+                        .background(Color(0xFF263238), CircleShape)
+                ) {
+                    Text("N", fontSize = 11.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
+                }
+                
+                // West and East middle row
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(imageVector = Icons.Default.Explore, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
-                        Text("Bearing & Great-Circle Distance Surveyor (فاصله و آزیموت)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    IconButton(
+                        onClick = { simulateWalkMove("WEST") },
+                        modifier = Modifier
+                            .size(34.dp)
+                            .background(Color(0xFF263238), CircleShape)
+                    ) {
+                        Text("W", fontSize = 11.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
                     }
-                    Icon(
-                        imageVector = if (showSurveyCalc) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    IconButton(
+                        onClick = { simulateWalkMove("EAST") },
+                        modifier = Modifier
+                            .size(34.dp)
+                            .background(Color(0xFF263238), CircleShape)
+                    ) {
+                        Text("E", fontSize = 11.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
+                    }
                 }
+                
+                // South key on bottom row
+                IconButton(
+                    onClick = { simulateWalkMove("SOUTH") },
+                    modifier = Modifier
+                        .size(34.dp)
+                        .background(Color(0xFF263238), CircleShape)
+                ) {
+                    Text("S", fontSize = 11.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
+                }
+            }
+        }
 
-                if (showSurveyCalc) {
-                    Column(
-                        modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+        // -------------------------------------------------------------
+        // LAYER 7: FIELD INFO HELP BADGE (BOTTOM-LEFT)
+        // -------------------------------------------------------------
+        Box(
+            modifier = Modifier
+                .padding(12.dp)
+                .align(Alignment.BottomStart)
+                .clip(RoundedCornerShape(6.dp))
+                .background(Color.Black.copy(alpha = 0.5f))
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Field GIS Dashboard Loaded.", fontSize = 7.5.sp, color = Color.White)
+                Text("Tap map controls for overlays.", fontSize = 7.sp, color = Color.Gray)
+            }
+        }
+
+        // -------------------------------------------------------------
+        // DYNAMIC OVERLAY 1: FLOATING MAP LAYER SWITCHER PANEL
+        // -------------------------------------------------------------
+        AnimatedVisibility(
+            visible = isMapLayerPanelVisible,
+            enter = fadeIn() + slideInVertically { it / 2 },
+            exit = fadeOut() + slideOutVertically { it / 2 },
+            modifier = Modifier
+                .padding(top = 80.dp, end = 75.dp)
+                .align(Alignment.TopEnd)
+        ) {
+            Card(
+                modifier = Modifier.width(260.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFA1A201C)),
+                border = BorderStroke(1.5.dp, Color(0xFF00E5FF)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Map Layer Provider (تغییر لایه نقشه)",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        color = Color(0xFF00E5FF)
+                    )
+                    
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.Black.copy(0.3f), RoundedCornerShape(6.dp))
+                            .padding(4.dp)
+                    ) {
+                        Button(
+                            onClick = { mapMode = MapMode.ONLINE },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (mapMode == MapMode.ONLINE) Color(0xFF00E5FF) else Color.Transparent,
+                                contentColor = if (mapMode == MapMode.ONLINE) Color.Black else Color.White
+                            ),
+                            contentPadding = PaddingValues(0.dp),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text("Online Webs", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Button(
+                            onClick = { mapMode = MapMode.OFFLINE },
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (mapMode == MapMode.OFFLINE) Color(0xFF00E5FF) else Color.Transparent,
+                                contentColor = if (mapMode == MapMode.OFFLINE) Color.Black else Color.White
+                            ),
+                            contentPadding = PaddingValues(0.dp),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text("Offline Grid", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    if (mapMode == MapMode.ONLINE) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Standard Map Layers:", fontSize = 9.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                            val visibleLayers = MapLayerProvider.values()
+                            visibleLayers.forEach { provider ->
+                                val selected = mapLayer == provider
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { 
+                                            mapLayer = provider 
+                                            isMapLayerPanelVisible = false
+                                        }
+                                        .background(
+                                            if (selected) Color(0xFF00E5FF).copy(0.12f) else Color.Transparent,
+                                            RoundedCornerShape(4.dp)
+                                        )
+                                        .padding(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = if (selected) Icons.Default.CheckCircle else Icons.Default.Layers,
+                                        contentDescription = null,
+                                        tint = if (selected) Color(0xFF00E5FF) else Color.Gray,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = provider.label,
+                                        fontSize = 11.sp,
+                                        color = if (selected) Color(0xFF00FFE0) else Color.White
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        // Offline specifications
+                        Column(modifier = Modifier.padding(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Offline Vector Grid Grid Mode Active", fontSize = 10.sp, color = Color.LightGray)
+                            Text("Allows field recording of tracks and targets cleanly without high-resolution base layers if remote signal is offline.", fontSize = 9.sp, color = Color.Gray, lineHeight = 13.sp)
+                        }
+                    }
+                    
+                    Divider(color = Color.White.copy(0.15f))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Outdoor External Maps:", fontSize = 8.5.sp, color = Color.Gray)
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            IconButton(
+                                onClick = { openBrowserLink(context, "https://www.google.com/maps/search/?api=1&query=$currentLat,$currentLon") },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(Icons.Default.Language, contentDescription = "Google Maps Web", tint = Color(0xFF00E5FF), modifier = Modifier.size(14.dp))
+                            }
+                            IconButton(
+                                onClick = { openBrowserLink(context, "https://www.openstreetmap.org/#map=17/$currentLat/$currentLon") },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(Icons.Default.Explore, contentDescription = "OSM Web", tint = Color(0xFF00E5FF), modifier = Modifier.size(14.dp))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // -------------------------------------------------------------
+        // DYNAMIC OVERLAY 2: SURVEYOR COORDINATE SYSTEM & AZIMUTH TOOL
+        // -------------------------------------------------------------
+        AnimatedVisibility(
+            visible = isSurveyorPanelVisible,
+            enter = fadeIn() + slideInVertically { it / 2 },
+            exit = fadeOut() + slideOutVertically { it / 2 },
+            modifier = Modifier
+                .padding(top = 170.dp, end = 75.dp)
+                .align(Alignment.TopEnd)
+        ) {
+            var targetLatStr by remember { mutableStateOf("35.7000") }
+            var targetLonStr by remember { mutableStateOf("51.4300") }
+
+            val targetLatVal = targetLatStr.toDoubleOrNull() ?: 35.7
+            val targetLonVal = targetLonStr.toDoubleOrNull() ?: 51.43
+
+            // Great circle distance (Haversine formula in meters)
+            val lat1Rad = Math.toRadians(currentLat)
+            val lat2Rad = Math.toRadians(targetLatVal)
+            val deltaLatRad = Math.toRadians(targetLatVal - currentLat)
+            val deltaLonRad = Math.toRadians(targetLonVal - currentLon)
+            val a = Math.sin(deltaLatRad / 2.0) * Math.sin(deltaLatRad / 2.0) +
+                    Math.cos(lat1Rad) * Math.cos(lat2Rad) *
+                    Math.sin(deltaLonRad / 2.0) * Math.sin(deltaLonRad / 2.0)
+            val cVal = 2.0 * Math.atan2(Math.sqrt(a), Math.sqrt(1.0 - a))
+            val computedDistanceMeters = 6371000.0 * cVal
+
+            // Forward Azimuth Bearing (degrees)
+            val yAzimuth = Math.sin(deltaLonRad) * Math.cos(lat2Rad)
+            val xAzimuth = Math.cos(lat1Rad) * Math.sin(lat2Rad) -
+                    Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(deltaLonRad)
+            val bearingDeg = (Math.toDegrees(Math.atan2(yAzimuth, xAzimuth)) + 360.0) % 360.0
+
+            Card(
+                modifier = Modifier.width(280.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF161C19)),
+                border = BorderStroke(1.5.dp, Color(0xFF00E5FF)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(Icons.Default.Explore, contentDescription = null, tint = Color(0xFF00E5FF), modifier = Modifier.size(18.dp))
+                            Text("Bearing & Distance Surveyor", fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = Color.White)
+                        }
+                        IconButton(onClick = { isSurveyorPanelVisible = false }, modifier = Modifier.size(20.dp)) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                    
+                    Text(
+                        text = "محاسبه گرای ژئودزیک دقیق و فاصله افقی تا نقطه گمانه هدف",
+                        fontSize = 9.sp,
+                        color = Color.LightGray,
+                        lineHeight = 13.sp
+                    )
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                        OutlinedTextField(
+                            value = targetLatStr,
+                            onValueChange = { targetLatStr = it },
+                            label = { Text("Target Lat (°)", fontSize = 8.sp, color = Color.LightGray) },
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp, color = Color.White, fontFamily = FontFamily.Monospace),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFF00E5FF),
+                                unfocusedBorderColor = Color.Gray.copy(0.5f),
+                                focusedContainerColor = Color.Black.copy(0.2f),
+                                unfocusedContainerColor = Color.Black.copy(0.2f)
+                            )
+                        )
+                        OutlinedTextField(
+                            value = targetLonStr,
+                            onValueChange = { targetLonStr = it },
+                            label = { Text("Target Lng (°)", fontSize = 8.sp, color = Color.LightGray) },
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp, color = Color.White, fontFamily = FontFamily.Monospace),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFF00E5FF),
+                                unfocusedBorderColor = Color.Gray.copy(0.5f),
+                                focusedContainerColor = Color.Black.copy(0.2f),
+                                unfocusedContainerColor = Color.Black.copy(0.2f)
+                            )
+                        )
+                    }
+
+                    if (stationsToShow.isNotEmpty()) {
+                        var snapExpanded by remember { mutableStateOf(false) }
+                        Box {
+                            OutlinedButton(
+                                onClick = { snapExpanded = !snapExpanded },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(6.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF00E5FF)),
+                                border = BorderStroke(0.5.dp, Color(0xFF00E5FF).copy(0.6f)),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text("Snap targeting to mapped station", fontSize = 10.sp)
+                                Spacer(modifier = Modifier.weight(1f))
+                                Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
+                            
+                            DropdownMenu(
+                                expanded = snapExpanded,
+                                onDismissRequest = { snapExpanded = false },
+                                modifier = Modifier.background(Color(0xFF161C19)).border(1.dp, Color(0xFF00E5FF))
+                            ) {
+                                stationsToShow.forEach { s ->
+                                    DropdownMenuItem(
+                                        text = { Text("${s.stationCode} (Lat: ${s.latitude})", fontSize = 11.sp, color = Color.White) },
+                                        onClick = {
+                                            targetLatStr = s.latitude.toString()
+                                            targetLonStr = s.longitude.toString()
+                                            snapExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = Color.Black.copy(0.4f)),
+                        border = BorderStroke(0.5.dp, Color(0xFF00E5FF).copy(alpha = 0.2f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Spheroidal Dist", fontSize = 8.5.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                                val dStr = if (computedDistanceMeters >= 1000.0) {
+                                    "${String.format(Locale.US, "%.3f", computedDistanceMeters / 1000.0)} km"
+                                } else {
+                                    "${computedDistanceMeters.toInt()} m"
+                                }
+                                Text(dStr, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00FFE0))
+                            }
+                            Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color.White.copy(0.12f)))
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("True Bearing", fontSize = 8.5.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                                Text("${String.format(Locale.US, "%.1f° N", bearingDeg)}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00FFE0))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // -------------------------------------------------------------
+        // DYNAMIC OVERLAY 3: FLOATING SENSOR & MAPBOX CONFIG SETTINGS PANEL
+        // -------------------------------------------------------------
+        AnimatedVisibility(
+            visible = isSettingsPanelVisible,
+            enter = fadeIn() + slideInVertically { it / 2 },
+            exit = fadeOut() + slideOutVertically { it / 2 },
+            modifier = Modifier
+                .padding(top = 110.dp, end = 75.dp)
+                .align(Alignment.TopEnd)
+        ) {
+            Card(
+                modifier = Modifier.width(280.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF151817)),
+                border = BorderStroke(1.5.dp, Color(0xFF00E5FF)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(Icons.Default.Settings, contentDescription = null, tint = Color(0xFF00E5FF), modifier = Modifier.size(18.dp))
+                            Text("Advanced GIS Configs", fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = Color.White)
+                        }
+                        IconButton(onClick = { isSettingsPanelVisible = false }, modifier = Modifier.size(20.dp)) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                        }
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("MAPPING TELEMETRIES:", fontSize = 9.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
+                        
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Live GNSS lock positioning", fontSize = 10.5.sp, color = Color.White)
+                            Checkbox(
+                                checked = isRealPositionEnabled, 
+                                onCheckedChange = { onRealPositionChanged(it) },
+                                colors = CheckboxDefaults.colors(checkedColor = Color(0xFF00E5FF))
+                            )
+                        }
+                        
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Compass map auto orientation", fontSize = 10.5.sp, color = Color.White)
+                            Checkbox(
+                                checked = rotateMapUsingGnss, 
+                                onCheckedChange = { rotateMapUsingGnss = it },
+                                colors = CheckboxDefaults.colors(checkedColor = Color(0xFF00E5FF))
+                            )
+                        }
+
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Line of sight dashed indicator", fontSize = 10.5.sp, color = Color.White)
+                            Checkbox(
+                                checked = displayLineFromPosition, 
+                                onCheckedChange = { displayLineFromPosition = it },
+                                colors = CheckboxDefaults.colors(checkedColor = Color(0xFF00E5FF))
+                            )
+                        }
+
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Telemetry status overlays", fontSize = 10.5.sp, color = Color.White)
+                            Checkbox(
+                                checked = positioningStatus, 
+                                onCheckedChange = { positioningStatus = it },
+                                colors = CheckboxDefaults.colors(checkedColor = Color(0xFF00E5FF))
+                            )
+                        }
+                    }
+
+                    Divider(color = Color.White.copy(0.12f))
+
+                    // Mapbox details
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("MAPBOX TILES INTEGRATION API:", fontSize = 9.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
+                        Text("Required for outdoor satellite topo overlays:", fontSize = 8.5.sp, color = Color.Gray, lineHeight = 12.sp)
+                        
+                        OutlinedTextField(
+                            value = mapboxTokenInput,
+                            onValueChange = { mapboxTokenInput = it },
+                            label = { Text("Mapbox Private Key", fontSize = 8.5.sp, color = Color.LightGray) },
+                            singleLine = true,
+                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = Color.White),
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFF00E5FF),
+                                unfocusedBorderColor = Color.Gray.copy(0.4f),
+                                focusedLabelColor = Color(0xFF00E5FF)
+                            ),
+                            trailingIcon = {
+                                IconButton(onClick = { mapboxTokenInput = "pk.eyJ1IjoiZmFyemFkZiIsImEiOiJjbHpiaXdwZ3cwMTF5MndzYzhvdzBoMHp1In0.6R0R9z84Vd-M208r_6oY7g" }) {
+                                    Icon(Icons.Default.Refresh, contentDescription = "Default Token", tint = Color(0xFF00E5FF), modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        )
+                    }
+                    
+                    Divider(color = Color.White.copy(0.12f))
+
+                    // Simulated settings
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("SIMULATED CONSTELLATION:", fontSize = 9.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Text("Sats lock count: $satelliteCount", fontSize = 10.sp, color = Color.White, modifier = Modifier.weight(1f))
+                            Slider(
+                                value = satelliteCount.toFloat(),
+                                onValueChange = { satelliteCount = it.toInt() },
+                                valueRange = 4f..24f,
+                                modifier = Modifier.width(130.dp),
+                                colors = SliderDefaults.colors(activeTrackColor = Color(0xFF00E5FF), thumbColor = Color(0xFF00E5FF))
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                            Text("GPS error radius: ±${String.format(Locale.US, "%.1f", gpsAccuracy)}m", fontSize = 10.sp, color = Color.White, modifier = Modifier.weight(1f))
+                            Slider(
+                                value = gpsAccuracy.toFloat(),
+                                onValueChange = { gpsAccuracy = it.toDouble() },
+                                valueRange = 0.5f..12.0f,
+                                modifier = Modifier.width(130.dp),
+                                colors = SliderDefaults.colors(activeTrackColor = Color(0xFF00E5FF), thumbColor = Color(0xFF00E5FF))
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // -------------------------------------------------------------
+        // DYNAMIC OVERLAY 4: FLOATING MAPPED TRACK JOURNAL JOURNAL PANEL
+        // -------------------------------------------------------------
+        AnimatedVisibility(
+            visible = isJournalPanelVisible,
+            enter = fadeIn() + slideInVertically { it / 2 },
+            exit = fadeOut() + slideOutVertically { it / 2 },
+            modifier = Modifier
+                .padding(top = 180.dp, end = 75.dp)
+                .align(Alignment.TopEnd)
+        ) {
+            Card(
+                modifier = Modifier.width(310.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFC111513)),
+                border = BorderStroke(1.5.dp, Color(0xFF00E5FF)),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(Icons.Default.List, contentDescription = null, tint = Color(0xFF00E5FF), modifier = Modifier.size(18.dp))
+                            Text("Saved Paths Journal", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color.White)
+                        }
+                        IconButton(onClick = { isJournalPanelVisible = false }, modifier = Modifier.size(20.dp)) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray, modifier = Modifier.size(16.dp))
+                        }
+                    }
+
+                    Divider(color = Color.White.copy(0.12f))
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(260.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = "محاسبه فاصله پرید شعاعی (ارتودرومیک) و زاویه دقیق گرای جغرافیایی (Azimuth) از مکان کنونی شما به نقطه هدف:",
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(
-                                value = targetLatStr,
-                                onValueChange = { targetLatStr = it },
-                                label = { Text("Target Lat (°)", fontSize = 8.5.sp) },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                singleLine = true,
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(8.dp)
-                            )
-                            OutlinedTextField(
-                                value = targetLonStr,
-                                onValueChange = { targetLonStr = it },
-                                label = { Text("Target Lon (°)", fontSize = 8.5.sp) },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                singleLine = true,
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(8.dp)
-                            )
-                        }
-
-                        // Hot stations selector dropdown
-                        if (stationsToShow.isNotEmpty()) {
-                            var dropdownExpanded by remember { mutableStateOf(false) }
-                            Box(modifier = Modifier.fillMaxWidth()) {
-                                OutlinedButton(
-                                    onClick = { dropdownExpanded = true },
+                        if (savedTracks.isEmpty()) {
+                            item {
+                                Box(
+                                    modifier = Modifier.fillMaxSize().padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = "No saved field GPS paths. Tap the red record indicator widget to log walks.",
+                                        fontSize = 10.sp,
+                                        color = Color.LightGray,
+                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                    )
+                                }
+                            }
+                        } else {
+                            items(savedTracks) { track ->
+                                Card(
                                     modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(6.dp)
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E2521)),
+                                    border = BorderStroke(0.5.dp, Color(0xFF00E5FF).copy(alpha = 0.2f))
                                 ) {
-                                    Text("Snap Target to Station (پرش به ایستگاه)", fontSize = 11.sp)
-                                    Spacer(modifier = Modifier.weight(1f))
-                                    Icon(Icons.Default.ArrowDropDown, contentDescription = null)
-                                }
-                                DropdownMenu(expanded = dropdownExpanded, onDismissRequest = { dropdownExpanded = false }) {
-                                    stationsToShow.forEach { sta ->
-                                        DropdownMenuItem(
-                                            text = { Text("${sta.stationCode} (${sta.latitude}, ${sta.longitude})", fontSize = 11.sp) },
-                                            onClick = {
-                                                targetLatStr = sta.latitude.toString()
-                                                targetLonStr = sta.longitude.toString()
-                                                dropdownExpanded = false
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)),
-                            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(10.dp),
-                                horizontalArrangement = Arrangement.SpaceEvenly
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("Great-Circle Distance", fontSize = 9.sp, color = MaterialTheme.colorScheme.secondary)
-                                    val distStr = if (computedDistanceMeters >= 1000.0) {
-                                        "${String.format(Locale.US, "%.3f", computedDistanceMeters / 1000.0)} km"
-                                    } else {
-                                        "${computedDistanceMeters.toInt()} meters"
-                                    }
-                                    Text(distStr, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                }
-                                Box(modifier = Modifier.width(1.dp).height(24.dp).background(MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)))
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("Geodetic Azimuth Bear", fontSize = 9.sp, color = MaterialTheme.colorScheme.secondary)
-                                    Text("${String.format(Locale.US, "%.1f", bearingDeg)}°", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        Divider()
-
-        // List Header saved database tracks
-        Text("Saved Field GPS Tracks Journal", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-
-        // Tracks lazy scrolling list
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().weight(1f),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            if (savedTracks.isEmpty()) {
-                item {
-                    Text("No saved field GPS paths. Enable the Track Recorder and walk to capture paths.", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            } else {
-                items(savedTracks) { track ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f))
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text(track.name, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                                val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(track.createdAt))
-                                Text(dateStr, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontFamily = FontFamily.Monospace)
-                            }
-                            
-                            Spacer(modifier = Modifier.height(4.dp))
-                            
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                                Text("Length: ${track.lengthMeters.toInt()} meters", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                val minutes = track.durationSeconds / 60
-                                val seconds = track.durationSeconds % 60
-                                Text("Recorded: ${minutes}m ${seconds}s", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontFamily = FontFamily.Monospace)
-                            }
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                                horizontalArrangement = Arrangement.End,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                // Rename
-                                TextButton(
-                                    onClick = {
-                                        editTrackItem = track
-                                        editTrackItemName = track.name
-                                        showEditDialog = true
-                                    }
-                                ) {
-                                    Icon(Icons.Default.Edit, contentDescription = "Rename", modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Rename", fontSize = 11.sp)
-                                }
-
-                                Spacer(modifier = Modifier.width(10.dp))
-
-                                // Export MultiFormat Chooser
-                                TextButton(
-                                    onClick = {
-                                        // Choose exporting and share GPX, KML, GeoJSON, TXT formats
-                                        val points = parsePointsJson(track.pointsJson)
-                                        val fileString = when (exportFormatChoice) {
-                                            "GPX" -> generateGpxString(track.name, points)
-                                            "KML" -> generateKmlString(track.name, points)
-                                            "GeoJSON" -> generateGeoJsonString(track.name, points)
-                                            else -> generateTxtString(track.name, points, track.lengthMeters, track.durationSeconds)
+                                    Column(modifier = Modifier.padding(8.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(track.name, fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = Color(0xFF00E5FF))
+                                            val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(track.createdAt))
+                                            Text(dateStr, fontSize = 8.sp, color = Color.Gray, fontFamily = FontFamily.Monospace)
                                         }
-                                        val extension = exportFormatChoice.lowercase(Locale.US)
-                                        val mime = if (exportFormatChoice == "GeoJSON") "application/json" else "application/xml"
-                                        shareFileWithApps(context, "${track.name}.$extension", mime, fileString)
+                                        
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("Len: ${track.lengthMeters.toInt()}m | Dur: ${track.durationSeconds / 60}m ${track.durationSeconds % 60}s", fontSize = 9.sp, color = Color.LightGray)
+                                            IconButton(
+                                                onClick = { viewModel.deleteTrack(track.id) },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFFF5252), modifier = Modifier.size(14.dp))
+                                            }
+                                        }
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.End,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            TextButton(
+                                                onClick = {
+                                                    editTrackItem = track
+                                                    editTrackItemName = track.name
+                                                    showEditDialog = true
+                                                },
+                                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 1.dp),
+                                                modifier = Modifier.height(24.dp)
+                                            ) {
+                                                Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(10.dp), tint = Color(0xFF00FFE0))
+                                                Spacer(Modifier.width(2.dp))
+                                                Text("Rename", fontSize = 9.sp, color = Color(0xFF00FFE0))
+                                            }
+                                            Spacer(Modifier.width(8.dp))
+                                            TextButton(
+                                                onClick = {
+                                                    val points = parsePointsJson(track.pointsJson)
+                                                    val fileString = when (exportFormatChoice) {
+                                                        "GPX" -> generateGpxString(track.name, points)
+                                                        "KML" -> generateKmlString(track.name, points)
+                                                        "GeoJSON" -> generateGeoJsonString(track.name, points)
+                                                        else -> generateTxtString(track.name, points, track.lengthMeters, track.durationSeconds)
+                                                    }
+                                                    val extension = exportFormatChoice.lowercase(Locale.US)
+                                                    val mime = if (exportFormatChoice == "GeoJSON") "application/json" else "application/xml"
+                                                    shareFileWithApps(context, "${track.name}.$extension", mime, fileString)
+                                                },
+                                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 1.dp),
+                                                modifier = Modifier.height(24.dp)
+                                            ) {
+                                                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(10.dp), tint = Color(0xFF00FFE0))
+                                                Spacer(Modifier.width(2.dp))
+                                                Text("Share ($exportFormatChoice)", fontSize = 9.sp, color = Color(0xFF00FFE0))
+                                            }
+                                        }
                                     }
-                                ) {
-                                    Icon(Icons.Default.Share, contentDescription = "Export", modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Export ($exportFormatChoice)", fontSize = 11.sp)
-                                }
-
-                                Spacer(modifier = Modifier.width(10.dp))
-
-                                // Delete
-                                TextButton(
-                                    onClick = { viewModel.deleteTrack(track.id) },
-                                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                                ) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete", modifier = Modifier.size(14.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Delete", fontSize = 11.sp)
                                 }
                             }
                         }
                     }
-                }
-            }
 
-            // Format switcher chooser tool list tail
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Default path share-export format:", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        listOf("GPX", "KML", "GeoJSON", "TXT").forEach { format ->
-                            FilterChip(
-                                selected = exportFormatChoice == format,
-                                onClick = { exportFormatChoice = format },
-                                label = { Text(format, fontSize = 9.sp, fontWeight = FontWeight.Bold) }
-                            )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Export Layout Format:", fontSize = 8.5.sp, color = Color.Gray)
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            listOf("GPX", "KML", "GeoJSON", "TXT").forEach { format ->
+                                FilterChip(
+                                    selected = exportFormatChoice == format,
+                                    onClick = { exportFormatChoice = format },
+                                    label = { Text(format, fontSize = 8.sp, fontWeight = FontWeight.Bold) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = Color(0xFF00E5FF),
+                                        selectedLabelColor = Color.Black,
+                                        containerColor = Color.White.copy(0.1f),
+                                        labelColor = Color.White
+                                    )
+                                )
+                            }
                         }
                     }
                 }
             }
         }
 
-        // 1. Save Recorded Track Dialect
+        // -------------------------------------------------------------
+        // DYNAMIC OVERLAY 5: ADD GEOLOGICAL POINT QUICK-LOG DIALOG
+        // -------------------------------------------------------------
+        if (isAddPointDialogVisible) {
+            AlertDialog(
+                onDismissRequest = { isAddPointDialogVisible = false },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Default.AddLocation, contentDescription = null, tint = Color(0xFF00E5FF))
+                        Text("Simulate Quick-Log Station", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    }
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        val activeProj = activeProject
+                        if (activeProj == null) {
+                            Text(
+                                "No active geological project selected! Please select a project on 'Geological Mapping' tab first before logging.", 
+                                fontSize = 11.sp, 
+                                color = Color.Red
+                            )
+                        } else {
+                            Text(
+                                "Registers a new point instantly at the current sight target center coords in active project: '${activeProj.name}'",
+                                fontSize = 10.5.sp,
+                                color = Color.White
+                            )
+
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.3f)),
+                                border = BorderStroke(0.5.dp, Color(0xFF00E5FF).copy(0.3f))
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text("Sight target: ${String.format(Locale.US, "%.5f", currentLat)}°N , ${String.format(Locale.US, "%.5f", currentLon)}°E", fontSize = 10.sp, color = Color(0xFF00FFE0), fontFamily = FontFamily.Monospace)
+                                    val utmResultCoord = UtmConverter.convertLatLngToUtm(currentLat, currentLon)
+                                    Text("UTM Zone: $utmResultCoord", fontSize = 9.sp, color = Color.White, fontFamily = FontFamily.Monospace)
+                                }
+                            }
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                                OutlinedTextField(
+                                    value = quickStationPrefix,
+                                    onValueChange = { quickStationPrefix = it },
+                                    label = { Text("Prefix (پیشوند)", fontSize = 9.sp) },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f),
+                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF00E5FF))
+                                )
+                                OutlinedTextField(
+                                    value = quickStationCode,
+                                    onValueChange = { quickStationCode = it },
+                                    label = { Text("Station Code (کد)", fontSize = 9.sp) },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(2f),
+                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF00E5FF))
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    val activeProj = activeProject
+                    if (activeProj != null) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            // Quick Save
+                            Button(
+                                onClick = {
+                                    viewModel.setManualCoordinates(currentLat, currentLon, 1210.0, gpsAccuracy)
+                                    viewModel.saveStation(activeProj.id, quickStationCode, quickStationPrefix) {
+                                        isAddPointDialogVisible = false
+                                        Toast.makeText(context, "Logged $quickStationCode successfully at target position!", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF), contentColor = Color.Black)
+                            ) {
+                                Text("Quick Save")
+                            }
+
+                            // Full Registration Navigation
+                            Button(
+                                onClick = {
+                                    viewModel.setManualCoordinates(currentLat, currentLon, 1210.0, gpsAccuracy)
+                                    viewModel.navigateTo(Screen.CreateStation(activeProj.id))
+                                    isAddPointDialogVisible = false
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00B0FF), contentColor = Color.White)
+                            ) {
+                                Text("Full Details Form")
+                            }
+                        }
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { isAddPointDialogVisible = false }) {
+                        Text("Cancel", color = Color.Gray)
+                    }
+                },
+                containerColor = Color(0xFF161B18),
+                textContentColor = Color.White,
+                titleContentColor = Color.White
+            )
+        }
+
+        // -------------------------------------------------------------
+        // STANDARD TRACK SAVE AND TRACK NAME EDIT DIALOGS
+        // -------------------------------------------------------------
         if (showSaveDialog) {
             AlertDialog(
                 onDismissRequest = { showSaveDialog = false },
                 title = { Text("End of Recording: Save Track Path", fontSize = 14.sp, fontWeight = FontWeight.Bold) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("The GPS field path was measured successfully. Please specify a label to save it in your database journal:", fontSize = 11.sp)
+                        Text("The GPS field path was logged successfully. Specify a tag to save in database journal:", fontSize = 11.sp)
                         
-                        Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text("Estimated Length: ${tempTrackLength.toInt()} meters", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                Text("Duration: ${tempTrackDuration / 60}m ${tempTrackDuration % 60}s", fontSize = 11.sp)
-                                Text("Captured Track Points: ${activePointsList.size} points", fontSize = 10.sp)
+                        Card(colors = CardDefaults.cardColors(containerColor = Color.Black.copy(0.3f))) {
+                            Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text("Estimated Length: ${tempTrackLength.toInt()} meters", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00E5FF))
+                                Text("Duration: ${tempTrackDuration / 60}m ${tempTrackDuration % 60}s", fontSize = 10.1.sp)
+                                Text("Captured Track Points: ${activePointsList.size} positions", fontSize = 10.sp, color = Color.Gray)
                             }
                         }
 
                         OutlinedTextField(
                             value = newTrackName,
                             onValueChange = { newTrackName = it },
-                            label = { Text("Track Name", fontSize = 11.sp) }
+                            label = { Text("Track Name", fontSize = 11.sp) },
+                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF00E5FF))
                         )
                     }
                 },
@@ -9161,8 +9631,9 @@ fun MapContent(viewModel: GeologyViewModel) {
                         onClick = {
                             viewModel.saveTrack(newTrackName, tempTrackPointsJson, tempTrackLength, tempTrackDuration)
                             showSaveDialog = false
-                            Toast.makeText(context, "Track logged successfully to sqlite as $newTrackName", Toast.LENGTH_SHORT).show()
-                        }
+                            Toast.makeText(context, "Track logged successfully to journal as $newTrackName", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF), contentColor = Color.Black)
                     ) {
                         Text("Save to Database")
                     }
@@ -9171,11 +9642,13 @@ fun MapContent(viewModel: GeologyViewModel) {
                     TextButton(onClick = { showSaveDialog = false }) {
                         Text("Cancel")
                     }
-                }
+                },
+                containerColor = Color(0xFF161B18),
+                textContentColor = Color.White,
+                titleContentColor = Color.White
             )
         }
 
-        // 2. Edit Track Dialog
         if (showEditDialog && editTrackItem != null) {
             AlertDialog(
                 onDismissRequest = { showEditDialog = false },
@@ -9184,7 +9657,8 @@ fun MapContent(viewModel: GeologyViewModel) {
                     OutlinedTextField(
                         value = editTrackItemName,
                         onValueChange = { editTrackItemName = it },
-                        label = { Text("New Track Name") }
+                        label = { Text("New Track Name") },
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF00E5FF))
                     )
                 },
                 confirmButton = {
@@ -9193,7 +9667,8 @@ fun MapContent(viewModel: GeologyViewModel) {
                             viewModel.updateTrackName(editTrackItem!!.id, editTrackItemName)
                             showEditDialog = false
                             Toast.makeText(context, "Track renamed successfully!", Toast.LENGTH_SHORT).show()
-                        }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF), contentColor = Color.Black)
                     ) {
                         Text("Save Name")
                     }
@@ -9202,7 +9677,10 @@ fun MapContent(viewModel: GeologyViewModel) {
                     TextButton(onClick = { showEditDialog = false }) {
                         Text("Cancel")
                     }
-                }
+                },
+                containerColor = Color(0xFF161B18),
+                textContentColor = Color.White,
+                titleContentColor = Color.White
             )
         }
     }

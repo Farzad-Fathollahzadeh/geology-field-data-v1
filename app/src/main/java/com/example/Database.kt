@@ -398,6 +398,15 @@ interface GeologyDao {
     @Query("DELETE FROM borehole_core_runs WHERE id = :id")
     suspend fun deleteCoreRunById(id: Int)
 
+    @Query("SELECT * FROM boreholes WHERE projectId = :projectId ORDER BY id ASC")
+    suspend fun getBoreholesForProjectSync(projectId: Int): List<Borehole>
+
+    @Query("SELECT * FROM borehole_daily_reports WHERE boreholeId = :boreholeId ORDER BY id DESC")
+    suspend fun getDailyReportsForBoreholeSync(boreholeId: Int): List<BoreholeDailyReport>
+
+    @Query("SELECT * FROM borehole_core_runs WHERE boreholeId = :boreholeId ORDER BY runNumber ASC")
+    suspend fun getCoreRunsForBoreholeSync(boreholeId: Int): List<BoreholeCoreRun>
+
     // Rock Mechanics Evaluations
     @Query("SELECT * FROM rock_mechanics_evaluations WHERE projectId = :projectId ORDER BY id DESC")
     fun getRockMechanicsEvaluationsForProject(projectId: Int): Flow<List<RockMechanicsEvaluation>>
