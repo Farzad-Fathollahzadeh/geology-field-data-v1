@@ -14,6 +14,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.Room
 import com.example.UtmConverter.convertLatLngToUtm
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationCallback
+import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
@@ -70,6 +73,253 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
     val dao = db.dao()
 
     private val prefs = application.getSharedPreferences("geofield_prefs", Context.MODE_PRIVATE)
+
+    // --- REALTIME CONTINUOUS GPS & TRACKING ENGINE ---
+    
+    // Live location object
+    private val _liveLocation = MutableStateFlow<android.location.Location?>(null)
+    val liveLocation: StateFlow<android.location.Location?> = _liveLocation
+
+    // Track recording indicators
+    private val _isTrackRecordingEnabled = MutableStateFlow(false)
+    val isTrackRecordingActive: StateFlow<Boolean> = _isTrackRecordingEnabled
+
+    // Current active track points
+    private val _activePoints = MutableStateFlow<List<TrackPoint>>(emptyList())
+    val activePoints: StateFlow<List<TrackPoint>> = _activePoints
+
+    val recordingStartTime = MutableStateFlow(0L)
+    val recordingDurationSec = MutableStateFlow(0L)
+    val tempTrackLength = MutableStateFlow(0.0)
+
+    private var locationCallback: LocationCallback? = null
+    private val fusedLocationClient by lazy { LocationServices.getFusedLocationProviderClient(application) }
+
+    init {
+        // Recover draft/unsaved track path on start (crash protection!)
+        recoverActiveTrackDraft()
+
+        // Start a continuous 1-second ticker job to increment duration seconds if recording
+        viewModelScope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(1000L)
+                if (_isTrackRecordingEnabled.value && recordingStartTime.value > 0) {
+                    recordingDurationSec.value = (System.currentTimeMillis() - recordingStartTime.value) / 1000
+                    saveActiveTrackDraft()
+                }
+            }
+        }
+    }
+
+    fun startLocationTracking(context: Context) {
+        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
+            ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            return
+        }
+        
+        // Stop any existing callback to avoid double listeners
+        stopLocationTracking()
+
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2000L).apply {
+            setMinUpdateIntervalMillis(1000L)
+            setMinUpdateDistanceMeters(1.0f) // Only update when moved, saves battery and filters minor noise
+        }.build()
+
+        locationCallback = object : LocationCallback() {
+            override fun onLocationResult(locationResult: LocationResult) {
+                val location = locationResult.lastLocation ?: return
+                
+                // --- GPS Noise Smoothing/Filtering ---
+                // Discard extremely poor accuracy positions (noise filter)
+                if (location.accuracy > 35.0) return
+
+                _liveLocation.value = location
+                
+                // Update standard _gpsState so other screens (CreateStation) see live details!
+                val activeProj = activeProject.value
+                val forcedZone = if (activeProj?.utmZoneMode == "MANUAL") activeProj.utmZoneManual else null
+                val utm = convertLatLngToUtm(location.latitude, location.longitude, forcedZone)
+                val elevAcc = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O && location.hasVerticalAccuracy()) {
+                    location.verticalAccuracyMeters.toDouble()
+                } else {
+                    location.accuracy.toDouble() * 1.5
+                }
+
+                _gpsState.update {
+                    it.copy(
+                        latitude = location.latitude,
+                        longitude = location.longitude,
+                        elevation = location.altitude,
+                        accuracy = location.accuracy.toDouble(),
+                        elevationAccuracy = elevAcc,
+                        utmEasting = utm.easting,
+                        utmNorthing = utm.northing,
+                        utmZone = utm.zoneString,
+                        isCaptured = true,
+                        isLocating = false,
+                        source = "GPS (Continuous)"
+                    )
+                }
+
+                // If currently recording track, add to our list
+                if (_isTrackRecordingEnabled.value) {
+                    val newPoint = TrackPoint(
+                        lat = location.latitude,
+                        lon = location.longitude,
+                        ele = location.altitude,
+                        time = System.currentTimeMillis(),
+                        accuracy = location.accuracy.toDouble(),
+                        heading = location.bearing.toDouble()
+                    )
+                    appendTrackPoint(newPoint)
+                }
+            }
+        }
+
+        try {
+            fusedLocationClient.requestLocationUpdates(
+                locationRequest,
+                locationCallback!!,
+                android.os.Looper.getMainLooper()
+            )
+        } catch (e: Exception) {
+            // failed to request location
+        }
+    }
+
+    fun stopLocationTracking() {
+        locationCallback?.let {
+            fusedLocationClient.removeLocationUpdates(it)
+            locationCallback = null
+        }
+    }
+
+    fun startRecordingTrack() {
+        _isTrackRecordingEnabled.value = true
+        _activePoints.value = emptyList()
+        recordingStartTime.value = System.currentTimeMillis()
+        recordingDurationSec.value = 0L
+        tempTrackLength.value = 0.0
+        
+        // Append initial point if location isn't null
+        _liveLocation.value?.let { loc ->
+            val initPoint = TrackPoint(
+                lat = loc.latitude,
+                lon = loc.longitude,
+                ele = loc.altitude,
+                time = System.currentTimeMillis(),
+                accuracy = loc.accuracy.toDouble(),
+                heading = loc.bearing.toDouble()
+            )
+            appendTrackPoint(initPoint)
+        }
+        saveActiveTrackDraft()
+    }
+
+    fun stopRecordingTrack(onFinished: (pointsJson: String, length: Double, duration: Long) -> Unit) {
+        val points = _activePoints.value
+        val duration = recordingDurationSec.value
+        val length = tempTrackLength.value
+        
+        val pointsJson = points.joinToString(prefix = "[", postfix = "]") { pt ->
+            "[${pt.lat},${pt.lon},${pt.ele},${pt.time},${pt.accuracy},${pt.heading}]"
+        }
+
+        _isTrackRecordingEnabled.value = false
+        recordingStartTime.value = 0L
+        recordingDurationSec.value = 0L
+        
+        onFinished(pointsJson, length, duration)
+    }
+
+    fun appendTrackPoint(pt: TrackPoint) {
+        val currentList = _activePoints.value.toMutableList()
+        if (currentList.isNotEmpty()) {
+            val lastPt = currentList.last()
+            
+            // Haversine distance in meters to verify smoothing / distance traveled
+            val dist = calculateDistanceMeters(lastPt.lat, lastPt.lon, pt.lat, pt.lon)
+            
+            // Filter noise: if point jumps by more than 200m in 1sec (physically impossible speed), discard as GPS telemetry jitter
+            val secondsElapsed = (pt.time - lastPt.time) / 1000.0
+            if (secondsElapsed > 0.1 && (dist / secondsElapsed) > 100.0) {
+                return // Discard noise
+            }
+
+            // Cumulate distance
+            tempTrackLength.value += dist
+        }
+        currentList.add(pt)
+        _activePoints.value = currentList
+        saveActiveTrackDraft()
+    }
+
+    fun addSimulatedPoint(pt: TrackPoint) {
+        // Appends simulated point safely to tracking points list
+        if (_isTrackRecordingEnabled.value) {
+            appendTrackPoint(pt)
+        }
+    }
+
+    private fun calculateDistanceMeters(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val r = 6371000.0 // Earth radius
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = Math.sin(dLat / 2.0) * Math.sin(dLat / 2.0) +
+                Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2)) *
+                Math.sin(dLon / 2.0) * Math.sin(dLon / 2.0)
+        val c = 2.0 * Math.atan2(Math.sqrt(a), Math.sqrt(1.0 - a))
+        return r * c
+    }
+
+    // Recover draft track paths from Prefs
+    private fun saveActiveTrackDraft() {
+        val points = _activePoints.value
+        val pointsJson = points.joinToString(prefix = "[", postfix = "]") { pt ->
+            "[${pt.lat},${pt.lon},${pt.ele},${pt.time},${pt.accuracy},${pt.heading}]"
+        }
+        prefs.edit()
+            .putString("draft_track_points", pointsJson)
+            .putBoolean("draft_track_recording", _isTrackRecordingEnabled.value)
+            .putLong("draft_track_start_time", recordingStartTime.value)
+            .putLong("draft_track_duration", recordingDurationSec.value)
+            .putFloat("draft_track_length", tempTrackLength.value.toFloat())
+            .apply()
+    }
+
+    fun recoverActiveTrackDraft() {
+        val draftJson = prefs.getString("draft_track_points", null)
+        val wasRecording = prefs.getBoolean("draft_track_recording", false)
+        val startTime = prefs.getLong("draft_track_start_time", 0L)
+        val duration = prefs.getLong("draft_track_duration", 0L)
+        val length = prefs.getFloat("draft_track_length", 0.0f).toDouble()
+
+        if (!draftJson.isNullOrEmpty() && draftJson != "[]") {
+            val pts = parsePointsJson(draftJson)
+            if (pts.isNotEmpty()) {
+                _activePoints.value = pts
+                _isTrackRecordingEnabled.value = wasRecording
+                recordingStartTime.value = startTime
+                recordingDurationSec.value = duration
+                tempTrackLength.value = length
+            }
+        }
+    }
+
+    fun clearActiveTrackDraft() {
+        prefs.edit()
+            .remove("draft_track_points")
+            .remove("draft_track_recording")
+            .remove("draft_track_start_time")
+            .remove("draft_track_duration")
+            .remove("draft_track_length")
+            .apply()
+        _activePoints.value = emptyList()
+        _isTrackRecordingEnabled.value = false
+        recordingStartTime.value = 0L
+        recordingDurationSec.value = 0L
+        tempTrackLength.value = 0.0
+    }
 
     // App Preferences (Settings state with SharedPreferences persistence)
     val themeSetting = MutableStateFlow(prefs.getString("theme", "Dark") ?: "Dark")
@@ -148,14 +398,17 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
 
     fun saveTrack(name: String, pointsJson: String, lengthMeters: Double, durationSeconds: Long) {
         viewModelScope.launch {
+            val projId = activeProjectId.value ?: 0
             dao.insertTrack(
                 Track(
+                    projectId = projId,
                     name = name,
                     pointsJson = pointsJson,
                     lengthMeters = lengthMeters,
                     durationSeconds = durationSeconds
                 )
             )
+            clearActiveTrackDraft()
         }
     }
 
@@ -183,6 +436,11 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
     // Active project's stations
     val activeProjectStations: StateFlow<List<Station>> = activeProjectId.flatMapLatest { id ->
         if (id != null) dao.getStationsForProject(id) else flowOf(emptyList())
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Active project's tracks
+    val activeProjectTracks: StateFlow<List<Track>> = activeProjectId.flatMapLatest { id ->
+        if (id != null) dao.getTracksForProject(id) else flowOf(emptyList())
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Active station state
@@ -1145,6 +1403,249 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
             } catch (e: Exception) {
                 Toast.makeText(context, "Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
                 e.printStackTrace()
+            }
+        }
+    }
+
+    // Direct KML/KMZ and multi-format exporters
+    private fun buildKmlContent(
+        projectName: String,
+        stations: List<Station>,
+        obsByStation: Map<Int, List<Observation>>,
+        samplesByObs: Map<Int, List<Sample>>,
+        isKmzMode: Boolean
+    ): String {
+        val sb = StringBuilder()
+        sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+        sb.append("<kml xmlns=\"http://www.opengis.net/kml/2.2\">\n")
+        sb.append("  <Document>\n")
+        sb.append("    <name>${projectName}</name>\n")
+        sb.append("    <description>GeoField Professional GIS KML Export</description>\n")
+        
+        // Color mapping in KML using AABBGGRR (Alpha, Blue, Green, Red) format
+        val colors = mapOf(
+            "LITH" to "ff22ff22", // Pale green
+            "ALT" to "ff00a5ff",  // Orange
+            "FLT" to "ff0000ff",  // Red
+            "STR" to "ffffcc00",  // Blue/Cyan
+            "SMP" to "ffcc00cc"   // Purple
+        )
+        
+        colors.forEach { (prefix, col) ->
+            sb.append("    <Style id=\"style_$prefix\">\n")
+            sb.append("      <IconStyle>\n")
+            sb.append("        <color>$col</color>\n")
+            sb.append("        <scale>1.2</scale>\n")
+            sb.append("        <Icon>\n")
+            sb.append("          <href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href>\n")
+            sb.append("        </Icon>\n")
+            sb.append("      </IconStyle>\n")
+            sb.append("    </Style>\n")
+        }
+        
+        stations.forEach { st ->
+            sb.append("    <Placemark>\n")
+            sb.append("      <name>${st.stationCode}</name>\n")
+            val styleKey = if (colors.containsKey(st.prefix)) st.prefix else "LITH"
+            sb.append("      <styleUrl>#style_$styleKey</styleUrl>\n")
+            
+            val html = StringBuilder()
+            html.append("<h3>Geological Station: ${st.stationCode}</h3>")
+            html.append("<table border=\"1\" padding=\"4\" style=\"border-collapse: collapse; font-family: monospace;\">")
+            html.append("<tr><td><b>Latitude</b></td><td>${st.latitude}</td></tr>")
+            html.append("<tr><td><b>Longitude</b></td><td>${st.longitude}</td></tr>")
+            html.append("<tr><td><b>Elevation</b></td><td>${st.elevation} m</td></tr>")
+            html.append("<tr><td><b>UTM Zone</b></td><td>${st.utmZone}</td></tr>")
+            html.append("<tr><td><b>Easting</b></td><td>${st.utmEasting}</td></tr>")
+            html.append("<tr><td><b>Northing</b></td><td>${st.utmNorthing}</td></tr>")
+            html.append("<tr><td><b>Accuracy</b></td><td>±${st.accuracy} m</td></tr>")
+            html.append("</table><br/>")
+            
+            val stationObsList = obsByStation[st.id] ?: emptyList()
+            if (stationObsList.isNotEmpty()) {
+                html.append("<h4>Observations &amp; Rock Logs</h4>")
+                stationObsList.forEach { obs ->
+                    html.append("<div style=\"background-color:#f5f5f5; border-left:4px solid #4caf50; padding:6px; margin-bottom:8px; color: #000;\">")
+                    html.append("<b>Type:</b> ${obs.observationType}<br/>")
+                    
+                    when (obs.observationType) {
+                        "Lithology" -> {
+                            html.append("<b>Lithology Type:</b> ${obs.lithologyType ?: "-"}<br/>")
+                            html.append("<b>Texture:</b> ${obs.texture ?: "-"}<br/>")
+                            html.append("<b>Color:</b> ${obs.color ?: "-"}<br/>")
+                            html.append("<b>Grain Size:</b> ${obs.grainSize ?: "-"}<br/>")
+                            if (!obs.lithologyAlteration.isNullOrBlank()) html.append("<b>Alt:</b> ${obs.lithologyAlteration}<br/>")
+                            if (!obs.lithologyMineralization.isNullOrBlank()) html.append("<b>Mnz:</b> ${obs.lithologyMineralization}<br/>")
+                        }
+                        "Alteration" -> {
+                            html.append("<b>Alteration:</b> ${obs.alterationType ?: "-"}<br/>")
+                            html.append("<b>Intensity:</b> ${obs.intensity ?: "-"}<br/>")
+                            html.append("<b>Associated Minerals:</b> ${obs.associatedMinerals ?: "-"}<br/>")
+                        }
+                        "Fault" -> {
+                            html.append("<b>Fault Type:</b> ${obs.faultType ?: "-"}<br/>")
+                            html.append("<b>Strike | Dip | DipDir:</b> ${obs.strike ?: "0"}&deg; | ${obs.dip ?: "0"}&deg; | ${obs.dipDirection ?: "0"}&deg;<br/>")
+                            html.append("<b>Movement:</b> ${obs.movement ?: "-"}<br/>")
+                        }
+                        "Joint" -> {
+                            html.append("<b>Joint Type:</b> ${obs.jointType ?: "-"}<br/>")
+                            html.append("<b>Spacing:</b> ${obs.jointSpacing ?: "0"} cm<br/>")
+                        }
+                    }
+                    
+                    if (!obs.notes.isNullOrBlank()) {
+                        html.append("<b>Notes:</b> ${obs.notes}<br/>")
+                    }
+                    
+                    if (!obs.photoPath.isNullOrBlank()) {
+                        val photoFile = File(obs.photoPath)
+                        if (photoFile.exists()) {
+                            if (isKmzMode) {
+                                html.append("<br/><img src=\"images/${photoFile.name}\" width=\"240\" style=\"max-width:100%; border-radius:4px;\" /><br/>")
+                            } else {
+                                html.append("<br/><img src=\"file://${photoFile.absolutePath}\" width=\"240\" style=\"max-width:100%;\" /><br/>")
+                            }
+                        }
+                    }
+                    
+                    val obsSamplesList = samplesByObs[obs.id] ?: emptyList()
+                    if (obsSamplesList.isNotEmpty()) {
+                        html.append("<h5>Samples Taken</h5>")
+                        obsSamplesList.forEach { smp ->
+                            html.append("<i>Code: <b>${smp.sampleCodeId}</b> (${smp.sampleType})</i><br/>")
+                            if (!smp.description.isNullOrBlank()) html.append("Description: ${smp.description}<br/>")
+                            if (!smp.photoPath.isNullOrBlank()) {
+                                val smpFile = File(smp.photoPath)
+                                if (smpFile.exists()) {
+                                    if (isKmzMode) {
+                                        html.append("<img src=\"images/${smpFile.name}\" width=\"160\" /><br/>")
+                                    } else {
+                                        html.append("<img src=\"file://${smpFile.absolutePath}\" width=\"160\" /><br/>")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    html.append("</div>")
+                }
+            }
+            
+            sb.append("      <description><![CDATA[$html]]></description>\n")
+            sb.append("      <Point>\n")
+            sb.append("        <coordinates>${st.longitude},${st.latitude},${st.elevation}</coordinates>\n")
+            sb.append("      </Point>\n")
+            sb.append("    </Placemark>\n")
+        }
+        
+        sb.append("  </Document>\n")
+        sb.append("</kml>\n")
+        return sb.toString()
+    }
+
+    fun exportKml(context: Context, projectId: Int) {
+        viewModelScope.launch {
+            try {
+                val kmlString = withContext(Dispatchers.IO) {
+                    val project = dao.getProjectById(projectId).firstOrNull()
+                    val projectName = project?.name ?: "Project_$projectId"
+                    val stations = dao.getStationsForProjectSync(projectId)
+                    val obsList = dao.getObservationsForProjectSync(projectId)
+                    val samplesList = dao.getSamplesForProjectSync(projectId)
+                    
+                    val obsByStation = obsList.groupBy { it.stationId }
+                    val samplesByObs = samplesList.groupBy { it.observationId }
+                    
+                    buildKmlContent(projectName, stations, obsByStation, samplesByObs, isKmzMode = false)
+                }
+
+                val fileName = "Project_${projectId}_Map.kml"
+                val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
+                val file = File(dir, fileName)
+                file.writeText(kmlString)
+
+                val authority = "${context.packageName}.fileprovider"
+                val fileUri: Uri = FileProvider.getUriForFile(context, authority, file)
+
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/vnd.google-earth.kml+xml"
+                    putExtra(Intent.EXTRA_STREAM, fileUri)
+                    putExtra(Intent.EXTRA_SUBJECT, "KML Field Station Map Export")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                val chooser = Intent.createChooser(intent, "Share KML Map")
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(chooser)
+
+                Toast.makeText(context, "KML Saved to Downloads: ${fileName}", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "KML Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun exportKmz(context: Context, projectId: Int) {
+        viewModelScope.launch {
+            try {
+                val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
+                val kmzFileName = "Project_${projectId}_GIS.kmz"
+                val kmzFile = File(dir, kmzFileName)
+
+                withContext(Dispatchers.IO) {
+                    val project = dao.getProjectById(projectId).firstOrNull()
+                    val projectName = project?.name ?: "Project_$projectId"
+                    val stations = dao.getStationsForProjectSync(projectId)
+                    val obsList = dao.getObservationsForProjectSync(projectId)
+                    val samplesList = dao.getSamplesForProjectSync(projectId)
+                    
+                    val obsByStation = obsList.groupBy { it.stationId }
+                    val samplesByObs = samplesList.groupBy { it.observationId }
+                    
+                    val kmlContent = buildKmlContent(projectName, stations, obsByStation, samplesByObs, isKmzMode = true)
+
+                    java.util.zip.ZipOutputStream(java.io.FileOutputStream(kmzFile)).use { zos ->
+                        // 1. Write doc.kml
+                        zos.putNextEntry(java.util.zip.ZipEntry("doc.kml"))
+                        zos.write(kmlContent.toByteArray(Charsets.UTF_8))
+                        zos.closeEntry()
+
+                        // 2. Add attached photos under images/ inside the KMZ
+                        val allPhotos = mutableSetOf<String>()
+                        obsList.forEach { if (!it.photoPath.isNullOrBlank()) allPhotos.add(it.photoPath) }
+                        samplesList.forEach { if (!it.photoPath.isNullOrBlank()) allPhotos.add(it.photoPath) }
+
+                        allPhotos.forEach { path ->
+                            val photoFile = File(path)
+                            if (photoFile.exists()) {
+                                try {
+                                    zos.putNextEntry(java.util.zip.ZipEntry("images/${photoFile.name}"))
+                                    java.io.FileInputStream(photoFile).use { fis ->
+                                        fis.copyTo(zos)
+                                    }
+                                    zos.closeEntry()
+                                } catch (e: Exception) {
+                                    // omit individual missing/restricted photos gracefully
+                                }
+                            }
+                        }
+                    }
+                }
+
+                val authority = "${context.packageName}.fileprovider"
+                val fileUri: Uri = FileProvider.getUriForFile(context, authority, kmzFile)
+
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/vnd.google-earth.kmz"
+                    putExtra(Intent.EXTRA_STREAM, fileUri)
+                    putExtra(Intent.EXTRA_SUBJECT, "KMZ Rich Map Pack Export")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                val chooser = Intent.createChooser(intent, "Share KMZ Pack")
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(chooser)
+
+                Toast.makeText(context, "KMZ Saved to Downloads: ${kmzFileName}", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "KMZ Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
             }
         }
     }

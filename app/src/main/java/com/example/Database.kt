@@ -133,12 +133,54 @@ data class Sample(
 @Entity(tableName = "tracks")
 data class Track(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val projectId: Int = 0,
     val name: String,
-    val pointsJson: String, // format: "[[lat,lon,ele,time,heading],...]"
+    val pointsJson: String, // format: "[[lat,lon,ele,time,accuracy,heading],...]"
     val lengthMeters: Double = 0.0,
     val durationSeconds: Long = 0,
     val createdAt: Long = System.currentTimeMillis()
 )
+
+data class TrackPoint(
+    val lat: Double,
+    val lon: Double,
+    val ele: Double,
+    val time: Long,
+    val accuracy: Double,
+    val heading: Double
+)
+
+fun parsePointsJson(json: String): List<TrackPoint> {
+    if (json.isBlank() || json == "[]") return emptyList()
+    try {
+        val clean = json.replace("[[", "").replace("]]", "").split("],[")
+        return clean.mapNotNull { item ->
+            val parts = item.split(",")
+            if (parts.size >= 5) {
+                val hasAccuracyElement = parts.size >= 6
+                TrackPoint(
+                    lat = parts[0].toDoubleOrNull() ?: 0.0,
+                    lon = parts[1].toDoubleOrNull() ?: 0.0,
+                    ele = parts.getOrNull(2)?.toDoubleOrNull() ?: 0.0,
+                    time = parts.getOrNull(3)?.toLongOrNull() ?: 0L,
+                    accuracy = if (hasAccuracyElement) (parts.getOrNull(4)?.toDoubleOrNull() ?: 1.0) else 1.0,
+                    heading = if (hasAccuracyElement) (parts.getOrNull(5)?.toDoubleOrNull() ?: 0.0) else (parts.getOrNull(4)?.toDoubleOrNull() ?: 0.0)
+                )
+            } else if (parts.size >= 2) {
+                TrackPoint(
+                    lat = parts[0].toDoubleOrNull() ?: 0.0,
+                    lon = parts[1].toDoubleOrNull() ?: 0.0,
+                    ele = parts.getOrNull(2)?.toDoubleOrNull() ?: 0.0,
+                    time = parts.getOrNull(3)?.toLongOrNull() ?: 0L,
+                    accuracy = 5.0,
+                    heading = 0.0
+                )
+            } else null
+        }
+    } catch (e: Exception) {
+        return emptyList()
+    }
+}
 
 @Entity(
     tableName = "boreholes",
@@ -356,6 +398,9 @@ interface GeologyDao {
     @Query("SELECT * FROM tracks ORDER BY id DESC")
     fun getAllTracks(): Flow<List<Track>>
 
+    @Query("SELECT * FROM tracks WHERE projectId = :projectId ORDER BY id DESC")
+    fun getTracksForProject(projectId: Int): Flow<List<Track>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTrack(track: Track): Long
 
@@ -433,7 +478,7 @@ interface GeologyDao {
         BoreholeCoreRun::class,
         RockMechanicsEvaluation::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class GeologyDatabase : RoomDatabase() {

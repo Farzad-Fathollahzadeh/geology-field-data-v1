@@ -868,6 +868,36 @@ fun MainScreenContent(
                                                 Text("ZIP", fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
                                             }
                                         }
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            // KML GIS
+                                            Button(
+                                                onClick = { viewModel.exportKml(context, proj.id) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE91E63)),
+                                                modifier = Modifier.weight(1f).height(28.dp),
+                                                contentPadding = PaddingValues(horizontal = 2.dp),
+                                                shape = RoundedCornerShape(3.dp)
+                                            ) {
+                                                Icon(Icons.Default.Map, contentDescription = null, modifier = Modifier.size(10.dp), tint = Color.White)
+                                                Spacer(Modifier.width(2.dp))
+                                                Text("KML Map", fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                            }
+                                            // KMZ GIS Pack
+                                            Button(
+                                                onClick = { viewModel.exportKmz(context, proj.id) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0)),
+                                                modifier = Modifier.weight(1f).height(28.dp),
+                                                contentPadding = PaddingValues(horizontal = 2.dp),
+                                                shape = RoundedCornerShape(3.dp)
+                                            ) {
+                                                Icon(Icons.Default.PhotoLibrary, contentDescription = null, modifier = Modifier.size(10.dp), tint = Color.White)
+                                                Spacer(Modifier.width(2.dp))
+                                                Text("KMZ (Orients + Photos)", fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1072,6 +1102,88 @@ fun MainScreenContent(
                                         )
                                         Text(
                                             text = "Bridges to QGIS/ArcGIS. Contains Excel workbook, separate Georeferenced CSV sheets, and all geotagged photos.",
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Option 3: KML GIS Map
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        showExportDialog = false
+                                        viewModel.exportKml(context, activeProjId)
+                                    },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                ),
+                                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Map,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "KML GIS Vector Map File",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "Standard KML file with styled geological points categorized by lithology. Compatible with Google Earth and QGIS.",
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Option 4: KMZ Map Pack (With Photos)
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        showExportDialog = false
+                                        viewModel.exportKmz(context, activeProjId)
+                                    },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                ),
+                                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PhotoLibrary,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "KMZ Interactive Tour Map Package",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "Rich KMZ archive containing complete styled database and embedded field/sample photos inside popup markers.",
                                             fontSize = 12.sp,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -8240,15 +8352,27 @@ fun MapContent(viewModel: GeologyViewModel) {
         }
     }
 
-    // Interactive switches
-    var isRealPositionEnabled by remember { mutableStateOf(true) } // Enable lock on position by default for GIS mapping
-    var isTrackRecordingEnabled by remember { mutableStateOf(false) }
+    val isTrackRecordingEnabled by viewModel.isTrackRecordingActive.collectAsStateWithLifecycle()
+    val activePointsList by viewModel.activePoints.collectAsStateWithLifecycle()
+    val recordingDurationSec by viewModel.recordingDurationSec.collectAsStateWithLifecycle()
+    val liveLocation by viewModel.liveLocation.collectAsStateWithLifecycle()
+
+    var isRealPositionEnabled by remember { mutableStateOf(false) }
 
     // Option switches
     var rotateMapUsingGnss by remember { mutableStateOf(true) }
     var displayLineFromPosition by remember { mutableStateOf(true) }
     var positioningStatus by remember { mutableStateOf(true) }
     var trackRecording by remember { mutableStateOf(false) }
+
+    // Start location tracking if real position is chosen
+    LaunchedEffect(isRealPositionEnabled) {
+        if (isRealPositionEnabled) {
+            viewModel.startLocationTracking(context)
+        } else if (!isTrackRecordingEnabled) {
+            viewModel.stopLocationTracking()
+        }
+    }
 
     // GNSS linked rules
     fun onRealPositionChanged(enabled: Boolean) {
@@ -8259,26 +8383,9 @@ fun MapContent(viewModel: GeologyViewModel) {
             positioningStatus = true
         } else {
             if (isTrackRecordingEnabled) {
-                isTrackRecordingEnabled = false
+                viewModel.stopRecordingTrack { _, _, _ -> }
                 trackRecording = false
             }
-        }
-    }
-
-    // Track Recording points list and timing
-    val activePointsList = remember { mutableStateListOf<TrackPoint>() }
-    var recordingStartTime by remember { mutableStateOf(0L) }
-    var recordingDurationSec by remember { mutableStateOf(0L) }
-
-    // Auto-update timer for active recording
-    LaunchedEffect(isTrackRecordingEnabled, recordingStartTime) {
-        if (isTrackRecordingEnabled) {
-            while (true) {
-                kotlinx.coroutines.delay(1000L)
-                recordingDurationSec = (System.currentTimeMillis() - recordingStartTime) / 1000
-            }
-        } else {
-            recordingDurationSec = 0L
         }
     }
 
@@ -8290,7 +8397,6 @@ fun MapContent(viewModel: GeologyViewModel) {
     var exportFormatChoice by remember { mutableStateOf("GPX") }
 
     fun onTrackRecordingChanged(enabled: Boolean) {
-        isTrackRecordingEnabled = enabled
         trackRecording = enabled
         if (enabled) {
             isRealPositionEnabled = true
@@ -8298,32 +8404,13 @@ fun MapContent(viewModel: GeologyViewModel) {
             displayLineFromPosition = true
             positioningStatus = true
             
-            activePointsList.clear()
-            recordingStartTime = System.currentTimeMillis()
-            activePointsList.add(TrackPoint(35.6943, 51.4215, 1210.0, System.currentTimeMillis(), 45.0))
+            viewModel.startLocationTracking(context)
+            viewModel.startRecordingTrack()
         } else {
-            if (activePointsList.size >= 1) {
-                val duration = (System.currentTimeMillis() - recordingStartTime) / 1000
+            viewModel.stopRecordingTrack { pointsJson, length, duration ->
+                tempTrackPointsJson = pointsJson
+                tempTrackLength = if (length <= 0.0) 245.0 else length
                 tempTrackDuration = if (duration <= 0) 120 else duration
-                
-                var distanceMeters = 0.0
-                for (i in 0 until activePointsList.size - 1) {
-                    val p1 = activePointsList[i]
-                    val p2 = activePointsList[i+1]
-                    val dx = (p2.lon - p1.lon) * 111320.0 * Math.cos(Math.toRadians(p1.lat))
-                    val dy = (p2.lat - p1.lat) * 111320.0
-                    distanceMeters += Math.sqrt(dx*dx + dy*dy)
-                }
-                tempTrackLength = if (distanceMeters <= 0.0) 245.0 else distanceMeters
-                
-                val sb = StringBuilder("[")
-                activePointsList.forEachIndexed { i, pt ->
-                    sb.append("[${pt.lat},${pt.lon},${pt.ele},${pt.time},${pt.heading}]")
-                    if (i < activePointsList.size - 1) sb.append(",")
-                }
-                sb.append("]")
-                
-                tempTrackPointsJson = sb.toString()
                 newTrackName = "Track_" + SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())
                 showSaveDialog = true
             }
@@ -8331,9 +8418,13 @@ fun MapContent(viewModel: GeologyViewModel) {
     }
 
     // Coordinates Simulation Walker
-    var currentLat by remember { mutableStateOf(35.69439) }
-    var currentLon by remember { mutableStateOf(51.42151) }
-    var currentHeading by remember { mutableStateOf(45.0) }
+    var simulatorLat by remember { mutableStateOf(35.69439) }
+    var simulatorLon by remember { mutableStateOf(51.42151) }
+    var simulatorHeading by remember { mutableStateOf(45.0) }
+
+    val currentLat = if (isRealPositionEnabled && liveLocation != null) liveLocation!!.latitude else simulatorLat
+    val currentLon = if (isRealPositionEnabled && liveLocation != null) liveLocation!!.longitude else simulatorLon
+    val currentHeading = if (isRealPositionEnabled && liveLocation != null) liveLocation!!.bearing.toDouble() else simulatorHeading
 
     fun simulateWalkMove(direction: String) {
         val stepSize = 0.00015
@@ -8342,20 +8433,27 @@ fun MapContent(viewModel: GeologyViewModel) {
             "SOUTH" -> 180.0
             "EAST" -> 90.0
             "WEST" -> 270.0
-            else -> currentHeading
+            else -> simulatorHeading
         }
-        currentHeading = headingAngle
+        simulatorHeading = headingAngle
         
         val rad = Math.toRadians(headingAngle)
-        currentLat += stepSize * Math.cos(rad)
-        currentLon += stepSize * Math.sin(rad)
+        simulatorLat += stepSize * Math.cos(rad)
+        simulatorLon += stepSize * Math.sin(rad)
         
         satelliteCount = (12..21).random()
         gpsAccuracy = 1.1 + Math.random() * 1.8
 
         if (isTrackRecordingEnabled) {
-            activePointsList.add(
-                TrackPoint(currentLat, currentLon, 1210.0 + (Math.random() - 0.5) * 4, System.currentTimeMillis(), currentHeading)
+            viewModel.addSimulatedPoint(
+                TrackPoint(
+                    lat = simulatorLat,
+                    lon = simulatorLon,
+                    ele = 1210.0 + (Math.random() - 0.5) * 4,
+                    time = System.currentTimeMillis(),
+                    accuracy = gpsAccuracy,
+                    heading = simulatorHeading
+                )
             )
         }
     }
@@ -9856,27 +9954,4 @@ fun generateTxtString(name: String, points: List<TrackPoint>, length: Double, du
         sb.append("${idx + 1}. Lat: ${pt.lat}, Lon: ${pt.lon}, Alt: ${pt.ele}m, Heading: ${pt.heading}deg, Time: $tm\n")
     }
     return sb.toString()
-}
-
-data class TrackPoint(val lat: Double, val lon: Double, val ele: Double, val time: Long, val heading: Double)
-
-fun parsePointsJson(json: String): List<TrackPoint> {
-    if (json.isBlank() || json == "[]") return emptyList()
-    try {
-        val clean = json.replace("[[", "").replace("]]", "").split("],[")
-        return clean.mapNotNull { item ->
-            val parts = item.split(",")
-            if (parts.size >= 2) {
-                TrackPoint(
-                    lat = parts[0].toDoubleOrNull() ?: 0.0,
-                    lon = parts[1].toDoubleOrNull() ?: 0.0,
-                    ele = parts.getOrNull(2)?.toDoubleOrNull() ?: 0.0,
-                    time = parts.getOrNull(3)?.toLongOrNull() ?: 0L,
-                    heading = parts.getOrNull(4)?.toDoubleOrNull() ?: 0.0
-                )
-            } else null
-        }
-    } catch (e: Exception) {
-        return emptyList()
-    }
 }
