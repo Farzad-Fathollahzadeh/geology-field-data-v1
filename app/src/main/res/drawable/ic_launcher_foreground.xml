@@ -3,6 +3,6 @@
     <item
         android:width="66dp"
         android:height="66dp"
-        android:drawable="@drawable/geo_line_logo_1780977012569"
+        android:drawable="@drawable/img_app_icon_1781003926200"
         android:gravity="center" />
 </layer-list>

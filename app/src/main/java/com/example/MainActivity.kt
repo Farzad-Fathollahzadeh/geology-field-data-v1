@@ -1,6 +1,7 @@
 package com.example
 
 import android.Manifest
+import androidx.compose.ui.text.style.TextAlign
 import android.widget.Toast
 import android.content.Intent
 import android.os.Bundle
@@ -8984,6 +8985,14 @@ fun RockMechanicsContent() {
 // -------------------------------------------------------------------------
 enum class MapMode { ONLINE, OFFLINE }
 
+data class GeologicalContact(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val name: String,
+    val type: String, // "FORMATION_CONTACT", "FAULT_CONTACT", "GRADATIONAL_CONTACT"
+    val points: List<Station>,
+    val colorHex: String
+)
+
 fun isInternetAvailable(context: android.content.Context): Boolean {
     return try {
         val cm = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -9008,6 +9017,7 @@ fun generateLeafletHtml(
     stations: List<Station>,
     observations: List<Observation>,
     trackPoints: List<TrackPoint>,
+    contactsList: List<GeologicalContact>,
     isRealPos: Boolean,
     currentLat: Double,
     currentLon: Double,
@@ -9027,6 +9037,13 @@ fun generateLeafletHtml(
     
     val trackJson = trackPoints.joinToString(prefix = "[", postfix = "]") { pt ->
         """{"lat": ${pt.lat}, "lon": ${pt.lon}}"""
+    }
+
+    val contactsJson = contactsList.joinToString(prefix = "[", postfix = "]") { contact ->
+        val pointsJsonStr = contact.points.joinToString(prefix = "[", postfix = "]") { st ->
+            "[${st.latitude}, ${st.longitude}]"
+        }
+        """{"id": "${contact.id}", "name": "${contact.name.replace("\"", "\\\"")}", "type": "${contact.type}", "latlngs": $pointsJsonStr, "color": "${contact.colorHex}"}"""
     }
 
     val defaultLat = if (lockGpsCenter) currentLat else (if (stations.isNotEmpty()) stations.map { it.latitude }.average() else currentLat)
@@ -9082,13 +9099,37 @@ fun generateLeafletHtml(
                     var markerIcon;
                     if (st.strike >= 0 && st.dip >= 0) {
                         var rotation = st.dipDir - 180;
+                        var color = "#ffeb3b"; // Bedding (yellow)
+                        var svgSymbol = '<line x1="8" y1="20" x2="32" y2="20" stroke="' + color + '" stroke-width="3" />' +
+                                        '<line x1="20" y1="20" x2="20" y2="30" stroke="' + color + '" stroke-width="3" />';
+
+                        var obsLower = st.type.toLowerCase();
+                        if (obsLower.includes("fault") || obsLower === "fault") {
+                            color = "#ff3d00"; // Fault (Red)
+                            svgSymbol = '<line x1="8" y1="20" x2="32" y2="20" stroke="' + color + '" stroke-width="3.5" />' +
+                                        '<line x1="12" y1="16" x2="16" y2="24" stroke="' + color + '" stroke-width="2.5" />' +
+                                        '<line x1="24" y1="16" x2="28" y2="24" stroke="' + color + '" stroke-width="2.5" />';
+                        } else if (obsLower.includes("joint") || obsLower === "joint") {
+                            color = "#00e676"; // Joint (Green)
+                            svgSymbol = '<line x1="8" y1="20" x2="32" y2="20" stroke="' + color + '" stroke-width="3" />' +
+                                        '<line x1="20" y1="14" x2="20" y2="26" stroke="' + color + '" stroke-width="3" />';
+                        } else if (obsLower.includes("structure") || obsLower.includes("foliation") || obsLower.includes("cleavage")) {
+                            color = "#e040fb"; // Foliation/Cleavage (Purple)
+                            svgSymbol = '<line x1="8" y1="20" x2="32" y2="20" stroke="' + color + '" stroke-width="2.5" />' +
+                                        '<line x1="14" y1="17" x2="26" y2="17" stroke="' + color + '" stroke-width="1.5" />' +
+                                        '<line x1="11" y1="23" x2="29" y2="23" stroke="' + color + '" stroke-width="1.5" />';
+                        } else if (obsLower.includes("vein")) {
+                            color = "#00b0ff"; // Vein (Cyan)
+                            svgSymbol = '<line x1="8" y1="17" x2="32" y2="17" stroke="' + color + '" stroke-width="2" />' +
+                                        '<line x1="8" y1="23" x2="32" y2="23" stroke="' + color + '" stroke-width="2" />';
+                        }
+
                         var svgHtml = '<div style="position: relative; width: 40px; height: 40px; left: -14px; top: -14px;">' +
                             '<svg width="40" height="40" viewBox="0 0 40 40" style="overflow: visible;">' +
                             '  <g transform="rotate(' + rotation + ', 20, 20)">' +
-                            '    <line x1="8" y1="20" x2="32" y2="20" stroke="#ffeb3b" stroke-width="3" />' +
-                            '    <line x1="20" y1="20" x2="20" y2="30" stroke="#ffeb3b" stroke-width="3" />' +
+                            svgSymbol +
                             '  </g>' +
-                            '  <text x="28" y="38" fill="#ffffff" font-size="11" font-weight="bold" font-family="sans-serif" style="text-shadow: 1px 1px 1px black;">' + st.dip + '</text>' +
+                            '  <text x="28" y="38" fill="' + color + '" font-size="11" font-weight="bold" font-family="sans-serif" style="text-shadow: 1px 1px 1px black;">' + st.dip + '</text>' +
                             '  <div style="position: absolute; left: 26px; top: -12px; color: #00ffcc; font-weight: bold; font-size: 10px; text-shadow: 1px 1px 1.5px black; white-space: nowrap;">' + st.code + '</div>' +
                             '</svg>' +
                             '</div>';
@@ -9113,12 +9154,32 @@ fun generateLeafletHtml(
                     marker.bindPopup(popupText);
                 });
 
+                // Display recorded paths
                 var trackPoints = $trackJson;
                 var polyline = null;
                 if (trackPoints.length > 1) {
                     var latlngs = trackPoints.map(function(pt) { return [pt.lat, pt.lon]; });
                     polyline = L.polyline(latlngs, {color: '#ff3d00', weight: 4}).addTo(map);
                 }
+
+                // Display geological contacts list
+                var contacts = $contactsJson;
+                contacts.forEach(function(c) {
+                    if (c.latlngs && c.latlngs.length > 1) {
+                        var dashStyle = null;
+                        if (c.type === 'FAULT_CONTACT') {
+                            dashStyle = '10, 8';
+                        } else if (c.type === 'GRADATIONAL_CONTACT') {
+                            dashStyle = '3, 6';
+                        }
+                        var poly = L.polyline(c.latlngs, {
+                            color: c.color,
+                            weight: c.type === 'FAULT_CONTACT' ? 4 : 3,
+                            dashArray: dashStyle
+                        }).addTo(map);
+                        poly.bindPopup("<b>" + c.name + "</b><br>Line Type: " + c.type.replace('_', ' '));
+                    }
+                });
 
                 // GPS pulse accuracy and location dot
                 var liveAccuracyCircle = null;
@@ -9166,6 +9227,7 @@ fun WebViewMap(
     stations: List<Station>,
     observations: List<Observation>,
     trackPoints: List<TrackPoint>,
+    contactsList: List<GeologicalContact>,
     isRealPos: Boolean,
     currentLat: Double,
     currentLon: Double,
@@ -9181,8 +9243,8 @@ fun WebViewMap(
     } else {
         tileUrl
     }
-    val htmlContent = remember(stations, observations, trackPoints, isRealPos, currentLat, currentLon, zoom, resolvedTileUrl, gpsAccuracy, lockGpsCenter) {
-        generateLeafletHtml(stations, observations, trackPoints, isRealPos, currentLat, currentLon, zoom, resolvedTileUrl, gpsAccuracy, lockGpsCenter)
+    val htmlContent = remember(stations, observations, trackPoints, contactsList, isRealPos, currentLat, currentLon, zoom, resolvedTileUrl, gpsAccuracy, lockGpsCenter) {
+        generateLeafletHtml(stations, observations, trackPoints, contactsList, isRealPos, currentLat, currentLon, zoom, resolvedTileUrl, gpsAccuracy, lockGpsCenter)
     }
 
     AndroidView(
@@ -9236,6 +9298,7 @@ fun MapContent(viewModel: GeologyViewModel) {
     var isSurveyorPanelVisible by remember { mutableStateOf(false) }
     var isJournalPanelVisible by remember { mutableStateOf(false) }
     var isSettingsPanelVisible by remember { mutableStateOf(false) }
+    var isStructuralPanelVisible by remember { mutableStateOf(false) }
     var isAddPointDialogVisible by remember { mutableStateOf(false) }
     var isOutdoorMode by remember { mutableStateOf(false) }
     var showSimulator by remember { mutableStateOf(false) }
@@ -9370,6 +9433,58 @@ fun MapContent(viewModel: GeologyViewModel) {
     var editTrackItemName by remember { mutableStateOf("") }
     var showEditDialog by remember { mutableStateOf(false) }
 
+    // --- Advanced Geological Survey UI States ---
+    var structuralFilter by remember { mutableStateOf("ALL") } // "ALL", "Bedding", "Joint", "Fault", "Foliation"
+    var showNonStructural by remember { mutableStateOf(true) }
+    var dipMinFilter by remember { mutableStateOf(0f) }
+    var dipMaxFilter by remember { mutableStateOf(90f) }
+
+    // Geological Boundary Lines list
+    var contactsList by remember { mutableStateOf(listOf<GeologicalContact>()) }
+    var isDrawingContactMode by remember { mutableStateOf(false) }
+    var newContactName by remember { mutableStateOf("Contact 1") }
+    var newContactType by remember { mutableStateOf("FORMATION_CONTACT") } // "FORMATION_CONTACT", "FAULT_CONTACT", "GRADATIONAL_CONTACT"
+    var draftContactPoints by remember { mutableStateOf(listOf<Station>()) }
+
+    // Specialized quick logging variables
+    var quickObsType by remember { mutableStateOf("Bedding") } // "Bedding", "Joint", "Fault", "Foliation"
+    var quickStrike by remember { mutableStateOf("45") }
+    var quickDip by remember { mutableStateOf("30") }
+    var quickDipDir by remember { mutableStateOf("135") }
+    var quickNotes by remember { mutableStateOf("") }
+
+    // Filtered Observations & Stations
+    val filteredObservations = remember(allObservationsList, structuralFilter, dipMinFilter, dipMaxFilter) {
+        allObservationsList.filter { obs ->
+            val matchesType = when (structuralFilter) {
+                "ALL" -> true
+                "Bedding" -> obs.observationType.contains("Bedding", ignoreCase = true) || obs.observationType.contains("Lithology", ignoreCase = true) || (obs.observationType.contains("Structure", ignoreCase = true) && obs.structureType?.contains("bed", ignoreCase = true) == true)
+                "Joint" -> obs.observationType.contains("Joint", ignoreCase = true)
+                "Fault" -> obs.observationType.contains("Fault", ignoreCase = true)
+                "Foliation" -> obs.observationType.contains("Structure", ignoreCase = true) && (obs.structureType?.contains("fol", ignoreCase = true) == true || obs.structureType?.contains("schist", ignoreCase = true) == true || obs.structureType?.contains("cleav", ignoreCase = true) == true)
+                else -> obs.observationType.contains(structuralFilter, ignoreCase = true)
+            }
+            val matchesDip = if (obs.dip != null) {
+                obs.dip >= dipMinFilter.toInt() && obs.dip <= dipMaxFilter.toInt()
+            } else {
+                true
+            }
+            matchesType && matchesDip
+        }
+    }
+
+    val filteredStations = remember(stationsToShow, filteredObservations, showNonStructural, allObservationsList) {
+        stationsToShow.filter { station ->
+            val hasObs = filteredObservations.any { it.stationId == station.id }
+            val hasAnyStructuralData = allObservationsList.any { it.stationId == station.id && (it.strike != null || it.dip != null) }
+            if (showNonStructural) {
+                if (hasAnyStructuralData) hasObs else true
+            } else {
+                hasObs && hasAnyStructuralData
+            }
+        }
+    }
+
     // Add Point Dialog variables
     var quickStationCode by remember { mutableStateOf("") }
     var quickStationPrefix by remember { mutableStateOf("ST") }
@@ -9395,9 +9510,10 @@ fun MapContent(viewModel: GeologyViewModel) {
         // -------------------------------------------------------------
         if (mapMode == MapMode.ONLINE) {
             WebViewMap(
-                stations = stationsToShow,
-                observations = allObservationsList,
+                stations = filteredStations,
+                observations = filteredObservations,
                 trackPoints = activePointsList,
+                contactsList = contactsList,
                 isRealPos = isRealPositionEnabled,
                 currentLat = currentLat,
                 currentLon = currentLon,
@@ -9422,8 +9538,8 @@ fun MapContent(viewModel: GeologyViewModel) {
                     drawLine(color = strokeColor, start = androidx.compose.ui.geometry.Offset(0f, y.toFloat()), end = androidx.compose.ui.geometry.Offset(w, y.toFloat()), strokeWidth = 0.5f)
                 }
 
-                val baseLat = if (lockGpsCenter && isRealPositionEnabled) currentLat else (if (stationsToShow.isNotEmpty()) stationsToShow.map { it.latitude }.average() else currentLat)
-                val baseLon = if (lockGpsCenter && isRealPositionEnabled) currentLon else (if (stationsToShow.isNotEmpty()) stationsToShow.map { it.longitude }.average() else currentLon)
+                val baseLat = if (lockGpsCenter && isRealPositionEnabled) currentLat else (if (filteredStations.isNotEmpty()) filteredStations.map { it.latitude }.average() else currentLat)
+                val baseLon = if (lockGpsCenter && isRealPositionEnabled) currentLon else (if (filteredStations.isNotEmpty()) filteredStations.map { it.longitude }.average() else currentLon)
 
                 fun toCanvasX(longitude: Double): Float {
                     return (w / 2f + (longitude - baseLon) * scale * Math.cos(Math.toRadians(baseLat))).toFloat()
@@ -9433,7 +9549,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                 }
 
                 // Draw logged stations
-                stationsToShow.forEach { station ->
+                filteredStations.forEach { station ->
                     val cx = toCanvasX(station.longitude)
                     val cy = toCanvasY(station.latitude)
                     if (cx in 0f..w && cy in 0f..h) {
@@ -9442,7 +9558,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                         val dotColor = if (isOutdoorMode) Color(0xFFFF6D00) else Color(0xFFFFB300)
 
                         // Core structural symbol drawing
-                        val obs = allObservationsList.firstOrNull { it.stationId == station.id && (it.strike != null || it.dip != null) }
+                        val obs = filteredObservations.firstOrNull { it.stationId == station.id && (it.strike != null || it.dip != null) }
                         val strike = obs?.strike
                         val dip = obs?.dip
                         val dipDir = obs?.dipDirection
@@ -9458,14 +9574,28 @@ fun MapContent(viewModel: GeologyViewModel) {
                             val dx = Math.sin(rad) * L_tick
                             val dy = -Math.cos(rad) * L_tick
                             
+                            var color = if (isOutdoorMode) Color(0xFFE65100) else Color(0xFFFFEB3B) // Default Bedding Yellow
+                            val obsLower = obs.observationType.lowercase()
+                            if (obsLower.contains("fault") || obsLower == "fault") {
+                                color = Color(0xFFFF3030) // Red Fault
+                            } else if (obsLower.contains("joint") || obsLower == "joint") {
+                                color = Color(0xFF00E676) // Green Joint
+                            } else if (obsLower.contains("structure") || obsLower.contains("foliation") || obsLower.contains("cleavage")) {
+                                color = Color(0xFFE040FB) // Purple Foliation
+                            } else if (obsLower.contains("vein")) {
+                                color = Color(0xFF00B0FF) // Cyan Vein
+                            }
+
+                            // Strike line
                             drawLine(
-                                color = if (isOutdoorMode) Color(0xFFC62828) else Color(0xFFFFEB3B),
+                                color = color,
                                 start = androidx.compose.ui.geometry.Offset((cx - sx).toFloat(), (cy - sy).toFloat()),
                                 end = androidx.compose.ui.geometry.Offset((cx + sx).toFloat(), (cy + sy).toFloat()),
                                 strokeWidth = 3.5f
                             )
+                            // Dip perpendicular tick
                             drawLine(
-                                color = if (isOutdoorMode) Color(0xFFC62828) else Color(0xFFFFEB3B),
+                                color = color,
                                 start = androidx.compose.ui.geometry.Offset(cx, cy),
                                 end = androidx.compose.ui.geometry.Offset((cx + dx).toFloat(), (cy + dy).toFloat()),
                                 strokeWidth = 3.5f
@@ -9476,7 +9606,13 @@ fun MapContent(viewModel: GeologyViewModel) {
                                 (cx + dx * 1.8).toFloat(),
                                 (cy + dy * 1.8 + 8f).toFloat(),
                                 android.graphics.Paint().apply {
-                                    color = if (isOutdoorMode) android.graphics.Color.RED else android.graphics.Color.YELLOW
+                                    this.color = when {
+                                        obsLower.contains("fault") -> android.graphics.Color.RED
+                                        obsLower.contains("joint") -> android.graphics.Color.GREEN
+                                        obsLower.contains("structure") || obsLower.contains("foliation") -> android.graphics.Color.MAGENTA
+                                        obsLower.contains("vein") -> android.graphics.Color.CYAN
+                                        else -> if (isOutdoorMode) android.graphics.Color.parseColor("#E65100") else android.graphics.Color.YELLOW
+                                    }
                                     textSize = 22f
                                     isFakeBoldText = true
                                 }
@@ -9503,6 +9639,49 @@ fun MapContent(viewModel: GeologyViewModel) {
                                 }
                             }
                         )
+                    }
+                }
+
+                // Draw custom geological contact lines in Canvas offline map
+                contactsList.forEach { contact ->
+                    if (contact.points.size > 1) {
+                        for (i in 0 until contact.points.size - 1) {
+                            val st1 = contact.points[i]
+                            val st2 = contact.points[i + 1]
+                            val x1 = toCanvasX(st1.longitude)
+                            val y1 = toCanvasY(st1.latitude)
+                            val x2 = toCanvasX(st2.longitude)
+                            val y2 = toCanvasY(st2.latitude)
+                            
+                            val lineColor = Color(android.graphics.Color.parseColor(contact.colorHex))
+                            val isDashed = contact.type == "FAULT_CONTACT"
+                            val isDotted = contact.type == "GRADATIONAL_CONTACT"
+                            
+                            if (isDashed) {
+                                drawLine(
+                                    color = lineColor,
+                                    start = androidx.compose.ui.geometry.Offset(x1, y1),
+                                    end = androidx.compose.ui.geometry.Offset(x2, y2),
+                                    strokeWidth = 4f,
+                                    pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(15f, 15f), 0f)
+                                )
+                            } else if (isDotted) {
+                                drawLine(
+                                    color = lineColor,
+                                    start = androidx.compose.ui.geometry.Offset(x1, y1),
+                                    end = androidx.compose.ui.geometry.Offset(x2, y2),
+                                    strokeWidth = 3f,
+                                    pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(6f, 12f), 0f)
+                                )
+                            } else {
+                                drawLine(
+                                    color = lineColor,
+                                    start = androidx.compose.ui.geometry.Offset(x1, y1),
+                                    end = androidx.compose.ui.geometry.Offset(x2, y2),
+                                    strokeWidth = 3.5f
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -9881,6 +10060,57 @@ fun MapContent(viewModel: GeologyViewModel) {
                 )
             }
 
+            // Geological structural map toolbar actions
+
+            // 1. Structural Geology Filter Panel Toggle
+            IconButton(
+                onClick = { 
+                    isStructuralPanelVisible = !isStructuralPanelVisible
+                    isMapLayerPanelVisible = false
+                    isSurveyorPanelVisible = false
+                    isJournalPanelVisible = false
+                    isSettingsPanelVisible = false
+                },
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(if (isStructuralPanelVisible) toolbarBgOpen else toolbarBgColor, CircleShape)
+                    .border(1.dp, if (isStructuralPanelVisible) Color.White else toolbarBorderColor, CircleShape)
+                    .testTag("geology_filter_toggle")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.FilterAlt,
+                    contentDescription = "Geological Structural Filtration Overlay",
+                    tint = if (isStructuralPanelVisible) toolbarIconColorOpen else toolbarIconColorClosed,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            // 2. Contact and fault mapping pencil tool
+            IconButton(
+                onClick = { 
+                    isDrawingContactMode = !isDrawingContactMode
+                    if (isDrawingContactMode) {
+                        isStructuralPanelVisible = false
+                        isMapLayerPanelVisible = false
+                        isSurveyorPanelVisible = false
+                        isJournalPanelVisible = false
+                        isSettingsPanelVisible = false
+                    }
+                },
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(if (isDrawingContactMode) Color(0xFFD50000) else toolbarBgColor, CircleShape)
+                    .border(1.dp, if (isDrawingContactMode) Color.White else toolbarBorderColor, CircleShape)
+                    .testTag("geology_contact_toggle")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Brush,
+                    contentDescription = "Geological Boundary Pencil Mode",
+                    tint = if (isDrawingContactMode) Color.White else Color(0xFFFF8A80),
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
             // Outdoor Legibility Sunlight Contrast switcher
             IconButton(
                 onClick = { isOutdoorMode = !isOutdoorMode },
@@ -10140,6 +10370,374 @@ fun MapContent(viewModel: GeologyViewModel) {
                             ) {
                                 Icon(Icons.Default.Explore, contentDescription = "OSM Web", tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), modifier = Modifier.size(14.dp))
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        // -------------------------------------------------------------
+        // DYNAMIC OVERLAY 1.5: GEOLOGICAL FILTERS & LEGEND PANEL
+        // -------------------------------------------------------------
+        AnimatedVisibility(
+            visible = isStructuralPanelVisible,
+            enter = fadeIn() + slideInVertically { it / 2 },
+            exit = fadeOut() + slideOutVertically { it / 2 },
+            modifier = Modifier
+                .padding(top = 170.dp, end = 75.dp)
+                .align(Alignment.TopEnd)
+        ) {
+            Card(
+                modifier = Modifier
+                    .width(280.dp)
+                    .border(1.dp, if (isOutdoorMode) Color.DarkGray else Color(0xFF00E5FF).copy(alpha = 0.5f), RoundedCornerShape(12.dp)),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isOutdoorMode) Color.White else Color(0xF20F1512)
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Geological Structures Filter",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Divider(color = if (isOutdoorMode) Color.LightGray else Color.White.copy(0.15f))
+
+                    // Structure pick buttons
+                    Text(
+                        text = "Structure Type:",
+                        fontSize = 11.sp,
+                        color = if (isOutdoorMode) Color.DarkGray else Color.Gray,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    val optList = listOf("ALL" to "All", "Bedding" to "Bedding", "Joint" to "Joint", "Fault" to "Fault", "Foliation" to "Foliation")
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        optList.take(3).forEach { (field, farsi) ->
+                            val active = structuralFilter == field
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(if (active) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)) else (if (isOutdoorMode) Color(0xFFEEEEEE) else Color(0x1BFFFFFF)))
+                                    .clickable { structuralFilter = field }
+                                    .padding(vertical = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(farsi, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = if (active) (if (isOutdoorMode) Color.White else Color.Black) else (if (isOutdoorMode) Color.Black else Color.White))
+                            }
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        optList.drop(3).forEach { (field, farsi) ->
+                            val active = structuralFilter == field
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(if (active) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)) else (if (isOutdoorMode) Color(0xFFEEEEEE) else Color(0x1BFFFFFF)))
+                                    .clickable { structuralFilter = field }
+                                    .padding(vertical = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(farsi, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = if (active) (if (isOutdoorMode) Color.White else Color.Black) else (if (isOutdoorMode) Color.Black else Color.White))
+                            }
+                        }
+                    }
+
+                    // Show non structural stations
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = showNonStructural,
+                            onCheckedChange = { showNonStructural = it },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)
+                            )
+                        )
+                        Text(
+                            text = "Show Non-Structural Stations",
+                            fontSize = 11.sp,
+                            color = if (isOutdoorMode) Color.Black else Color.White
+                        )
+                    }
+
+                    // Dip range filter sliders
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Dip Range: ${dipMinFilter.toInt()}° to ${dipMaxFilter.toInt()}°", fontSize = 11.sp, color = if (isOutdoorMode) Color.Black else Color.LightGray)
+                    }
+                    RangeSlider(
+                        value = dipMinFilter..dipMaxFilter,
+                        onValueChange = { range ->
+                            dipMinFilter = range.start
+                            dipMaxFilter = range.endInclusive
+                        },
+                        valueRange = 0f..90f,
+                        steps = 8,
+                        colors = SliderDefaults.colors(
+                            activeTrackColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
+                            thumbColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    // Legend and Stats
+                    Text(
+                        text = "Legend & Statistics:",
+                        fontSize = 10.sp,
+                        color = if (isOutdoorMode) Color.DarkGray else Color.Gray,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    val obsStats = remember(allObservationsList) {
+                        val bedCount = allObservationsList.count { it.observationType.lowercase().contains("bedding") || it.structureType?.contains("bed", ignoreCase = true) == true }
+                        val faultCount = allObservationsList.count { it.observationType.lowercase().contains("fault") }
+                        val jointCount = allObservationsList.count { it.observationType.lowercase().contains("joint") }
+                        val foliationCount = allObservationsList.count { it.observationType.lowercase().contains("structure") && (it.structureType?.contains("fol", ignoreCase = true) == true || it.structureType?.contains("schist", ignoreCase = true) == true) }
+                        listOf(
+                            Triple("Bedding", "#FFEB3B", bedCount),
+                            Triple("Fault", "#FF3D00", faultCount),
+                            Triple("Joint", "#00E676", jointCount),
+                            Triple("Foliation", "#E040FB", foliationCount)
+                        )
+                    }
+
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        obsStats.forEach { (title, hex, count) ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(14.dp, 3.dp)
+                                        .background(Color(android.graphics.Color.parseColor(hex)))
+                                )
+                                Text(
+                                    text = "$title ($count)",
+                                    fontSize = 11.sp,
+                                    color = if (isOutdoorMode) Color.Black else Color.White
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // -------------------------------------------------------------
+        // DYNAMIC OVERLAY 1.7: GEOLOGICAL FAULTS & CONTACT DRAW PANEL
+        // -------------------------------------------------------------
+        AnimatedVisibility(
+            visible = isDrawingContactMode,
+            enter = fadeIn() + slideInHorizontally { -it / 2 },
+            exit = fadeOut() + slideOutHorizontally { -it / 2 },
+            modifier = Modifier
+                .padding(top = 170.dp, start = 12.dp)
+                .align(Alignment.TopStart)
+        ) {
+            Card(
+                modifier = Modifier
+                    .width(320.dp)
+                    .border(1.dp, if (isOutdoorMode) Color.DarkGray else Color(0xFFFF5252).copy(alpha = 0.5f), RoundedCornerShape(12.dp)),
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isOutdoorMode) Color.White else Color(0xF2160F0F)
+                ),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Draw Geological Boundaries",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = if (isOutdoorMode) Color(0xFFC62828) else Color(0xFFFF5252),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Divider(color = if (isOutdoorMode) Color.LightGray else Color.White.copy(0.15f))
+
+                    // Contact Name
+                    Text("Boundary or Fault Name:", fontSize = 11.sp, color = if (isOutdoorMode) Color.DarkGray else Color.Gray, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(
+                        value = newContactName,
+                        onValueChange = { newContactName = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = if (isOutdoorMode) Color.Black else Color.White),
+                        placeholder = { Text("e.g. North Fault Line", fontSize = 12.sp, color = Color.Gray) },
+                        maxLines = 1,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = if (isOutdoorMode) Color.Black else Color(0xFFFF5252)
+                        )
+                    )
+
+                    // Line Type selector
+                    Text("Boundary Line Type:", fontSize = 11.sp, color = if (isOutdoorMode) Color.DarkGray else Color.Gray, modifier = Modifier.fillMaxWidth())
+                    val types = listOf(
+                        "FORMATION_CONTACT" to "Formation (Solid)",
+                        "FAULT_CONTACT" to "Fault (Dashed)",
+                        "GRADATIONAL_CONTACT" to "Gradational (Dotted)"
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        types.forEach { (typeKey, typeLabel) ->
+                            val selected = newContactType == typeKey
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(if (selected) (if (isOutdoorMode) Color.Black else Color(0xFFFF5252)) else (if (isOutdoorMode) Color(0xFFEEEEEE) else Color(0x1BFFFFFF)))
+                                    .clickable { newContactType = typeKey }
+                                    .padding(vertical = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = typeLabel,
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (selected) Color.White else (if (isOutdoorMode) Color.Black else Color.White)
+                                )
+                            }
+                        }
+                    }
+
+                    // Draw draft status
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "${draftContactPoints.size} stations selected",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isOutdoorMode) Color.Black else Color.White
+                        )
+                        Icon(Icons.Default.Gesture, contentDescription = null, tint = if (isOutdoorMode) Color.Gray else Color.LightGray)
+                    }
+
+                    // Stations list to click and connect
+                    Text("Select stations to connect:", fontSize = 10.5.sp, color = if (isOutdoorMode) Color.DarkGray else Color.Gray, modifier = Modifier.fillMaxWidth())
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(115.dp)
+                            .background(if (isOutdoorMode) Color(0xFFF9F9F9) else Color(0x1A000000), RoundedCornerShape(4.dp))
+                            .border(0.5.dp, Color.Gray.copy(0.3f), RoundedCornerShape(4.dp))
+                    ) {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(4.dp)
+                        ) {
+                            items(stationsToShow) { station ->
+                                val indexInDraft = draftContactPoints.indexOfFirst { it.id == station.id }
+                                val isInDraft = indexInDraft >= 0
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            if (isInDraft) {
+                                                draftContactPoints = draftContactPoints.filter { it.id != station.id }
+                                            } else {
+                                                draftContactPoints = draftContactPoints + station
+                                            }
+                                        }
+                                        .padding(vertical = 4.dp, horizontal = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    if (isInDraft) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(CircleShape)
+                                                .background(if (isOutdoorMode) Color.Black else Color(0xFFFF5252))
+                                                .size(18.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text((indexInDraft + 1).toString(), fontSize = 9.5.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                        }
+                                    } else {
+                                        Icon(Icons.Default.AddCircleOutline, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
+                                    }
+                                    Text(
+                                        text = "${station.stationCode} (Lat: ${String.format(Locale.US, "%.4f", station.latitude)})",
+                                        fontSize = 11.sp,
+                                        color = if (isOutdoorMode) Color.Black else Color.White
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Action save
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                draftContactPoints = emptyList()
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isOutdoorMode) Color(0xFFE0E0E0) else Color(0x33FFFFFF),
+                                contentColor = if (isOutdoorMode) Color.Black else Color.White
+                            ),
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text("Clear", fontSize = 11.sp)
+                        }
+
+                        Button(
+                            onClick = {
+                                if (draftContactPoints.size < 2) {
+                                    Toast.makeText(context, "Select at least 2 stations!", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                                val color = when (newContactType) {
+                                    "FAULT_CONTACT" -> "#FF3D00" // Red
+                                    "GRADATIONAL_CONTACT" -> "#00E676" // Green/Gray dotted
+                                    else -> "#00E5FF" // cyan solid formation contact
+                                }
+                                val c = GeologicalContact(
+                                    name = newContactName,
+                                    type = newContactType,
+                                    points = draftContactPoints,
+                                    colorHex = color
+                                )
+                                contactsList = contactsList + c
+                                draftContactPoints = emptyList()
+                                isDrawingContactMode = false
+                                Toast.makeText(context, "Geological boundary saved!", Toast.LENGTH_SHORT).show()
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isOutdoorMode) Color.Black else Color(0xFFFF5252),
+                                contentColor = Color.White
+                            ),
+                            modifier = Modifier.weight(1.3f),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text("Save Boundary", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -10623,56 +11221,159 @@ fun MapContent(viewModel: GeologyViewModel) {
             AlertDialog(
                 onDismissRequest = { isAddPointDialogVisible = false },
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(Icons.Default.AddLocation, contentDescription = null, tint = Color(0xFF00E5FF))
-                        Text("Simulate Quick-Log Station", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.AddLocation, contentDescription = null, tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF))
+                        Text(
+                            text = "Quick-Log Geological Station",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isOutdoorMode) Color.Black else Color.White,
+                            modifier = Modifier.weight(1f)
+                        )
                     }
                 },
                 text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         val activeProj = activeProject
                         if (activeProj == null) {
                             Text(
-                                "No active geological project selected! Please select a project on 'Geological Mapping' tab first before logging.", 
-                                fontSize = 11.sp, 
-                                color = Color.Red
+                                text = "No active project! Please select or create a project on the 'Geology' tab first.",
+                                fontSize = 11.sp,
+                                color = Color.Red,
+                                modifier = Modifier.fillMaxWidth()
                             )
                         } else {
                             Text(
-                                "Registers a new point instantly at the current sight target center coords in active project: '${activeProj.name}'",
-                                fontSize = 10.5.sp,
-                                color = Color.White
+                                text = "Add new station at current sight target coordinates in active project: '${activeProj.name}'",
+                                fontSize = 11.sp,
+                                color = if (isOutdoorMode) Color.DarkGray else Color.Gray,
+                                modifier = Modifier.fillMaxWidth()
                             )
 
+                            // Coords Display
                             Card(
-                                colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.3f)),
-                                border = BorderStroke(0.5.dp, Color(0xFF00E5FF).copy(0.3f))
+                                colors = CardDefaults.cardColors(containerColor = if (isOutdoorMode) Color(0xFFF0F2F1) else Color(0x3300FFE0)),
+                                border = BorderStroke(0.5.dp, if (isOutdoorMode) Color.LightGray else Color(0xFF00E5FF).copy(0.3f))
                             ) {
-                                Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    Text("Sight target: ${String.format(Locale.US, "%.5f", currentLat)}°N , ${String.format(Locale.US, "%.5f", currentLon)}°E", fontSize = 10.sp, color = Color(0xFF00FFE0), fontFamily = FontFamily.Monospace)
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     val utmResultCoord = UtmConverter.convertLatLngToUtm(currentLat, currentLon)
-                                    Text("UTM Zone: $utmResultCoord", fontSize = 9.sp, color = Color.White, fontFamily = FontFamily.Monospace)
+                                    Text("Sight target: ${String.format(Locale.US, "%.5f", currentLat)}°N , ${String.format(Locale.US, "%.5f", currentLon)}°E", fontSize = 10.5.sp, color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0), fontFamily = FontFamily.Monospace)
+                                    Text("UTM Zone: $utmResultCoord", fontSize = 9.5.sp, color = if (isOutdoorMode) Color.DarkGray else Color.LightGray, fontFamily = FontFamily.Monospace)
                                 }
                             }
 
+                            // Codes details
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
                                 OutlinedTextField(
                                     value = quickStationPrefix,
                                     onValueChange = { quickStationPrefix = it },
-                                    label = { Text("Prefix", fontSize = 9.sp) },
+                                    label = { Text("Prefix", fontSize = 9.5.sp) },
                                     singleLine = true,
                                     modifier = Modifier.weight(1f),
-                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF00E5FF))
+                                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = if (isOutdoorMode) Color.Black else Color.White),
+                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF))
                                 )
                                 OutlinedTextField(
                                     value = quickStationCode,
                                     onValueChange = { quickStationCode = it },
-                                    label = { Text("Station Code", fontSize = 9.sp) },
+                                    label = { Text("Station Code", fontSize = 9.5.sp) },
                                     singleLine = true,
                                     modifier = Modifier.weight(2f),
-                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF00E5FF))
+                                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = if (isOutdoorMode) Color.Black else Color.White),
+                                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF))
                                 )
                             }
+
+                            Divider(color = if (isOutdoorMode) Color.LightGray else Color.White.copy(0.15f))
+
+                            // Structural Category switcher
+                            Text(
+                                "Structural Feature:",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isOutdoorMode) Color.Black else Color.LightGray,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            val quickTypes = listOf("None" to "None (Station Only)", "Bedding" to "Bedding", "Joint" to "Joint", "Fault" to "Fault", "Foliation" to "Foliation")
+                            
+                            LazyRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                items(quickTypes) { (keyVal, labelVal) ->
+                                    val active = quickObsType == keyVal
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(if (active) (if (isOutdoorMode) Color.Black else Color(0xFF00E5FF)) else (if (isOutdoorMode) Color(0xFFEEEEEE) else Color(0x1BFFFFFF)))
+                                            .clickable { quickObsType = keyVal }
+                                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = labelVal,
+                                            fontSize = 9.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (active) (if (isOutdoorMode) Color.White else Color.Black) else (if (isOutdoorMode) Color.Black else Color.White)
+                                        )
+                                    }
+                                }
+                            }
+
+                            // If not None, let's show the Strike / Dip / Dip Direction numeric inputs!
+                            if (quickObsType != "None") {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    OutlinedTextField(
+                                        value = quickStrike,
+                                        onValueChange = { quickStrike = it },
+                                        label = { Text("Strike", fontSize = 8.5.sp) },
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1f),
+                                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = if (isOutdoorMode) Color.Black else Color.White),
+                                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF))
+                                    )
+                                    OutlinedTextField(
+                                        value = quickDip,
+                                        onValueChange = { quickDip = it },
+                                        label = { Text("Dip", fontSize = 8.5.sp) },
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1f),
+                                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = if (isOutdoorMode) Color.Black else Color.White),
+                                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF))
+                                    )
+                                    OutlinedTextField(
+                                        value = quickDipDir,
+                                        onValueChange = { quickDipDir = it },
+                                        label = { Text("Dip Direction", fontSize = 8.5.sp) },
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1f),
+                                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = if (isOutdoorMode) Color.Black else Color.White),
+                                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF))
+                                    )
+                                }
+                            }
+
+                            // Notes field
+                            OutlinedTextField(
+                                value = quickNotes,
+                                onValueChange = { quickNotes = it },
+                                placeholder = { Text("Field notes, lithological unit, rock textures...", fontSize = 11.sp, color = Color.Gray) },
+                                label = { Text("Field Notes", fontSize = 9.5.sp) },
+                                maxLines = 3,
+                                modifier = Modifier.fillMaxWidth(),
+                                textStyle = MaterialTheme.typography.bodyMedium.copy(color = if (isOutdoorMode) Color.Black else Color.White),
+                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF))
+                            )
                         }
                     }
                 },
@@ -10684,38 +11385,68 @@ fun MapContent(viewModel: GeologyViewModel) {
                             Button(
                                 onClick = {
                                     viewModel.setManualCoordinates(currentLat, currentLon, 1210.0, gpsAccuracy)
-                                    viewModel.saveStation(activeProj.id, quickStationCode, quickStationPrefix) {
-                                        isAddPointDialogVisible = false
-                                        Toast.makeText(context, "Logged $quickStationCode successfully at target position!", Toast.LENGTH_SHORT).show()
+                                    if (quickObsType == "None") {
+                                        viewModel.saveStation(activeProj.id, quickStationCode, quickStationPrefix) {
+                                            isAddPointDialogVisible = false
+                                            Toast.makeText(context, "Logged $quickStationCode successfully!", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } else {
+                                        viewModel.saveStationWithObservation(
+                                            projectId = activeProj.id,
+                                            stationCode = quickStationCode,
+                                            prefix = quickStationPrefix,
+                                            obsType = if (quickObsType == "Fault") "Fault" else if (quickObsType == "Joint") "Joint" else "Structure",
+                                            notes = quickNotes,
+                                            photoPath = null,
+                                            strike = quickStrike.toIntOrNull(),
+                                            dip = quickDip.toIntOrNull(),
+                                            dipDirection = quickDipDir.toIntOrNull(),
+                                            faultType = if (quickObsType == "Fault") "Fault Line/Dip Slip" else null,
+                                            jointType = if (quickObsType == "Joint") "Joint Set" else null,
+                                            structureType = if (quickObsType == "Foliation") "Foliation" else if (quickObsType == "Bedding") "Bedding" else null,
+                                            onSaved = {
+                                                isAddPointDialogVisible = false
+                                                Toast.makeText(context, "Logged $quickStationCode with $quickObsType structural orientation successfully!", Toast.LENGTH_SHORT).show()
+                                            }
+                                        )
                                     }
+                                    quickNotes = ""
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00E5FF), contentColor = Color.Black)
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF),
+                                    contentColor = if (isOutdoorMode) Color.White else Color.Black
+                                )
                             ) {
-                                Text("Quick Save")
+                                Text("Quick Save", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
 
-                            // Full Registration Navigation
+                            // Full Registration Navigation fallback
                             Button(
                                 onClick = {
                                     viewModel.setManualCoordinates(currentLat, currentLon, 1210.0, gpsAccuracy)
                                     viewModel.navigateTo(Screen.CreateStation(activeProj.id))
                                     isAddPointDialogVisible = false
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00B0FF), contentColor = Color.White)
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00B0FF),
+                                    contentColor = Color.White
+                                )
                             ) {
-                                Text("Full Details Form")
+                                Text("Full Form", fontSize = 11.sp)
                             }
                         }
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { isAddPointDialogVisible = false }) {
-                        Text("Cancel", color = Color.Gray)
+                        Text("Cancel", color = Color.Gray, fontSize = 11.sp)
                     }
                 },
-                containerColor = Color(0xFF161B18),
-                textContentColor = Color.White,
-                titleContentColor = Color.White
+                containerColor = if (isOutdoorMode) Color.White else Color(0xFF161B18),
+                textContentColor = if (isOutdoorMode) Color.Black else Color.White,
+                titleContentColor = if (isOutdoorMode) Color.Black else Color.White,
+                properties = DialogProperties(usePlatformDefaultWidth = false),
+                modifier = Modifier.padding(16.dp)
             )
         }
 
