@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -9185,35 +9186,81 @@ fun generateLeafletHtml(
                 var liveAccuracyCircle = null;
                 var liveMarkerPoint = null;
 
-                if ($isRealPos) {
-                    liveAccuracyCircle = L.circle([$currentLat, $currentLon], {
-                        color: '#00e5ff',
-                        fillColor: '#00e5ff',
-                        fillOpacity: 0.15,
-                        weight: 1,
-                        radius: $gpsAccuracy
-                    }).addTo(map);
+                window.updateLiveLocation = function(lat, lon, accuracy, isRealPos, lockCenter, leafZoom) {
+                    if (!isRealPos) {
+                        if (liveAccuracyCircle) { map.removeLayer(liveAccuracyCircle); liveAccuracyCircle = null; }
+                        if (liveMarkerPoint) { map.removeLayer(liveMarkerPoint); liveMarkerPoint = null; }
+                        return;
+                    }
 
-                    liveMarkerPoint = L.circleMarker([$currentLat, $currentLon], {
-                        color: '#ffffff',
-                        fillColor: '#29b6f6',
-                        fillOpacity: 0.9,
-                        weight: 2,
-                        radius: 7
-                    }).addTo(map);
-                    liveMarkerPoint.bindPopup("GNSS Tracker Target Locked");
+                    if (!liveAccuracyCircle) {
+                        liveAccuracyCircle = L.circle([lat, lon], {
+                            color: '#00e5ff',
+                            fillColor: '#00e5ff',
+                            fillOpacity: 0.15,
+                            weight: 1,
+                            radius: accuracy
+                        }).addTo(map);
+                    } else {
+                        liveAccuracyCircle.setLatLng([lat, lon]);
+                        liveAccuracyCircle.setRadius(accuracy);
+                    }
+
+                    if (!liveMarkerPoint) {
+                        liveMarkerPoint = L.circleMarker([lat, lon], {
+                            color: '#ffffff',
+                            fillColor: '#29b6f6',
+                            fillOpacity: 0.9,
+                            weight: 2,
+                            radius: 7
+                        }).addTo(map);
+                        liveMarkerPoint.bindPopup("GNSS Tracker Target Locked");
+                    } else {
+                        liveMarkerPoint.setLatLng([lat, lon]);
+                    }
+
+                    if (lockCenter) {
+                        map.setView([lat, lon], leafZoom);
+                    }
+                };
+
+                var navLine = null;
+                window.updateNavigationLine = function(sLat, sLon, dLat, dLon, show) {
+                    if (navLine) {
+                        map.removeLayer(navLine);
+                        navLine = null;
+                    }
+                    if (show) {
+                        navLine = L.polyline([[sLat, sLon], [dLat, dLon]], {
+                            color: '#e040fb',
+                            weight: 3.5,
+                            dashArray: '6, 8',
+                            opacity: 0.9
+                        }).addTo(map);
+                    }
+                };
+
+                map.on('moveend', function() {
+                    var center = map.getCenter();
+                    if (window.AndroidInterface && window.AndroidInterface.onCenterChanged) {
+                        window.AndroidInterface.onCenterChanged(center.lat, center.lng);
+                    }
+                });
+
+                if ($isRealPos) {
+                    window.updateLiveLocation($currentLat, $currentLon, $gpsAccuracy, true, $lockGpsCenter, $leafZoom);
                 }
 
                 // Lock tracking camera logic
-                if ($lockGpsCenter && $isRealPos) {
-                    map.setView([$currentLat, $currentLon], $leafZoom);
-                } else if (!$lockGpsCenter && polyline) {
-                    map.fitBounds(polyline.getBounds());
-                } else if (stations.length > 0) {
-                    var markersGroup = stations.map(function(st) { return L.marker([st.lat, st.lon]); });
-                    if (markersGroup.length > 0) {
-                        var group = new L.featureGroup(markersGroup);
-                        map.fitBounds(group.getBounds());
+                if (!$isRealPos) {
+                    if (stations.length > 0) {
+                        var markersGroup = stations.map(function(st) { return L.marker([st.lat, st.lon]); });
+                        if (markersGroup.length > 0) {
+                            var group = new L.featureGroup(markersGroup);
+                            map.fitBounds(group.getBounds());
+                        }
+                    } else if (polyline) {
+                        map.fitBounds(polyline.getBounds());
                     }
                 }
             </script>
@@ -9236,6 +9283,8 @@ fun WebViewMap(
     gpsAccuracy: Double,
     lockGpsCenter: Boolean,
     mapboxToken: String,
+    onCenterChanged: (Double, Double) -> Unit,
+    navigationTargetStation: Station?,
     modifier: Modifier = Modifier
 ) {
     val resolvedTileUrl = if (tileUrl.contains("{token}")) {
@@ -9243,23 +9292,95 @@ fun WebViewMap(
     } else {
         tileUrl
     }
-    val htmlContent = remember(stations, observations, trackPoints, contactsList, isRealPos, currentLat, currentLon, zoom, resolvedTileUrl, gpsAccuracy, lockGpsCenter) {
-        generateLeafletHtml(stations, observations, trackPoints, contactsList, isRealPos, currentLat, currentLon, zoom, resolvedTileUrl, gpsAccuracy, lockGpsCenter)
+    
+    val htmlContent = remember(stations, observations, trackPoints, contactsList, resolvedTileUrl) {
+        val initialLat = if (stations.isNotEmpty()) stations.map { it.latitude }.average() else 35.69439
+        val initialLon = if (stations.isNotEmpty()) stations.map { it.longitude }.average() else 51.42151
+        generateLeafletHtml(
+            stations = stations,
+            observations = observations,
+            trackPoints = trackPoints,
+            contactsList = contactsList,
+            isRealPos = false,
+            currentLat = initialLat,
+            currentLon = initialLon,
+            zoom = zoom,
+            tileUrl = resolvedTileUrl,
+            gpsAccuracy = 15.0,
+            lockGpsCenter = false
+        )
+    }
+
+    val leafZoom = when (zoom) {
+        1 -> 8
+        2 -> 10
+        3 -> 12
+        4 -> 14
+        5 -> 15
+        6 -> 16
+        7 -> 17
+        8 -> 18
+        else -> 14
     }
 
     AndroidView(
         factory = { ctx ->
             WebView(ctx).apply {
-                webViewClient = WebViewClient()
+                addJavascriptInterface(object {
+                    @android.webkit.JavascriptInterface
+                    fun onCenterChanged(lat: Double, lon: Double) {
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            onCenterChanged(lat, lon)
+                        }
+                    }
+                }, "AndroidInterface")
+
+                webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        super.onPageFinished(view, url)
+                        view?.evaluateJavascript(
+                            "if (typeof updateLiveLocation !== 'undefined') { updateLiveLocation($currentLat, $currentLon, $gpsAccuracy, $isRealPos, $lockGpsCenter, $leafZoom); }",
+                            null
+                        )
+                        val navTarget = navigationTargetStation
+                        if (navTarget != null) {
+                            view?.evaluateJavascript(
+                                "if (typeof updateNavigationLine !== 'undefined') { updateNavigationLine($currentLat, $currentLon, ${navTarget.latitude}, ${navTarget.longitude}, true); }",
+                                null
+                            )
+                        }
+                    }
+                }
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
                 settings.useWideViewPort = true
                 settings.loadWithOverviewMode = true
+                tag = htmlContent
                 loadDataWithBaseURL("https://localhost", htmlContent, "text/html", "UTF-8", null)
             }
         },
         update = { webView ->
-            webView.loadDataWithBaseURL("https://localhost", htmlContent, "text/html", "UTF-8", null)
+            val oldHtml = webView.tag as? String
+            if (oldHtml != htmlContent) {
+                webView.tag = htmlContent
+                webView.loadDataWithBaseURL("https://localhost", htmlContent, "text/html", "UTF-8", null)
+            }
+            webView.evaluateJavascript(
+                "if (typeof updateLiveLocation !== 'undefined') { updateLiveLocation($currentLat, $currentLon, $gpsAccuracy, $isRealPos, $lockGpsCenter, $leafZoom); }",
+                null
+            )
+            val navTarget = navigationTargetStation
+            if (navTarget != null) {
+                webView.evaluateJavascript(
+                    "if (typeof updateNavigationLine !== 'undefined') { updateNavigationLine($currentLat, $currentLon, ${navTarget.latitude}, ${navTarget.longitude}, true); }",
+                    null
+                )
+            } else {
+                webView.evaluateJavascript(
+                    "if (typeof updateNavigationLine !== 'undefined') { updateNavigationLine(0, 0, 0, 0, false); }",
+                    null
+                )
+            }
         },
         modifier = modifier
     )
@@ -9277,6 +9398,7 @@ enum class MapLayerProvider(val label: String, val url: String) {
     OPEN_TOPO_MAP("OpenTopoMap", "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png")
 }
 
+@OptIn(com.google.accompanist.permissions.ExperimentalPermissionsApi::class)
 @Composable
 fun MapContent(viewModel: GeologyViewModel) {
     val context = LocalContext.current
@@ -9329,23 +9451,30 @@ fun MapContent(viewModel: GeologyViewModel) {
 
     var isRealPositionEnabled by remember { mutableStateOf(false) }
 
+    val locationPermissionState = rememberPermissionState(
+        permission = Manifest.permission.ACCESS_FINE_LOCATION
+    )
+
     // Option switches
     var rotateMapUsingGnss by remember { mutableStateOf(true) }
     var displayLineFromPosition by remember { mutableStateOf(true) }
     var positioningStatus by remember { mutableStateOf(true) }
     var trackRecording by remember { mutableStateOf(false) }
 
-    // Start location tracking if real position is chosen
-    LaunchedEffect(isRealPositionEnabled) {
-        if (isRealPositionEnabled) {
+    // Start location tracking if real position is chosen and permission is granted
+    LaunchedEffect(isRealPositionEnabled, locationPermissionState.status.isGranted) {
+        if (isRealPositionEnabled && locationPermissionState.status.isGranted) {
             viewModel.startLocationTracking(context)
-        } else if (!isTrackRecordingEnabled) {
+        } else if (!isRealPositionEnabled && !isTrackRecordingEnabled) {
             viewModel.stopLocationTracking()
         }
     }
 
     // GNSS linked rules
     fun onRealPositionChanged(enabled: Boolean) {
+        if (enabled && !locationPermissionState.status.isGranted) {
+            locationPermissionState.launchPermissionRequest()
+        }
         isRealPositionEnabled = enabled
         if (enabled) {
             rotateMapUsingGnss = true
@@ -9367,6 +9496,9 @@ fun MapContent(viewModel: GeologyViewModel) {
     var exportFormatChoice by remember { mutableStateOf("GPX") }
 
     fun onTrackRecordingChanged(enabled: Boolean) {
+        if (enabled && !locationPermissionState.status.isGranted) {
+            locationPermissionState.launchPermissionRequest()
+        }
         trackRecording = enabled
         if (enabled) {
             isRealPositionEnabled = true
@@ -9395,6 +9527,17 @@ fun MapContent(viewModel: GeologyViewModel) {
     val currentLat = if (isRealPositionEnabled && liveLocation != null) liveLocation!!.latitude else simulatorLat
     val currentLon = if (isRealPositionEnabled && liveLocation != null) liveLocation!!.longitude else simulatorLon
     val currentHeading = if (isRealPositionEnabled && liveLocation != null) liveLocation!!.bearing.toDouble() else simulatorHeading
+
+    var pannedCenterLat by remember { mutableStateOf(35.69439) }
+    var pannedCenterLon by remember { mutableStateOf(51.42151) }
+    var navigationTargetStation by remember { mutableStateOf<Station?>(null) }
+
+    LaunchedEffect(lockGpsCenter, currentLat, currentLon) {
+        if (lockGpsCenter) {
+            pannedCenterLat = currentLat
+            pannedCenterLon = currentLon
+        }
+    }
 
     fun simulateWalkMove(direction: String) {
         val stepSize = 0.00015
@@ -9522,6 +9665,11 @@ fun MapContent(viewModel: GeologyViewModel) {
                 gpsAccuracy = gpsAccuracy,
                 lockGpsCenter = lockGpsCenter,
                 mapboxToken = mapboxTokenInput,
+                onCenterChanged = { lat, lon ->
+                    pannedCenterLat = lat
+                    pannedCenterLon = lon
+                },
+                navigationTargetStation = navigationTargetStation,
                 modifier = Modifier.fillMaxSize()
             )
         } else {
@@ -9745,41 +9893,218 @@ fun MapContent(viewModel: GeologyViewModel) {
         }
 
         // -------------------------------------------------------------
-        // LAYER 3: FLOATING SIGHT CENTER COORDINATE STATUS RIBBON (BOTTOM CENTER)
+        // LAYER 3: DYNAMIC ALPINEQUEST CENTER TARGET INSPECTOR HUD (BOTTOM CENTER)
         // -------------------------------------------------------------
-        Box(
+        var coordinateFormatMode by remember { mutableStateOf(0) } // 0: DD, 1: DMS, 2: UTM
+        
+        fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+            val r = 6371e3 // meters
+            val phi1 = Math.toRadians(lat1)
+            val phi2 = Math.toRadians(lat2)
+            val deltaPhi = Math.toRadians(lat2 - lat1)
+            val deltaLambda = Math.toRadians(lon2 - lon1)
+            val a = Math.sin(deltaPhi / 2) * Math.sin(deltaPhi / 2) +
+                    Math.cos(phi1) * Math.cos(phi2) *
+                    Math.sin(deltaLambda / 2) * Math.sin(deltaLambda / 2)
+            val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+            return r * c
+        }
+
+        fun calculateBearing(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+            val phi1 = Math.toRadians(lat1)
+            val phi2 = Math.toRadians(lat2)
+            val lambda1 = Math.toRadians(lon1)
+            val lambda2 = Math.toRadians(lon2)
+            val y = Math.sin(lambda2 - lambda1) * Math.cos(phi2)
+            val x = Math.cos(phi1) * Math.sin(phi2) -
+                    Math.sin(phi1) * Math.cos(phi2) * Math.cos(lambda2 - lambda1)
+            val brng = Math.toDegrees(Math.atan2(y, x))
+            return (brng + 360.0) % 360.0
+        }
+
+        fun formatDMS(value: Double, isLat: Boolean): String {
+            val direction = if (isLat) {
+                if (value >= 0) "N" else "S"
+            } else {
+                if (value >= 0) "E" else "W"
+            }
+            val absVal = Math.abs(value)
+            val degrees = absVal.toInt()
+            val minutesAndSec = (absVal - degrees) * 60.0
+            val minutes = minutesAndSec.toInt()
+            val seconds = (minutesAndSec - minutes) * 60.0
+            return String.format(Locale.US, "%d°%02d'%02.1f\"%s", degrees, minutes, seconds, direction)
+        }
+
+        Column(
             modifier = Modifier
-                .padding(bottom = 8.dp)
-                .align(Alignment.BottomCenter)
-                .clip(RoundedCornerShape(8.dp))
-                .background(if (isOutdoorMode) Color.White else Color(0xE6101512)) // Dynamic background
-                .border(2.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF).copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .padding(bottom = 12.dp)
+                .align(Alignment.BottomCenter),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            val centerLat = if (lockGpsCenter && isRealPositionEnabled) currentLat else (if (stationsToShow.isNotEmpty()) stationsToShow.map { it.latitude }.average() else currentLat)
-            val centerLon = if (lockGpsCenter && isRealPositionEnabled) currentLon else (if (stationsToShow.isNotEmpty()) stationsToShow.map { it.longitude }.average() else currentLon)
-            val utmResult = UtmConverter.convertLatLngToUtm(centerLat, centerLon)
-            
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = "CENTER COORDINATES",
-                    fontSize = 8.sp,
-                    color = if (isOutdoorMode) Color.DarkGray else Color.Gray,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "LAT: ${String.format(Locale.US, "%.6f°N", centerLat)} | LON: ${String.format(Locale.US, "%.6f°E", centerLon)}",
-                    fontSize = 11.sp,
-                    color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0),
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-                Text(
-                    text = "UTM Grid: $utmResult",
-                    fontSize = 9.sp,
-                    color = if (isOutdoorMode) Color.Black else Color.White.copy(alpha = 0.8f),
-                    fontFamily = FontFamily.Monospace
-                )
+            // Live Go-To Navigation Arrow Card (AlpineQuest Navigation HUD)
+            navigationTargetStation?.let { target ->
+                val dist = calculateDistance(currentLat, currentLon, target.latitude, target.longitude)
+                val targetAzimuth = calculateBearing(currentLat, currentLon, target.latitude, target.longitude)
+                val relArrowAngle = (targetAzimuth - currentHeading + 360.0) % 360.0
+
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isOutdoorMode) Color(0xFFFFEB3B) else Color(0xEE1E0035)
+                    ),
+                    border = BorderStroke(2.dp, if (isOutdoorMode) Color.Black else Color(0xFFE040FB)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .width(280.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "NAV TO STATION: ${target.stationCode}",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (isOutdoorMode) Color.Black else Color(0xFFE040FB)
+                            )
+                            Text(
+                                text = "Distance: ${if (dist >= 1000.0) String.format(Locale.US, "%.2f km", dist / 1000.0) else String.format(Locale.US, "%.1f m", dist)}",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isOutdoorMode) Color.Black else Color.White
+                            )
+                            Text(
+                                text = "Azimuth: ${String.format(Locale.US, "%.1f°", targetAzimuth)} (Sight: ${String.format(Locale.US, "%+d°", (relArrowAngle - 180).toInt())})",
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = if (isOutdoorMode) Color.DarkGray else Color.LightGray
+                            )
+                        }
+
+                        // Rotating navigational arrow
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            IconButton(
+                                onClick = { navigationTargetStation = null },
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .background(Color.Red.copy(0.2f), CircleShape)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Cancel Navigation",
+                                    tint = Color.Red,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                            }
+                            
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .background(if (isOutdoorMode) Color.Black else Color(0xFFE040FB).copy(alpha = 0.2f), CircleShape)
+                                    .padding(4.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Navigation,
+                                    contentDescription = "Distance Compass Direction",
+                                    tint = if (isOutdoorMode) Color(0xFFFFEB3B) else Color(0xFFE040FB),
+                                    modifier = Modifier
+                                        .size(22.dp)
+                                        .graphicsLayer(rotationZ = relArrowAngle.toFloat())
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // AlpineQuest Target Sight Coordinates Bar
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (isOutdoorMode) Color.White else Color(0xF20F1512))
+                    .border(2.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF).copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                    .clickable { coordinateFormatMode = (coordinateFormatMode + 1) % 3 }
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                val utmResult = UtmConverter.convertLatLngToUtm(pannedCenterLat, pannedCenterLon)
+                
+                Column(horizontalAlignment = Alignment.Start, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    Text(
+                        text = "CROSSHAIR TARGET (TAP TO FORMAT)",
+                        fontSize = 8.sp,
+                        color = if (isOutdoorMode) Color.DarkGray else Color.Gray,
+                        fontWeight = FontWeight.Bold
+                    )
+                    
+                    val formattedCoords = when (coordinateFormatMode) {
+                        0 -> "LAT: ${String.format(Locale.US, "%.6f°N", pannedCenterLat)}\nLON: ${String.format(Locale.US, "%.6f°E", pannedCenterLon)}"
+                        1 -> "LAT: ${formatDMS(pannedCenterLat, true)}\nLON: ${formatDMS(pannedCenterLon, false)}"
+                        else -> "UTM Grid: $utmResult"
+                    }
+                    
+                    Text(
+                        text = formattedCoords,
+                        fontSize = 11.sp,
+                        color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0),
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace,
+                        lineHeight = 13.sp
+                    )
+
+                    // Target details
+                    val distanceToCenter = calculateDistance(currentLat, currentLon, pannedCenterLat, pannedCenterLon)
+                    val bearingToCenter = calculateBearing(currentLat, currentLon, pannedCenterLat, pannedCenterLon)
+                    Text(
+                        text = "Dist: ${if (distanceToCenter >= 1000) String.format(Locale.US, "%.2f km", distanceToCenter / 1000) else String.format(Locale.US, "%.1f m", distanceToCenter)} | Azimuth: ${String.format(Locale.US, "%d°", bearingToCenter.toInt())}",
+                        fontSize = 9.sp,
+                        color = if (isOutdoorMode) Color.Black else Color.White.copy(0.8f),
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(16.dp))
+
+                // Map crosshair elevation mock/estimate + quick point adder
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Elevation estimate
+                    Box(
+                        modifier = Modifier
+                            .background(if (isOutdoorMode) Color(0xFFEEEEEE) else Color(0x3300FFE0), RoundedCornerShape(4.dp))
+                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = "Elev: 1210m",
+                            fontSize = 8.sp,
+                            color = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF),
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    // Direct central add-location icon (the ultimate outdoor app feature)
+                    IconButton(
+                        onClick = { isAddPointDialogVisible = true },
+                        modifier = Modifier
+                            .size(36.dp)
+                            .background(if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), CircleShape)
+                            .border(1.dp, Color.White, CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AddLocation,
+                            contentDescription = "Log Station at Crosshairs",
+                            tint = if (isOutdoorMode) Color.White else Color.Black,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
             }
         }
 
@@ -11088,12 +11413,41 @@ fun MapContent(viewModel: GeologyViewModel) {
 
                     Divider(color = if (isOutdoorMode) Color.LightGray else Color.White.copy(0.12f))
 
+                    var journalTabChoice by remember { mutableStateOf("Tracks") } // "Tracks" or "Stations"
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("Tracks" to "Saved Tracks", "Stations" to "Stations Log").forEach { (tabKey, tabLabel) ->
+                            val active = journalTabChoice == tabKey
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (active) (if (isOutdoorMode) Color.Black else Color(0x3300E5FF)) else (if (isOutdoorMode) Color(0xFFE0E0E0) else Color(0x11FFFFFF)))
+                                    .border(1.dp, if (active) (if (isOutdoorMode) Color.Black else Color(0xFF00E5FF)) else Color.Transparent, RoundedCornerShape(6.dp))
+                                    .clickable { journalTabChoice = tabKey }
+                                    .padding(vertical = 4.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = tabLabel,
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (active) (if (isOutdoorMode) Color.White else Color(0xFF00E5FF)) else (if (isOutdoorMode) Color.Black else Color.LightGray)
+                                )
+                            }
+                        }
+                    }
+
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(260.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        if (journalTabChoice == "Tracks") {
                         if (savedTracks.isEmpty()) {
                             item {
                                 Box(
@@ -11185,6 +11539,126 @@ fun MapContent(viewModel: GeologyViewModel) {
                                     }
                                 }
                             }
+                        } } else {
+                            if (filteredStations.isEmpty()) {
+                                item {
+                                    Box(
+                                        modifier = Modifier.fillMaxSize().padding(16.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "No saved stations in this area.",
+                                            fontSize = 10.sp,
+                                            color = if (isOutdoorMode) Color.DarkGray else Color.LightGray,
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                        )
+                                    }
+                                }
+                            } else {
+                                items(filteredStations) { station ->
+                                    val distanceToMyPos = calculateDistance(currentLat, currentLon, station.latitude, station.longitude)
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.cardColors(containerColor = if (isOutdoorMode) Color(0xFFEEEEEE) else Color(0xFF1E2521)),
+                                        border = BorderStroke(0.5.dp, if (isOutdoorMode) Color.Gray else Color(0xFF00E5FF).copy(alpha = 0.2f))
+                                    ) {
+                                        Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = "STATION: ${station.stationCode}",
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 11.5.sp,
+                                                        color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00E5FF)
+                                                    )
+                                                    Text(
+                                                        text = "Dist: ${if (distanceToMyPos >= 1000.0) String.format(Locale.US, "%.2f km", distanceToMyPos / 1000.0) else String.format(Locale.US, "%.1f m", distanceToMyPos)}",
+                                                        fontSize = 9.sp,
+                                                        color = Color.Gray
+                                                    )
+                                                }
+                                                // Action tools: Navigate, Locate, Delete
+                                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                    // GPS target "Go-To" pointer toggle
+                                                    IconButton(
+                                                        onClick = {
+                                                            if (navigationTargetStation?.id == station.id) {
+                                                                navigationTargetStation = null
+                                                            } else {
+                                                                navigationTargetStation = station
+                                                            }
+                                                            isJournalPanelVisible = false
+                                                        },
+                                                        modifier = Modifier
+                                                            .size(28.dp)
+                                                            .background(if (navigationTargetStation?.id == station.id) (if (isOutdoorMode) Color.Black else Color(0x3300E5FF)) else Color.Transparent, CircleShape)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Navigation,
+                                                            contentDescription = "Target Go-To navigation",
+                                                            tint = if (navigationTargetStation?.id == station.id) (if (isOutdoorMode) Color.White else Color(0xFF00E5FF)) else Color.Gray,
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
+                                                    }
+
+                                                    // Centering map location
+                                                    IconButton(
+                                                        onClick = {
+                                                            pannedCenterLat = station.latitude
+                                                            pannedCenterLon = station.longitude
+                                                            lockGpsCenter = false
+                                                            isJournalPanelVisible = false
+                                                        },
+                                                        modifier = Modifier.size(28.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.MyLocation,
+                                                            contentDescription = "Locate on map",
+                                                            tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00FFE0),
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
+                                                    }
+                                                    
+                                                    // Delete
+                                                    IconButton(
+                                                        onClick = {
+                                                            activeProject?.id?.let { projId ->
+                                                                viewModel.deleteStation(station.id, projId)
+                                                            }
+                                                        },
+                                                        modifier = Modifier.size(28.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Delete,
+                                                            contentDescription = "Delete Station",
+                                                            tint = Color(0xFFFF5252),
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            val obsList = allObservationsList.filter { it.stationId == station.id }
+                                            if (obsList.isNotEmpty()) {
+                                                Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.padding(start = 4.dp)) {
+                                                    obsList.forEach { obs ->
+                                                        val dipText = if (obs.strike != null && obs.dip != null) "S: ${obs.strike}°/D: ${obs.dip}°" else ""
+                                                        val notesText = obs.notes?.take(45) ?: ""
+                                                        Text(
+                                                            text = "• ${obs.observationType}: $dipText $notesText",
+                                                            fontSize = 8.5.sp,
+                                                            color = if (isOutdoorMode) Color.Black else Color.White.copy(0.7f)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -11263,8 +11737,8 @@ fun MapContent(viewModel: GeologyViewModel) {
                                 border = BorderStroke(0.5.dp, if (isOutdoorMode) Color.LightGray else Color(0xFF00E5FF).copy(0.3f))
                             ) {
                                 Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    val utmResultCoord = UtmConverter.convertLatLngToUtm(currentLat, currentLon)
-                                    Text("Sight target: ${String.format(Locale.US, "%.5f", currentLat)}°N , ${String.format(Locale.US, "%.5f", currentLon)}°E", fontSize = 10.5.sp, color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0), fontFamily = FontFamily.Monospace)
+                                    val utmResultCoord = UtmConverter.convertLatLngToUtm(pannedCenterLat, pannedCenterLon)
+                                    Text("Sight target: ${String.format(Locale.US, "%.5f", pannedCenterLat)}°N , ${String.format(Locale.US, "%.5f", pannedCenterLon)}°E", fontSize = 10.5.sp, color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0), fontFamily = FontFamily.Monospace)
                                     Text("UTM Zone: $utmResultCoord", fontSize = 9.5.sp, color = if (isOutdoorMode) Color.DarkGray else Color.LightGray, fontFamily = FontFamily.Monospace)
                                 }
                             }
@@ -11384,7 +11858,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                             // Quick Save
                             Button(
                                 onClick = {
-                                    viewModel.setManualCoordinates(currentLat, currentLon, 1210.0, gpsAccuracy)
+                                    viewModel.setManualCoordinates(pannedCenterLat, pannedCenterLon, 1210.0, gpsAccuracy)
                                     if (quickObsType == "None") {
                                         viewModel.saveStation(activeProj.id, quickStationCode, quickStationPrefix) {
                                             isAddPointDialogVisible = false
@@ -11423,7 +11897,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                             // Full Registration Navigation fallback
                             Button(
                                 onClick = {
-                                    viewModel.setManualCoordinates(currentLat, currentLon, 1210.0, gpsAccuracy)
+                                    viewModel.setManualCoordinates(pannedCenterLat, pannedCenterLon, 1210.0, gpsAccuracy)
                                     viewModel.navigateTo(Screen.CreateStation(activeProj.id))
                                     isAddPointDialogVisible = false
                                 },
