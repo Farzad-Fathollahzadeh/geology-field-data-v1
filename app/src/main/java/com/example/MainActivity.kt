@@ -9187,36 +9187,43 @@ fun generateLeafletHtml(
                 var liveMarkerPoint = null;
 
                 window.updateLiveLocation = function(lat, lon, accuracy, isRealPos, lockCenter, leafZoom) {
-                    if (!isRealPos) {
-                        if (liveAccuracyCircle) { map.removeLayer(liveAccuracyCircle); liveAccuracyCircle = null; }
-                        if (liveMarkerPoint) { map.removeLayer(liveMarkerPoint); liveMarkerPoint = null; }
-                        return;
-                    }
+                    var markerColor = isRealPos ? '#29b6f6' : '#ff9100';
+                    var accuracyColor = isRealPos ? '#00e5ff' : '#ffb74d';
+                    var popupMsg = isRealPos ? "GNSS Tracker Target Locked" : "Position Simulator Active";
 
                     if (!liveAccuracyCircle) {
                         liveAccuracyCircle = L.circle([lat, lon], {
-                            color: '#00e5ff',
-                            fillColor: '#00e5ff',
-                            fillOpacity: 0.15,
+                            color: accuracyColor,
+                            fillColor: accuracyColor,
+                            fillOpacity: isRealPos ? 0.15 : 0.08,
                             weight: 1,
-                            radius: accuracy
+                            radius: isRealPos ? accuracy : 10
                         }).addTo(map);
                     } else {
                         liveAccuracyCircle.setLatLng([lat, lon]);
-                        liveAccuracyCircle.setRadius(accuracy);
+                        liveAccuracyCircle.setRadius(isRealPos ? accuracy : 10);
+                        liveAccuracyCircle.setStyle({
+                            color: accuracyColor,
+                            fillColor: accuracyColor,
+                            fillOpacity: isRealPos ? 0.15 : 0.08
+                        });
                     }
 
                     if (!liveMarkerPoint) {
                         liveMarkerPoint = L.circleMarker([lat, lon], {
                             color: '#ffffff',
-                            fillColor: '#29b6f6',
+                            fillColor: markerColor,
                             fillOpacity: 0.9,
                             weight: 2,
                             radius: 7
                         }).addTo(map);
-                        liveMarkerPoint.bindPopup("GNSS Tracker Target Locked");
+                        liveMarkerPoint.bindPopup(popupMsg);
                     } else {
                         liveMarkerPoint.setLatLng([lat, lon]);
+                        liveMarkerPoint.setStyle({
+                            fillColor: markerColor
+                        });
+                        liveMarkerPoint.setPopupContent(popupMsg);
                     }
 
                     if (lockCenter) {
@@ -9247,9 +9254,195 @@ fun generateLeafletHtml(
                     }
                 });
 
-                if ($isRealPos) {
-                    window.updateLiveLocation($currentLat, $currentLon, $gpsAccuracy, true, $lockGpsCenter, $leafZoom);
+                // --- UTM Grid Overlay Implementation ---
+                var utmGridLayer = L.layerGroup().addTo(map);
+                var utmGridEnabled = true;
+
+                function latLngToUtm(lat, lon) {
+                    var latRad = lat * Math.PI / 180;
+                    var lonRad = lon * Math.PI / 180;
+                    var zone = Math.floor((lon + 180) / 6) + 1;
+                    if (zone <= 0) zone = 1;
+                    if (zone > 60) zone = 60;
+                    var lonOrigin = (zone - 1) * 6 - 180 + 3;
+                    var lonOriginRad = lonOrigin * Math.PI / 180;
+
+                    var a = 6378137.0;
+                    var eccSquared = 0.00669437999013;
+                    var k0 = 0.9996;
+
+                    var eccPrimeSquared = eccSquared / (1 - eccSquared);
+                    var n = a / Math.sqrt(1 - eccSquared * Math.sin(latRad) * Math.sin(latRad));
+                    var t = Math.tan(latRad) * Math.tan(latRad);
+                    var c = eccPrimeSquared * Math.cos(latRad) * Math.cos(latRad);
+                    var aCoeff = Math.cos(latRad) * (lonRad - lonOriginRad);
+
+                    var m = a * ((1 - eccSquared / 4 - 3 * eccSquared * eccSquared / 64 - 5 * eccSquared * eccSquared * eccSquared / 256) * latRad
+                            - (3 * eccSquared / 8 + 3 * eccSquared * eccSquared / 32 + 45 * eccSquared * eccSquared * eccSquared / 1024) * Math.sin(2 * latRad)
+                            + (15 * eccSquared * eccSquared / 256 + 45 * eccSquared * eccSquared * eccSquared / 1024) * Math.sin(4 * latRad)
+                            - (35 * eccSquared * eccSquared * eccSquared / 3072) * Math.sin(6 * latRad));
+
+                    var easting = k0 * n * (aCoeff + (1 - t + c) * aCoeff * aCoeff * aCoeff / 6
+                            + (5 - 18 * t + t * t + 72 * c - 58 * eccPrimeSquared) * aCoeff * aCoeff * aCoeff * aCoeff * aCoeff / 120) + 500000.0;
+
+                    var northing = k0 * (m + n * Math.tan(latRad) * (aCoeff * aCoeff / 2 + (5 - t + 9 * c + 4 * c * c) * aCoeff * aCoeff * aCoeff * aCoeff / 24
+                            + (61 - 58 * t + t * t + 600 * c - 330 * eccPrimeSquared) * aCoeff * aCoeff * aCoeff * aCoeff * aCoeff * aCoeff / 720));
+
+                    if (lat < 0) {
+                        northing += 10000000.0;
+                    }
+                    return { easting: easting, northing: northing, zone: zone };
                 }
+
+                function utmToLatLng(easting, northing, zone, isSouthern) {
+                    var k0 = 0.9996;
+                    var a = 6378137.0;
+                    var eccSquared = 0.00669437999013;
+                    var e1 = (1 - Math.sqrt(1 - eccSquared)) / (1 + Math.sqrt(1 - eccSquared));
+
+                    var x = easting - 500000.0;
+                    var y = northing;
+                    if (isSouthern) {
+                        y -= 10000000.0;
+                    }
+
+                    var lonOrigin = (zone - 1) * 6 - 180 + 3;
+                    var eccPrimeSquared = eccSquared / (1 - eccSquared);
+
+                    var m = y / k0;
+                    var mu = m / (a * (1 - eccSquared / 4 - 3 * eccSquared * eccSquared / 64 - 5 * eccSquared * eccSquared * eccSquared / 256));
+
+                    var phi1Rad = mu + (3 * e1 / 2 - 27 * e1 * e1 * e1 / 32) * Math.sin(2 * mu)
+                            + (21 * e1 * e1 / 16 - 55 * e1 * e1 * e1 * e1 / 32) * Math.sin(4 * mu)
+                            + (151 * e1 * e1 * e1 / 96) * Math.sin(6 * mu);
+
+                    var lat1Rad = phi1Rad;
+                    var n1 = a / Math.sqrt(1 - eccSquared * Math.sin(lat1Rad) * Math.sin(lat1Rad));
+                    var t1 = Math.tan(lat1Rad) * Math.tan(lat1Rad);
+                    var c1 = eccPrimeSquared * Math.cos(lat1Rad) * Math.cos(lat1Rad);
+                    var r1 = a * (1 - eccSquared) / Math.pow(1 - eccSquared * Math.sin(lat1Rad) * Math.sin(lat1Rad), 1.5);
+                    var d = x / (n1 * k0);
+
+                    var lat = lat1Rad - (n1 * Math.tan(lat1Rad) / r1) * (d * d / 2 - (5 + 3 * t1 + 10 * c1 - 4 * c1 * c1 - 9 * eccPrimeSquared) * Math.pow(d, 4) / 24
+                            + (61 + 90 * t1 + 298 * c1 + 45 * t1 * t1 - 252 * eccPrimeSquared - 3 * c1 * c1) * Math.pow(d, 6) / 720);
+                    lat = lat * 180 / Math.PI;
+
+                    var lon = (d - (1 + 2 * t1 + c1) * Math.pow(d, 3) / 6 + (5 - 2 * c1 + 28 * t1 - 3 * c1 * c1 + 8 * eccPrimeSquared + 24 * t1 * t1) * Math.pow(d, 5) / 120) / Math.cos(lat1Rad);
+                    lon = lonOrigin + lon * 180 / Math.PI;
+
+                    return { lat: lat, lon: lon };
+                }
+
+                function updateUtmGrid() {
+                    utmGridLayer.clearLayers();
+                    if (!utmGridEnabled) return;
+
+                    var zoom = map.getZoom();
+                    if (zoom < 8) return;
+
+                    var bounds = map.getBounds();
+                    var sw = bounds.getSouthWest();
+                    var ne = bounds.getNorthEast();
+
+                    var spacing = 10000;
+                    if (zoom >= 18) {
+                        spacing = 100;
+                    } else if (zoom >= 16) {
+                        spacing = 500;
+                    } else if (zoom >= 14) {
+                        spacing = 1000;
+                    } else if (zoom >= 11) {
+                        spacing = 5000;
+                    } else if (zoom >= 9) {
+                        spacing = 10000;
+                    } else {
+                        spacing = 50000;
+                    }
+
+                    var swUtm = latLngToUtm(sw.lat, sw.lng);
+                    var neUtm = latLngToUtm(ne.lat, ne.lng);
+
+                    var utmZone = swUtm.zone;
+                    var isSouthern = sw.lat < 0;
+
+                    var eStart = Math.floor(Math.min(swUtm.easting, neUtm.easting) / spacing) * spacing;
+                    var eEnd = Math.ceil(Math.max(swUtm.easting, neUtm.easting) / spacing) * spacing;
+                    var nStart = Math.floor(Math.min(swUtm.northing, neUtm.northing) / spacing) * spacing;
+                    var nEnd = Math.ceil(Math.max(swUtm.northing, neUtm.northing) / spacing) * spacing;
+
+                    if ((eEnd - eStart) / spacing > 120 || (nEnd - nStart) / spacing > 120) return;
+
+                    var lineStyle = {
+                        color: '#00e5ff',
+                        weight: 0.65,
+                        opacity: 0.45,
+                        dashArray: '3, 4',
+                        interactive: false
+                    };
+
+                    for (var e = eStart; e <= eEnd; e += spacing) {
+                        var latlngs = [];
+                        var step = (nEnd - nStart) / 4;
+                        for (var n = nStart; n <= nEnd; n += step) {
+                            var pt = utmToLatLng(e, n, utmZone, isSouthern);
+                            latlngs.push([pt.lat, pt.lon]);
+                        }
+                        L.polyline(latlngs, lineStyle).addTo(utmGridLayer);
+
+                        var lblPt = utmToLatLng(e, nStart + (nEnd - nStart) * 0.1, utmZone, isSouthern);
+                        if (lblPt.lat >= sw.lat && lblPt.lat <= ne.lat && lblPt.lon >= sw.lng && lblPt.lon <= ne.lng) {
+                            var text = (e / 1000).toFixed(0) + "k E";
+                            L.marker([lblPt.lat, lblPt.lon], {
+                                icon: L.divIcon({
+                                    className: 'utm-grid-label',
+                                    html: '<div style="color: #00e5ff; font-family: monospace; font-size: 8px; background: rgba(15,21,18,0.75); border: 1px solid rgba(0,229,255,0.3); padding: 1px 3px; border-radius: 3px; white-space: nowrap;">' + text + '</div>',
+                                    iconSize: [40, 12],
+                                    iconAnchor: [20, 6]
+                                }),
+                                interactive: false
+                            }).addTo(utmGridLayer);
+                        }
+                    }
+
+                    for (var n = nStart; n <= nEnd; n += spacing) {
+                        var latlngs = [];
+                        var step = (eEnd - eStart) / 4;
+                        for (var e = eStart; e <= eEnd; e += step) {
+                            var pt = utmToLatLng(e, n, utmZone, isSouthern);
+                            latlngs.push([pt.lat, pt.lon]);
+                        }
+                        L.polyline(latlngs, lineStyle).addTo(utmGridLayer);
+
+                        var lblPt = utmToLatLng(eStart + (eEnd - eStart) * 0.1, n, utmZone, isSouthern);
+                        if (lblPt.lat >= sw.lat && lblPt.lat <= ne.lat && lblPt.lon >= sw.lng && lblPt.lon <= ne.lng) {
+                            var text = (n / 1000).toFixed(0) + "k N";
+                            L.marker([lblPt.lat, lblPt.lon], {
+                                icon: L.divIcon({
+                                    className: 'utm-grid-label',
+                                    html: '<div style="color: #00e5ff; font-family: monospace; font-size: 8px; background: rgba(15,21,18,0.75); border: 1px solid rgba(0,229,255,0.3); padding: 1px 3px; border-radius: 3px; white-space: nowrap;">' + text + '</div>',
+                                    iconSize: [40, 12],
+                                    iconAnchor: [20, 6]
+                                }),
+                                interactive: false
+                            }).addTo(utmGridLayer);
+                        }
+                    }
+                }
+
+                window.setUtmGridVisible = function(visible) {
+                    utmGridEnabled = visible;
+                    if (!visible) {
+                        utmGridLayer.clearLayers();
+                    } else {
+                        updateUtmGrid();
+                    }
+                };
+
+                map.on('moveend', updateUtmGrid);
+                map.on('zoomend', updateUtmGrid);
+                updateUtmGrid();
+
+                window.updateLiveLocation($currentLat, $currentLon, $gpsAccuracy, $isRealPos, $lockGpsCenter, $leafZoom);
 
                 // Lock tracking camera logic
                 if (!$isRealPos) {
@@ -9285,6 +9478,7 @@ fun WebViewMap(
     mapboxToken: String,
     onCenterChanged: (Double, Double) -> Unit,
     navigationTargetStation: Station?,
+    showUtmGrid: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val resolvedTileUrl = if (tileUrl.contains("{token}")) {
@@ -9293,21 +9487,26 @@ fun WebViewMap(
         tileUrl
     }
     
+    val initialLat = remember(stations) {
+        if (stations.isNotEmpty()) stations.map { it.latitude }.average() else currentLat
+    }
+    val initialLon = remember(stations) {
+        if (stations.isNotEmpty()) stations.map { it.longitude }.average() else currentLon
+    }
+    
     val htmlContent = remember(stations, observations, trackPoints, contactsList, resolvedTileUrl) {
-        val initialLat = if (stations.isNotEmpty()) stations.map { it.latitude }.average() else 35.69439
-        val initialLon = if (stations.isNotEmpty()) stations.map { it.longitude }.average() else 51.42151
         generateLeafletHtml(
             stations = stations,
             observations = observations,
             trackPoints = trackPoints,
             contactsList = contactsList,
-            isRealPos = false,
+            isRealPos = isRealPos,
             currentLat = initialLat,
             currentLon = initialLon,
             zoom = zoom,
             tileUrl = resolvedTileUrl,
-            gpsAccuracy = 15.0,
-            lockGpsCenter = false
+            gpsAccuracy = gpsAccuracy,
+            lockGpsCenter = lockGpsCenter
         )
     }
 
@@ -9322,6 +9521,16 @@ fun WebViewMap(
         8 -> 18
         else -> 14
     }
+
+    // Wrap in rememberUpdatedState to avoid stale variable captures in long-lived WebView callbacks
+    val currentLatState = androidx.compose.runtime.rememberUpdatedState(currentLat)
+    val currentLonState = androidx.compose.runtime.rememberUpdatedState(currentLon)
+    val gpsAccuracyState = androidx.compose.runtime.rememberUpdatedState(gpsAccuracy)
+    val isRealPosState = androidx.compose.runtime.rememberUpdatedState(isRealPos)
+    val lockGpsCenterState = androidx.compose.runtime.rememberUpdatedState(lockGpsCenter)
+    val leafZoomState = androidx.compose.runtime.rememberUpdatedState(leafZoom)
+    val navigationTargetStationState = androidx.compose.runtime.rememberUpdatedState(navigationTargetStation)
+    val showUtmGridState = androidx.compose.runtime.rememberUpdatedState(showUtmGrid)
 
     AndroidView(
         factory = { ctx ->
@@ -9338,14 +9547,27 @@ fun WebViewMap(
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView?, url: String?) {
                         super.onPageFinished(view, url)
+                        val lat = currentLatState.value
+                        val lon = currentLonState.value
+                        val accuracy = gpsAccuracyState.value
+                        val realPos = isRealPosState.value
+                        val lock = lockGpsCenterState.value
+                        val lz = leafZoomState.value
+                        val utmGrid = showUtmGridState.value
+
                         view?.evaluateJavascript(
-                            "if (typeof updateLiveLocation !== 'undefined') { updateLiveLocation($currentLat, $currentLon, $gpsAccuracy, $isRealPos, $lockGpsCenter, $leafZoom); }",
+                            "if (typeof updateLiveLocation !== 'undefined') { updateLiveLocation($lat, $lon, $accuracy, $realPos, $lock, $lz); }",
                             null
                         )
-                        val navTarget = navigationTargetStation
+                        view?.evaluateJavascript(
+                            "if (typeof setUtmGridVisible !== 'undefined') { setUtmGridVisible($utmGrid); }",
+                            null
+                        )
+
+                        val navTarget = navigationTargetStationState.value
                         if (navTarget != null) {
                             view?.evaluateJavascript(
-                                "if (typeof updateNavigationLine !== 'undefined') { updateNavigationLine($currentLat, $currentLon, ${navTarget.latitude}, ${navTarget.longitude}, true); }",
+                                "if (typeof updateNavigationLine !== 'undefined') { updateNavigationLine($lat, $lon, ${navTarget.latitude}, ${navTarget.longitude}, true); }",
                                 null
                             )
                         }
@@ -9367,6 +9589,10 @@ fun WebViewMap(
             }
             webView.evaluateJavascript(
                 "if (typeof updateLiveLocation !== 'undefined') { updateLiveLocation($currentLat, $currentLon, $gpsAccuracy, $isRealPos, $lockGpsCenter, $leafZoom); }",
+                null
+            )
+            webView.evaluateJavascript(
+                "if (typeof setUtmGridVisible !== 'undefined') { setUtmGridVisible($showUtmGrid); }",
                 null
             )
             val navTarget = navigationTargetStation
@@ -9398,6 +9624,55 @@ enum class MapLayerProvider(val label: String, val url: String) {
     OPEN_TOPO_MAP("OpenTopoMap", "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png")
 }
 
+@Composable
+fun ToolboxTile(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    isActive: Boolean,
+    activeColor: androidx.compose.ui.graphics.Color,
+    isOutdoor: Boolean,
+    onClick: () -> Unit
+) {
+    val bgColor = if (isActive) activeColor.copy(alpha = 0.15f) else androidx.compose.ui.graphics.Color.Transparent
+    val borderCol = if (isActive) activeColor else (if (isOutdoor) androidx.compose.ui.graphics.Color.LightGray else androidx.compose.ui.graphics.Color.Gray.copy(alpha = 0.3f))
+    val textCol = if (isActive) activeColor else (if (isOutdoor) androidx.compose.ui.graphics.Color.Black else androidx.compose.ui.graphics.Color.White)
+    val iconCol = if (isActive) activeColor else (if (isOutdoor) androidx.compose.ui.graphics.Color.DarkGray else androidx.compose.ui.graphics.Color.LightGray)
+
+    androidx.compose.material3.Card(
+        onClick = onClick,
+        modifier = androidx.compose.ui.Modifier
+            .width(80.dp)
+            .height(68.dp),
+        colors = androidx.compose.material3.CardDefaults.cardColors(
+            containerColor = bgColor
+        ),
+        border = androidx.compose.foundation.BorderStroke(1.dp, borderCol),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(8.dp)
+    ) {
+        Column(
+            modifier = androidx.compose.ui.Modifier.fillMaxSize().padding(4.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            androidx.compose.material3.Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = iconCol,
+                modifier = androidx.compose.ui.Modifier.size(20.dp)
+            )
+            Spacer(modifier = androidx.compose.ui.Modifier.height(6.dp))
+            androidx.compose.material3.Text(
+                text = label,
+                fontSize = 8.5.sp,
+                fontWeight = FontWeight.Bold,
+                color = textCol,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                lineHeight = 10.sp
+            )
+        }
+    }
+}
+
 @OptIn(com.google.accompanist.permissions.ExperimentalPermissionsApi::class)
 @Composable
 fun MapContent(viewModel: GeologyViewModel) {
@@ -9421,6 +9696,7 @@ fun MapContent(viewModel: GeologyViewModel) {
     var isJournalPanelVisible by remember { mutableStateOf(false) }
     var isSettingsPanelVisible by remember { mutableStateOf(false) }
     var isStructuralPanelVisible by remember { mutableStateOf(false) }
+    var isGisToolboxOpen by remember { mutableStateOf(false) }
     var isAddPointDialogVisible by remember { mutableStateOf(false) }
     var isOutdoorMode by remember { mutableStateOf(false) }
     var showSimulator by remember { mutableStateOf(false) }
@@ -9455,11 +9731,27 @@ fun MapContent(viewModel: GeologyViewModel) {
         permission = Manifest.permission.ACCESS_FINE_LOCATION
     )
 
+    // Automatically trigger live GPS tracking on screen launch and auto-request permission if not granted
+    LaunchedEffect(Unit) {
+        if (!locationPermissionState.status.isGranted) {
+            locationPermissionState.launchPermissionRequest()
+        } else {
+            isRealPositionEnabled = true
+        }
+    }
+
+    LaunchedEffect(locationPermissionState.status.isGranted) {
+        if (locationPermissionState.status.isGranted) {
+            isRealPositionEnabled = true
+        }
+    }
+
     // Option switches
     var rotateMapUsingGnss by remember { mutableStateOf(true) }
     var displayLineFromPosition by remember { mutableStateOf(true) }
     var positioningStatus by remember { mutableStateOf(true) }
     var trackRecording by remember { mutableStateOf(false) }
+    var showUtmGrid by remember { mutableStateOf(true) }
 
     // Start location tracking if real position is chosen and permission is granted
     LaunchedEffect(isRealPositionEnabled, locationPermissionState.status.isGranted) {
@@ -9519,18 +9811,34 @@ fun MapContent(viewModel: GeologyViewModel) {
         }
     }
 
+    // Determine dynamic default coordinates based on active project's stations or last known location
+    val defaultInitialLat = remember(projectStations) {
+        if (projectStations.isNotEmpty()) projectStations.map { it.latitude }.average() else 35.69439
+    }
+    val defaultInitialLon = remember(projectStations) {
+        if (projectStations.isNotEmpty()) projectStations.map { it.longitude }.average() else 51.42151
+    }
+
     // Coordinates Simulation Walker
-    var simulatorLat by remember { mutableStateOf(35.69439) }
-    var simulatorLon by remember { mutableStateOf(51.42151) }
+    var simulatorLat by remember(defaultInitialLat) { mutableStateOf(defaultInitialLat) }
+    var simulatorLon by remember(defaultInitialLon) { mutableStateOf(defaultInitialLon) }
     var simulatorHeading by remember { mutableStateOf(45.0) }
 
     val currentLat = if (isRealPositionEnabled && liveLocation != null) liveLocation!!.latitude else simulatorLat
     val currentLon = if (isRealPositionEnabled && liveLocation != null) liveLocation!!.longitude else simulatorLon
     val currentHeading = if (isRealPositionEnabled && liveLocation != null) liveLocation!!.bearing.toDouble() else simulatorHeading
 
-    var pannedCenterLat by remember { mutableStateOf(35.69439) }
-    var pannedCenterLon by remember { mutableStateOf(51.42151) }
+    var pannedCenterLat by remember(defaultInitialLat) { mutableStateOf(defaultInitialLat) }
+    var pannedCenterLon by remember(defaultInitialLon) { mutableStateOf(defaultInitialLon) }
     var navigationTargetStation by remember { mutableStateOf<Station?>(null) }
+
+    // Sync simulator coordinate parameters with real locations as soon as a real GPS fix is captured
+    LaunchedEffect(liveLocation) {
+        liveLocation?.let { loc ->
+            simulatorLat = loc.latitude
+            simulatorLon = loc.longitude
+        }
+    }
 
     LaunchedEffect(lockGpsCenter, currentLat, currentLon) {
         if (lockGpsCenter) {
@@ -9670,6 +9978,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                     pannedCenterLon = lon
                 },
                 navigationTargetStation = navigationTargetStation,
+                showUtmGrid = showUtmGrid,
                 modifier = Modifier.fillMaxSize()
             )
         } else {
@@ -9678,16 +9987,87 @@ fun MapContent(viewModel: GeologyViewModel) {
                 val h = size.height
                 val strokeColor = if (isOutdoorMode) Color(0xFFB0BEC5) else Color(0x3300E5FF) // High-contrast steel-gray or neon cyber cyan grid lines
 
-                // Render vector grids
-                for (x in 0..w.toInt() step 60) {
-                    drawLine(color = strokeColor, start = androidx.compose.ui.geometry.Offset(x.toFloat(), 0f), end = androidx.compose.ui.geometry.Offset(x.toFloat(), h), strokeWidth = 0.5f)
-                }
-                for (y in 0..h.toInt() step 60) {
-                    drawLine(color = strokeColor, start = androidx.compose.ui.geometry.Offset(0f, y.toFloat()), end = androidx.compose.ui.geometry.Offset(w, y.toFloat()), strokeWidth = 0.5f)
-                }
-
                 val baseLat = if (lockGpsCenter && isRealPositionEnabled) currentLat else (if (filteredStations.isNotEmpty()) filteredStations.map { it.latitude }.average() else currentLat)
                 val baseLon = if (lockGpsCenter && isRealPositionEnabled) currentLon else (if (filteredStations.isNotEmpty()) filteredStations.map { it.longitude }.average() else currentLon)
+
+                // Mathematically projected UTM Coordinate Grid for Offline map representation
+                val centerUtm = UtmConverter.convertLatLngToUtm(baseLat, baseLon)
+                val pixelsPerMeter = (scale / 111319.9).toFloat()
+
+                val spacing = when {
+                    scale >= 9000000.0 -> 50.0
+                    scale >= 4000000.0 -> 100.0
+                    scale >= 1800000.0 -> 500.0
+                    scale >= 800000.0  -> 1000.0
+                    scale >= 350000.0  -> 5000.0
+                    else               -> 10000.0
+                }
+
+                if (showUtmGrid) {
+                    val halfWidthMeters = (w / 2) / pixelsPerMeter
+                    val halfHeightMeters = (h / 2) / pixelsPerMeter
+                    
+                    val eMin = centerUtm.easting - halfWidthMeters
+                    val eMax = centerUtm.easting + halfWidthMeters
+                    val nMin = centerUtm.northing - halfHeightMeters
+                    val nMax = centerUtm.northing + halfHeightMeters
+
+                    val eStart = (Math.floor(eMin / spacing) * spacing).toLong()
+                    val eEnd = (Math.ceil(eMax / spacing) * spacing).toLong()
+                    val nStart = (Math.floor(nMin / spacing) * spacing).toLong()
+                    val nEnd = (Math.ceil(nMax / spacing) * spacing).toLong()
+
+                    for (e in eStart..eEnd step spacing.toLong()) {
+                        val cx = w / 2f + (e - centerUtm.easting).toFloat() * pixelsPerMeter
+                        if (cx in 0f..w) {
+                            drawLine(
+                                color = strokeColor,
+                                start = androidx.compose.ui.geometry.Offset(cx, 0f),
+                                end = androidx.compose.ui.geometry.Offset(cx, h),
+                                strokeWidth = 0.5f,
+                                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(5f, 5f), 0f)
+                            )
+                            drawContext.canvas.nativeCanvas.drawText(
+                                "${e} E",
+                                cx + 4f,
+                                h - 10f,
+                                android.graphics.Paint().apply {
+                                    color = if (isOutdoorMode) android.graphics.Color.DKGRAY else android.graphics.Color.CYAN
+                                    textSize = 16f
+                                }
+                            )
+                        }
+                    }
+
+                    for (n in nStart..nEnd step spacing.toLong()) {
+                        val cy = h / 2f - (n - centerUtm.northing).toFloat() * pixelsPerMeter
+                        if (cy in 0f..h) {
+                            drawLine(
+                                color = strokeColor,
+                                start = androidx.compose.ui.geometry.Offset(0f, cy),
+                                end = androidx.compose.ui.geometry.Offset(w, cy),
+                                strokeWidth = 0.5f,
+                                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(5f, 5f), 0f)
+                            )
+                            drawContext.canvas.nativeCanvas.drawText(
+                                "${n} N",
+                                10f,
+                                cy - 6f,
+                                android.graphics.Paint().apply {
+                                    color = if (isOutdoorMode) android.graphics.Color.DKGRAY else android.graphics.Color.CYAN
+                                    textSize = 16f
+                                }
+                            )
+                        }
+                    }
+                } else {
+                    for (x in 0..w.toInt() step 100) {
+                        drawLine(color = strokeColor, start = androidx.compose.ui.geometry.Offset(x.toFloat(), 0f), end = androidx.compose.ui.geometry.Offset(x.toFloat(), h), strokeWidth = 0.4f)
+                    }
+                    for (y in 0..h.toInt() step 100) {
+                        drawLine(color = strokeColor, start = androidx.compose.ui.geometry.Offset(0f, y.toFloat()), end = androidx.compose.ui.geometry.Offset(w, y.toFloat()), strokeWidth = 0.4f)
+                    }
+                }
 
                 fun toCanvasX(longitude: Double): Float {
                     return (w / 2f + (longitude - baseLon) * scale * Math.cos(Math.toRadians(baseLat))).toFloat()
@@ -9847,30 +10227,48 @@ fun MapContent(viewModel: GeologyViewModel) {
                     }
                 }
 
-                // Simulated sight line & user radar
-                if (isRealPositionEnabled) {
-                    val cx = toCanvasX(currentLon)
-                    val cy = toCanvasY(currentLat)
-                    if (cx in 0f..w && cy in 0f..h) {
-                        if (displayLineFromPosition) {
-                            val lineLength = 160f
-                            val angleRad = Math.toRadians(currentHeading)
-                            val endX = cx + lineLength * Math.sin(angleRad).toFloat()
-                            val endY = cy - lineLength * Math.cos(angleRad).toFloat()
-                            drawLine(
-                                color = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
-                                start = androidx.compose.ui.geometry.Offset(cx, cy),
-                                end = androidx.compose.ui.geometry.Offset(endX, endY),
-                                strokeWidth = 3f,
-                                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(12f, 6f), 0f)
-                            )
-                        }
-
-                        val pxAccRadius = (gpsAccuracy * (scale / 111320.0)).toFloat()
-                        drawCircle(color = if (isOutdoorMode) Color(0x3300796B) else Color(0x1A00E5FF), radius = Math.max(16f, pxAccRadius), center = androidx.compose.ui.geometry.Offset(cx, cy))
-                        drawCircle(color = if (isOutdoorMode) Color(0xFF0288D1) else Color(0xFF00B0FF), radius = 10f, center = androidx.compose.ui.geometry.Offset(cx, cy))
-                        drawCircle(color = Color.White, radius = 4f, center = androidx.compose.ui.geometry.Offset(cx, cy))
+                // Display User position marker (Real GPS tracking or Active Simulation mode)
+                val cx = toCanvasX(currentLon)
+                val cy = toCanvasY(currentLat)
+                if (cx in 0f..w && cy in 0f..h) {
+                    if (displayLineFromPosition) {
+                        val lineLength = 160f
+                        val angleRad = Math.toRadians(currentHeading)
+                        val endX = cx + lineLength * Math.sin(angleRad).toFloat()
+                        val endY = cy - lineLength * Math.cos(angleRad).toFloat()
+                        drawLine(
+                            color = if (isRealPositionEnabled) {
+                                if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)
+                            } else {
+                                Color(0xFFFF9100) // Orange simulator color
+                            },
+                            start = androidx.compose.ui.geometry.Offset(cx, cy),
+                            end = androidx.compose.ui.geometry.Offset(endX, endY),
+                            strokeWidth = 3f,
+                            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(12f, 6f), 0f)
+                        )
                     }
+
+                    val pxAccRadius = (gpsAccuracy * (scale / 111320.0)).toFloat()
+                    drawCircle(
+                        color = if (isRealPositionEnabled) {
+                            if (isOutdoorMode) Color(0x3300796B) else Color(0x1A00E5FF)
+                        } else {
+                            Color(0x1AFF9100)
+                        },
+                        radius = Math.max(16f, pxAccRadius),
+                        center = androidx.compose.ui.geometry.Offset(cx, cy)
+                    )
+                    drawCircle(
+                        color = if (isRealPositionEnabled) {
+                            if (isOutdoorMode) Color(0xFF0288D1) else Color(0xFF00B0FF)
+                        } else {
+                            Color(0xFFFF9100) // Orange simulator circle
+                        },
+                        radius = 10f,
+                        center = androidx.compose.ui.geometry.Offset(cx, cy)
+                    )
+                    drawCircle(color = Color.White, radius = 4f, center = androidx.compose.ui.geometry.Offset(cx, cy))
                 }
             }
         }
@@ -10251,204 +10649,43 @@ fun MapContent(viewModel: GeologyViewModel) {
                 )
             }
 
-            // Map Layer switcher button
-            IconButton(
-                onClick = { 
-                    isMapLayerPanelVisible = !isMapLayerPanelVisible
-                    isSurveyorPanelVisible = false
-                    isJournalPanelVisible = false
-                    isSettingsPanelVisible = false
-                },
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(if (isMapLayerPanelVisible) toolbarBgOpen else toolbarBgColor, CircleShape)
-                    .border(1.dp, if (isMapLayerPanelVisible) Color.White else toolbarBorderColor, CircleShape)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Layers,
-                    contentDescription = "Map Layer Switcher",
-                    tint = if (isMapLayerPanelVisible) toolbarIconColorOpen else toolbarIconColorClosed,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
             // GPS Lock re-center button
             IconButton(
-                onClick = { lockGpsCenter = !lockGpsCenter },
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(if (lockGpsCenter) (if (isOutdoorMode) Color(0xFF0288D1) else Color(0xFF00B0FF)) else toolbarBgColor, CircleShape)
-                    .border(1.dp, if (lockGpsCenter) Color.White else toolbarBorderColor, CircleShape)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.GpsFixed,
-                    contentDescription = "Lock Camera to GNSS Center",
-                    tint = if (lockGpsCenter) Color.White else Color.Gray,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-
-            // Track recording button
-            IconButton(
                 onClick = { 
-                    onTrackRecordingChanged(!isTrackRecordingEnabled)
-                },
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(if (isTrackRecordingEnabled) Color(0xFFFF3030) else toolbarBgColor, CircleShape)
-                    .border(1.dp, if (isTrackRecordingEnabled) Color.White else toolbarBorderColor, CircleShape)
-            ) {
-                Icon(
-                    imageVector = if (isTrackRecordingEnabled) Icons.Default.Stop else Icons.Default.RadioButtonChecked,
-                    contentDescription = "Track Recorder Play Toggle",
-                    tint = if (isTrackRecordingEnabled) Color.White else Color(0xFFFF5252),
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            // Walk Simulator Toggle button
-            IconButton(
-                onClick = { showSimulator = !showSimulator },
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(if (showSimulator) toolbarBgOpen else toolbarBgColor, CircleShape)
-                    .border(1.dp, if (showSimulator) Color.White else toolbarBorderColor, CircleShape)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.DirectionsWalk,
-                    contentDescription = "Simulator Walk Controller Toggle",
-                    tint = if (showSimulator) toolbarIconColorOpen else toolbarIconColorClosed,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            // Surveyor Distance & Bearing Calculator
-            IconButton(
-                onClick = { 
-                    isSurveyorPanelVisible = !isSurveyorPanelVisible
-                    isMapLayerPanelVisible = false
-                    isJournalPanelVisible = false
-                    isSettingsPanelVisible = false
-                },
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(if (isSurveyorPanelVisible) toolbarBgOpen else toolbarBgColor, CircleShape)
-                    .border(1.dp, if (isSurveyorPanelVisible) Color.White else toolbarBorderColor, CircleShape)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Explore,
-                    contentDescription = "Surveyor Calculator Overlay",
-                    tint = if (isSurveyorPanelVisible) toolbarIconColorOpen else toolbarIconColorClosed,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-
-            // Saved Journals database track list
-            IconButton(
-                onClick = { 
-                    isJournalPanelVisible = !isJournalPanelVisible
-                    isMapLayerPanelVisible = false
-                    isSurveyorPanelVisible = false
-                    isSettingsPanelVisible = false
-                },
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(if (isJournalPanelVisible) toolbarBgOpen else toolbarBgColor, CircleShape)
-                    .border(1.dp, if (isJournalPanelVisible) Color.White else toolbarBorderColor, CircleShape)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.List,
-                    contentDescription = "Field Logs Track Journal list",
-                    tint = if (isJournalPanelVisible) toolbarIconColorOpen else toolbarIconColorClosed,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-
-            // Advanced GIS Engine Settings Toggle
-            IconButton(
-                onClick = { 
-                    isSettingsPanelVisible = !isSettingsPanelVisible
-                    isMapLayerPanelVisible = false
-                    isSurveyorPanelVisible = false
-                    isJournalPanelVisible = false
-                },
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(if (isSettingsPanelVisible) toolbarBgOpen else toolbarBgColor, CircleShape)
-                    .border(1.dp, if (isSettingsPanelVisible) Color.White else toolbarBorderColor, CircleShape)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = "Advanced System Options",
-                    tint = if (isSettingsPanelVisible) toolbarIconColorOpen else toolbarIconColorClosed,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-
-            // Geological structural map toolbar actions
-
-            // 1. Structural Geology Filter Panel Toggle
-            IconButton(
-                onClick = { 
-                    isStructuralPanelVisible = !isStructuralPanelVisible
-                    isMapLayerPanelVisible = false
-                    isSurveyorPanelVisible = false
-                    isJournalPanelVisible = false
-                    isSettingsPanelVisible = false
-                },
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(if (isStructuralPanelVisible) toolbarBgOpen else toolbarBgColor, CircleShape)
-                    .border(1.dp, if (isStructuralPanelVisible) Color.White else toolbarBorderColor, CircleShape)
-                    .testTag("geology_filter_toggle")
-            ) {
-                Icon(
-                    imageVector = Icons.Default.FilterAlt,
-                    contentDescription = "Geological Structural Filtration Overlay",
-                    tint = if (isStructuralPanelVisible) toolbarIconColorOpen else toolbarIconColorClosed,
-                    modifier = Modifier.size(18.dp)
-                )
-            }
-
-            // 2. Contact and fault mapping pencil tool
-            IconButton(
-                onClick = { 
-                    isDrawingContactMode = !isDrawingContactMode
-                    if (isDrawingContactMode) {
-                        isStructuralPanelVisible = false
-                        isMapLayerPanelVisible = false
-                        isSurveyorPanelVisible = false
-                        isJournalPanelVisible = false
-                        isSettingsPanelVisible = false
+                    if (!isRealPositionEnabled) {
+                        onRealPositionChanged(true)
+                        lockGpsCenter = true
+                    } else {
+                        lockGpsCenter = !lockGpsCenter 
                     }
                 },
                 modifier = Modifier
                     .size(40.dp)
-                    .background(if (isDrawingContactMode) Color(0xFFD50000) else toolbarBgColor, CircleShape)
-                    .border(1.dp, if (isDrawingContactMode) Color.White else toolbarBorderColor, CircleShape)
-                    .testTag("geology_contact_toggle")
+                    .background(if (lockGpsCenter && isRealPositionEnabled) (if (isOutdoorMode) Color(0xFF0288D1) else Color(0xFF00B0FF)) else toolbarBgColor, CircleShape)
+                    .border(1.dp, if (lockGpsCenter && isRealPositionEnabled) Color.White else toolbarBorderColor, CircleShape)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Brush,
-                    contentDescription = "Geological Boundary Pencil Mode",
-                    tint = if (isDrawingContactMode) Color.White else Color(0xFFFF8A80),
+                    imageVector = Icons.Default.GpsFixed,
+                    contentDescription = "Lock Camera to GNSS Center",
+                    tint = if (lockGpsCenter && isRealPositionEnabled) Color.White else Color.Gray,
                     modifier = Modifier.size(18.dp)
                 )
             }
 
-            // Outdoor Legibility Sunlight Contrast switcher
+            // GIS COLLAPSIBLE TOOLBOX TRIGGER
             IconButton(
-                onClick = { isOutdoorMode = !isOutdoorMode },
+                onClick = { isGisToolboxOpen = !isGisToolboxOpen },
                 modifier = Modifier
                     .size(40.dp)
-                    .background(if (isOutdoorMode) Color(0xFFFFD54F) else toolbarBgColor, CircleShape)
-                    .border(1.dp, if (isOutdoorMode) Color.Black else toolbarBorderColor, CircleShape)
+                    .background(if (isGisToolboxOpen) toolbarBgOpen else toolbarBgColor, CircleShape)
+                    .border(1.dp, if (isGisToolboxOpen) Color.White else toolbarBorderColor, CircleShape)
+                    .testTag("gis_toolbox_toggle")
             ) {
                 Icon(
-                    imageVector = if (isOutdoorMode) Icons.Default.WbSunny else Icons.Default.BrightnessMedium,
-                    contentDescription = "Toggle Outdoor High-Contrast Mode",
-                    tint = if (isOutdoorMode) Color.Black else Color(0xFFFFD54F),
-                    modifier = Modifier.size(18.dp)
+                    imageVector = if (isGisToolboxOpen) Icons.Default.Close else Icons.Default.Apps,
+                    contentDescription = "GIS Instrument Toolbox",
+                    tint = if (isGisToolboxOpen) toolbarIconColorOpen else toolbarIconColorClosed,
+                    modifier = Modifier.size(20.dp)
                 )
             }
 
@@ -10479,6 +10716,208 @@ fun MapContent(viewModel: GeologyViewModel) {
                     .border(0.5.dp, toolbarBorderColor, RoundedCornerShape(4.dp))
             ) {
                 Icon(Icons.Default.Remove, contentDescription = "Zoom Out", tint = toolbarIconColorClosed, modifier = Modifier.size(16.dp))
+            }
+        }
+
+        // -------------------------------------------------------------
+        // DYNAMIC OVERLAY: FLOATING GIS TOOLBOX COMPACT PANEL
+        // -------------------------------------------------------------
+        AnimatedVisibility(
+            visible = isGisToolboxOpen,
+            enter = fadeIn() + slideInHorizontally { it / 2 },
+            exit = fadeOut() + slideOutHorizontally { it / 2 },
+            modifier = Modifier
+                .padding(top = 12.dp, end = 70.dp)
+                .align(Alignment.TopEnd)
+        ) {
+            Card(
+                modifier = Modifier.width(280.dp),
+                colors = CardDefaults.cardColors(containerColor = if (isOutdoorMode) Color.White else Color(0xFA141A17)),
+                border = BorderStroke(1.5.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF).copy(alpha = 0.8f)),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "FIELD INSTRUMENTS",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.5.sp,
+                            color = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
+                            fontFamily = FontFamily.Monospace
+                        )
+                        IconButton(
+                            onClick = { isGisToolboxOpen = false },
+                            modifier = Modifier.size(20.dp)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Close Toolbox", tint = if (isOutdoorMode) Color.Black else Color.Gray, modifier = Modifier.size(14.dp))
+                        }
+                    }
+
+                    // 3x3 Grid of Tools
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Map Layer tool
+                            Box(modifier = Modifier.weight(1f)) {
+                                ToolboxTile(
+                                    icon = Icons.Default.Layers,
+                                    label = "Map Layer",
+                                    isActive = isMapLayerPanelVisible,
+                                    activeColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
+                                    isOutdoor = isOutdoorMode,
+                                    onClick = {
+                                        isMapLayerPanelVisible = !isMapLayerPanelVisible
+                                        isSurveyorPanelVisible = false
+                                        isJournalPanelVisible = false
+                                        isSettingsPanelVisible = false
+                                        isStructuralPanelVisible = false
+                                        isGisToolboxOpen = false
+                                    }
+                                )
+                            }
+                            // Track recorder tool
+                            Box(modifier = Modifier.weight(1f)) {
+                                ToolboxTile(
+                                    icon = if (isTrackRecordingEnabled) Icons.Default.Stop else Icons.Default.RadioButtonChecked,
+                                    label = if (isTrackRecordingEnabled) "Logging..." else "Rec Track",
+                                    isActive = isTrackRecordingEnabled,
+                                    activeColor = Color(0xFFFF3030),
+                                    isOutdoor = isOutdoorMode,
+                                    onClick = {
+                                        onTrackRecordingChanged(!isTrackRecordingEnabled)
+                                    }
+                                )
+                            }
+                            // Walk simulator tool
+                            Box(modifier = Modifier.weight(1f)) {
+                                ToolboxTile(
+                                    icon = Icons.Default.DirectionsWalk,
+                                    label = "Simulator",
+                                    isActive = showSimulator,
+                                    activeColor = if (isOutdoorMode) Color(0xFF0288D1) else Color(0xFF00B0FF),
+                                    isOutdoor = isOutdoorMode,
+                                    onClick = {
+                                        showSimulator = !showSimulator
+                                    }
+                                )
+                            }
+                        }
+
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Calculator tool
+                            Box(modifier = Modifier.weight(1f)) {
+                                ToolboxTile(
+                                    icon = Icons.Default.Explore,
+                                    label = "Surveyor",
+                                    isActive = isSurveyorPanelVisible,
+                                    activeColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
+                                    isOutdoor = isOutdoorMode,
+                                    onClick = {
+                                        isSurveyorPanelVisible = !isSurveyorPanelVisible
+                                        isMapLayerPanelVisible = false
+                                        isJournalPanelVisible = false
+                                        isSettingsPanelVisible = false
+                                        isStructuralPanelVisible = false
+                                        isGisToolboxOpen = false
+                                    }
+                                )
+                            }
+                            // Journal records list
+                            Box(modifier = Modifier.weight(1f)) {
+                                ToolboxTile(
+                                    icon = Icons.Default.List,
+                                    label = "Logs Traves",
+                                    isActive = isJournalPanelVisible,
+                                    activeColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
+                                    isOutdoor = isOutdoorMode,
+                                    onClick = {
+                                        isJournalPanelVisible = !isJournalPanelVisible
+                                        isMapLayerPanelVisible = false
+                                        isSurveyorPanelVisible = false
+                                        isSettingsPanelVisible = false
+                                        isStructuralPanelVisible = false
+                                        isGisToolboxOpen = false
+                                    }
+                                )
+                            }
+                            // Advanced config settings
+                            Box(modifier = Modifier.weight(1f)) {
+                                ToolboxTile(
+                                    icon = Icons.Default.Settings,
+                                    label = "Geodetic Set",
+                                    isActive = isSettingsPanelVisible,
+                                    activeColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
+                                    isOutdoor = isOutdoorMode,
+                                    onClick = {
+                                        isSettingsPanelVisible = !isSettingsPanelVisible
+                                        isMapLayerPanelVisible = false
+                                        isSurveyorPanelVisible = false
+                                        isJournalPanelVisible = false
+                                        isStructuralPanelVisible = false
+                                        isGisToolboxOpen = false
+                                    }
+                                )
+                            }
+                        }
+
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            // Structure filtration toggle
+                            Box(modifier = Modifier.weight(1f)) {
+                                ToolboxTile(
+                                    icon = Icons.Default.FilterAlt,
+                                    label = "Geology Filt",
+                                    isActive = isStructuralPanelVisible,
+                                    activeColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
+                                    isOutdoor = isOutdoorMode,
+                                    onClick = {
+                                        isStructuralPanelVisible = !isStructuralPanelVisible
+                                        isMapLayerPanelVisible = false
+                                        isSurveyorPanelVisible = false
+                                        isJournalPanelVisible = false
+                                        isSettingsPanelVisible = false
+                                        isGisToolboxOpen = false
+                                    }
+                                )
+                            }
+                            // Geological trace line pencil tool
+                            Box(modifier = Modifier.weight(1f)) {
+                                ToolboxTile(
+                                    icon = Icons.Default.Brush,
+                                    label = "Bound Pencil",
+                                    isActive = isDrawingContactMode,
+                                    activeColor = Color(0xFFD50000),
+                                    isOutdoor = isOutdoorMode,
+                                    onClick = {
+                                        isDrawingContactMode = !isDrawingContactMode
+                                        if (isDrawingContactMode) {
+                                            isStructuralPanelVisible = false
+                                            isMapLayerPanelVisible = false
+                                            isSurveyorPanelVisible = false
+                                            isJournalPanelVisible = false
+                                            isSettingsPanelVisible = false
+                                        }
+                                    }
+                                )
+                            }
+                            // Direct light high-contrast mode toggle
+                            Box(modifier = Modifier.weight(1f)) {
+                                ToolboxTile(
+                                    icon = if (isOutdoorMode) Icons.Default.WbSunny else Icons.Default.BrightnessMedium,
+                                    label = "Sunsight",
+                                    isActive = isOutdoorMode,
+                                    activeColor = Color(0xFFFFD54F),
+                                    isOutdoor = isOutdoorMode,
+                                    onClick = {
+                                        isOutdoorMode = !isOutdoorMode
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -10554,26 +10993,27 @@ fun MapContent(viewModel: GeologyViewModel) {
                     ) {
                         Text("S", fontSize = 11.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
                     }
+
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    Button(
+                        onClick = {
+                            simulatorLat = pannedCenterLat
+                            simulatorLon = pannedCenterLon
+                            Toast.makeText(context, "Simulator snapped to map target!", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)),
+                        shape = RoundedCornerShape(4.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                        modifier = Modifier.fillMaxWidth().height(24.dp)
+                    ) {
+                        Text("TELEPORT HERE", fontSize = 7.5.sp, color = if (isOutdoorMode) Color.White else Color.Black, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
 
-        // -------------------------------------------------------------
-        // LAYER 7: FIELD INFO HELP BADGE (BOTTOM-LEFT)
-        // -------------------------------------------------------------
-        Box(
-            modifier = Modifier
-                .padding(12.dp)
-                .align(Alignment.BottomStart)
-                .clip(RoundedCornerShape(6.dp))
-                .background(Color.Black.copy(alpha = 0.5f))
-                .padding(horizontal = 8.dp, vertical = 4.dp)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("Field GIS Dashboard Loaded.", fontSize = 7.5.sp, color = Color.White)
-                Text("Tap map controls for overlays.", fontSize = 7.sp, color = Color.Gray)
-            }
-        }
+        // Removed bottom-left info badge to keep the layout extremely clean and decluttered
 
         // -------------------------------------------------------------
         // DYNAMIC OVERLAY 1: FLOATING MAP LAYER SWITCHER PANEL
@@ -10673,6 +11113,37 @@ fun MapContent(viewModel: GeologyViewModel) {
                             Text("Offline Vector Grid Mode Active", fontSize = 10.sp, color = if (isOutdoorMode) Color.Black else Color.LightGray)
                             Text("Allows field recording of tracks and targets cleanly without high-resolution base layers if remote signal is offline.", fontSize = 9.sp, color = Color.Gray, lineHeight = 13.sp)
                         }
+                    }
+                    
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showUtmGrid = !showUtmGrid }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.GridView,
+                                contentDescription = null,
+                                tint = if (showUtmGrid) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)) else Color.Gray,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                "UTM Grid Overlay",
+                                fontSize = 11.sp,
+                                color = if (isOutdoorMode) Color.Black else Color.White
+                            )
+                        }
+                        Checkbox(
+                            checked = showUtmGrid,
+                            onCheckedChange = { showUtmGrid = it },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)
+                            )
+                        )
                     }
                     
                     Divider(color = if (isOutdoorMode) Color.LightGray else Color.White.copy(0.15f))

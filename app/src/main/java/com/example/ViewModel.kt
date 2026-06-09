@@ -131,7 +131,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                 
                 // --- GPS Noise Smoothing/Filtering ---
                 // Discard extremely poor accuracy positions (noise filter)
-                if (location.accuracy > 35.0) return
+                if (location.accuracy > 150.0) return
 
                 _liveLocation.value = location
                 
