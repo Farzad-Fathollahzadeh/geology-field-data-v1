@@ -29,6 +29,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.*
 import java.text.SimpleDateFormat
 import java.util.*
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 
 @Composable
 fun RockMechanicsContent(
@@ -239,6 +244,8 @@ fun GeotechnicalWorkspace(
             Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("Hoek-Brown", fontSize = 11.sp) })
             Tab(selected = selectedTab == 3, onClick = { selectedTab = 3 }, text = { Text("MRMR & RMi", fontSize = 11.sp) })
             Tab(selected = selectedTab == 4, onClick = { selectedTab = 4 }, text = { Text("Barton Q-System", fontSize = 11.sp) })
+            Tab(selected = selectedTab == 5, onClick = { selectedTab = 5 }, text = { Text("Kinematic Stereonet", fontSize = 11.sp) })
+            Tab(selected = selectedTab == 6, onClick = { selectedTab = 6 }, text = { Text("Dynamic Support", fontSize = 11.sp) })
         }
 
         when (selectedTab) {
@@ -247,6 +254,8 @@ fun GeotechnicalWorkspace(
             2 -> HoekBrownPanel(viewModel, projectId)
             3 -> MrmrRmiPanel(viewModel, projectId)
             4 -> QSystemPanel(viewModel, projectId)
+            5 -> KinematicStereonetPanel(viewModel, projectId)
+            6 -> DynamicSupportPanel(viewModel, projectId)
         }
     }
 }
@@ -350,6 +359,8 @@ fun RmrPanel(viewModel: GeologyViewModel, projectId: Int) {
     var rmrAdjustment by remember { mutableStateOf("-5.0") } // Discontinuity adjustment (-12-0)
     var notes by remember { mutableStateOf("Moderate phyllite jointing. Slicken-sided surface.") }
 
+    var rmrSpan by remember { mutableStateOf(5.0f) }
+
     var finalScore by remember { mutableStateOf(55.0) }
     var rockClass by remember { mutableStateOf("Class III: Fair Rock") }
 
@@ -394,20 +405,48 @@ fun RmrPanel(viewModel: GeologyViewModel, projectId: Int) {
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
+            val cohesionKpa = when {
+                finalScore >= 80 -> 400.0 + (finalScore - 80) * 5.0
+                finalScore >= 60 -> 300.0 + (finalScore - 60) * 5.0
+                finalScore >= 40 -> 200.0 + (finalScore - 40) * 5.0
+                finalScore >= 20 -> 100.0 + (finalScore - 20) * 5.0
+                else -> (finalScore / 20.0) * 100.0
+            }.coerceAtLeast(10.0)
+
+            val frictionDeg = when {
+                finalScore >= 80 -> 45.0 + (finalScore - 80) * 0.25
+                finalScore >= 60 -> 35.0 + (finalScore - 60) * 0.5
+                finalScore >= 40 -> 25.0 + (finalScore - 40) * 0.5
+                finalScore >= 20 -> 15.0 + (finalScore - 20) * 0.5
+                else -> (finalScore / 20.0) * 15.0
+            }.coerceAtLeast(5.0)
+
+            val standUpHours = Math.pow(10.0, (finalScore - 11.5 * rmrSpan + 10.0) / 13.0)
+            val standUpText = when {
+                standUpHours > 24 * 365 -> "${String.format(Locale.US, "%.1f", standUpHours / (24 * 365))} Years"
+                standUpHours > 24 * 30 -> "${String.format(Locale.US, "%.1f", standUpHours / (24 * 30))} Months"
+                standUpHours > 24 * 7 -> "${String.format(Locale.US, "%.1f", standUpHours / (24 * 7))} Weeks"
+                standUpHours > 24 -> "${String.format(Locale.US, "%.1f", standUpHours / 24)} Days"
+                standUpHours > 1.0 -> "${String.format(Locale.US, "%.1f", standUpHours)} Hours"
+                else -> "${String.format(Locale.US, "%.0f", (standUpHours * 60).coerceAtLeast(1.0))} Mins"
+            }
+
+            val rockLoadKpa = ((100.0 - finalScore) / 100.0).coerceAtLeast(0.0) * 26.5 * rmrSpan
+
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), RoundedCornerShape(16.dp))
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text("Bieniawski RMR Score Card", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-                            Text(rockClass, fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = when {
+                            Text("Bieniawski RMR Score Card (1989 Std.)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                            Text(rockClass, fontWeight = FontWeight.ExtraBold, fontSize = 17.sp, color = when {
                                 finalScore >= 81 -> Color(0xFF2E7D32)
                                 finalScore >= 61 -> Color(0xFF00ACC1)
                                 finalScore >= 41 -> Color(0xFFFBC02D)
@@ -418,18 +457,18 @@ fun RmrPanel(viewModel: GeologyViewModel, projectId: Int) {
                         Box(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
-                                .size(60.dp)
-                                .clip(RoundedCornerShape(30.dp))
+                                .size(54.dp)
+                                .clip(RoundedCornerShape(27.dp))
                                 .background(MaterialTheme.colorScheme.primaryContainer)
                         ) {
-                            Text("${finalScore.toInt()}", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onPrimaryContainer)
+                            Text("${finalScore.toInt()}", fontSize = 21.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onPrimaryContainer)
                         }
                     }
                     
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         LinearProgressIndicator(
                             progress = (finalScore / 100.0).toFloat().coerceIn(0f, 1f),
-                            modifier = Modifier.fillMaxWidth().height(10.dp).clip(RoundedCornerShape(5.dp)),
+                            modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(4.dp)),
                             color = when {
                                 finalScore >= 81 -> Color(0xFF2E7D32)
                                 finalScore >= 61 -> Color(0xFF00ACC1)
@@ -443,6 +482,195 @@ fun RmrPanel(viewModel: GeologyViewModel, projectId: Int) {
                             Text("0 (Very Poor)", fontSize = 8.sp, color = Color.Gray)
                             Text("Fair", fontSize = 8.sp, color = Color.Gray)
                             Text("100 (Very Good)", fontSize = 8.sp, color = Color.Gray)
+                        }
+                    }
+
+                    Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+
+                    Text("Estimated Analytical Rock Mass Parameters:", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.primary)
+
+                    // Param grid row 1
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.25f)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("COHESION (C)", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+                                Text("${cohesionKpa.toInt()} kPa", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+                                Text("Calculated average cohesion limit of jointed block mass.", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 11.sp)
+                            }
+                        }
+
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.25f)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("FRICTION ANGLE (Φ)", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+                                Text("${String.format(Locale.US, "%.1f", frictionDeg)}°", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+                                Text("Estimated shear friction angle resistance limit.", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 11.sp)
+                            }
+                        }
+                    }
+
+                    // Excavation size input for Standup time
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Column(modifier = Modifier.weight(1.3f)) {
+                            Text("Structural Span / Width: ${String.format(Locale.US, "%.1f", rmrSpan)} m", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Slider(
+                                value = rmrSpan,
+                                onValueChange = { rmrSpan = it },
+                                valueRange = 1.0f..30.0f,
+                                modifier = Modifier.height(18.dp)
+                            )
+                        }
+                        Column(modifier = Modifier.weight(0.7f)) {
+                            Text("Span Width Reference", fontSize = 8.sp, color = Color.Gray)
+                            Text("1-30m tunnel/room bounds", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+
+                    // Param grid row 2
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("STAND-UP TIME", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Text(standUpText, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = if (standUpHours < 24) Color(0xFFC62828) else MaterialTheme.colorScheme.primary)
+                                Text("Lauffer standard exposure limit before ceiling failure.", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 11.sp)
+                            }
+                        }
+
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("ULTIMATE ROOF LOAD (Pr)", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Text("${String.format(Locale.US, "%.1f", rockLoadKpa)} kPa", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
+                                Text("Equivalent crown pressure load sustained by support.", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 11.sp)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Visual Rock Joints & Spacing Simulation Preview:",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    
+                    // RMR Joints drawing preview
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(
+                                color = when {
+                                    finalScore >= 81 -> Color(0xFFE8F5E9)
+                                    finalScore >= 61 -> Color(0xFFE0F7FA)
+                                    finalScore >= 41 -> Color(0xFFFFFDE7)
+                                    finalScore >= 21 -> Color(0xFFFFE0B2)
+                                    else -> Color(0xFFFFEBEE)
+                                }
+                            )
+                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), RoundedCornerShape(10.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+                            val w = size.width
+                            val h = size.height
+                            
+                            // Let's draw joints. Spacing score spacingVal (5 - 20) controls how many joints we draw!
+                            val spacingFactor = spacingVal.coerceIn(5.0, 20.0)
+                            // fewer score = smaller spacing = MORE joint lines
+                            val numLines = (30.0 / spacingFactor * 4.0).toInt().coerceIn(3, 30)
+                            val step = w / (numLines + 1)
+                            
+                            // Let's tilt based on orientation score (adjVal ranging from -12 to 0)
+                            val tiltAngle = (adjVal * 4.0).toFloat().coerceIn(-48f, 0f)
+                            
+                            // Draw joint set 1
+                            for (i in 1..numLines) {
+                                val xOffset = i * step
+                                drawLine(
+                                    color = Color(0xFF4E342E).copy(alpha = 0.65f),
+                                    start = androidx.compose.ui.geometry.Offset(xOffset - tiltAngle * 0.7f, 0f),
+                                    end = androidx.compose.ui.geometry.Offset(xOffset + tiltAngle * 0.7f, h),
+                                    strokeWidth = (24.0 / spacingFactor).toFloat().coerceIn(1.5f, 6f)
+                                )
+                            }
+                            
+                            // Draw joint set 2 (conjugate joints)
+                            val conjugateNum = (numLines / 2).coerceAtLeast(2)
+                            val cStep = h / (conjugateNum + 1)
+                            for (j in 1..conjugateNum) {
+                                val yOffset = j * cStep
+                                drawLine(
+                                    color = Color(0xFF3E2723).copy(alpha = 0.35f),
+                                    start = androidx.compose.ui.geometry.Offset(0f, yOffset),
+                                    end = androidx.compose.ui.geometry.Offset(w, yOffset + tiltAngle * 0.3f),
+                                    strokeWidth = 1.2f
+                                )
+                            }
+                            
+                            // Draw water inflow if water score is low (dripping water lines)
+                            if (waterVal < 15.0) {
+                                val drippingLevel = ((15.0 - waterVal) / 15.0).toFloat() // 0 to 1
+                                val numDroplets = (12 * drippingLevel).toInt().coerceIn(0, 15)
+                                val seed = java.util.Random(42)
+                                for (k in 0 until numDroplets) {
+                                    val dropX = seed.nextFloat() * w
+                                    val dropYLen = (seed.nextFloat() * 18f + 5f) * drippingLevel * 2f
+                                    val dropStartY = seed.nextFloat() * h * 0.5f
+                                    drawLine(
+                                        color = Color(0xFF1976D2).copy(alpha = 0.75f),
+                                        start = androidx.compose.ui.geometry.Offset(dropX, dropStartY),
+                                        end = androidx.compose.ui.geometry.Offset(dropX, dropStartY + dropYLen),
+                                        strokeWidth = 2.0f
+                                    )
+                                }
+                            }
+                        }
+                        
+                        // Small label in drawing overlay
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(6.dp)
+                                .background(Color.Black.copy(alpha = 0.65f), RoundedCornerShape(3.dp))
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                "Joint set count: ${(30.0 / spacingVal * 4.0).toInt().coerceIn(3, 30)} sets | Spacing index: ${spacingVal.toInt()}",
+                                color = Color.White,
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            if (waterVal < 15.0) {
+                                Text("Groundwater: Seeping/Water Flow", color = Color(0xFF90CAF9), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                            } else {
+                                Text("Groundwater: Completely Dry", color = Color.White, fontSize = 8.sp)
+                            }
                         }
                     }
                 }
@@ -614,6 +842,9 @@ fun HoekBrownPanel(viewModel: GeologyViewModel, projectId: Int) {
     var computedS by remember { mutableStateOf(0.0) }
     var computedA by remember { mutableStateOf(0.5) }
     var computedSigmaci by remember { mutableStateOf(0.0) } // Mass Compressive Strength
+    var computedTensile by remember { mutableStateOf(0.0) } // Rock Mass Tensile Strength
+    var computedErm by remember { mutableStateOf(0.0) } // Rock Mass deformation modulus (Erm)
+    var computedSgcmGlobal by remember { mutableStateOf(0.0) } // Global Rock Mass Strength (sigcm)
 
     // Parsing & validation states
     val sigciVal = hbSigci.toDoubleOrNull() ?: 0.0
@@ -641,6 +872,16 @@ fun HoekBrownPanel(viewModel: GeologyViewModel, projectId: Int) {
             computedS = s
             computedA = a
             computedSigmaci = massStrength
+            computedTensile = if (mb > 0.0) (s * sigciVal / mb) else 0.0
+            
+            // Erm deformation modulus = 100 * (0.02 + (1 - D/2) / (1 + exp((60 + 15D - GSI)/11))) GPa
+            computedErm = 100.0 * (0.02 + (1.0 - safeD / 2.0) / (1.0 + Math.exp((60.0 + 15.0 * safeD - gsiVal) / 11.0)))
+            
+            // Global Rock Mass Strength Sigcm = Sigci * ( (mb + 4*s - a*(mb - 8*s)) * (mb/4 + s)^(a-1) ) / ( 2*(1+a)*(2+a) )
+            val term1 = mb + 4.0 * s - a * (mb - 8.0 * s)
+            val term2 = Math.pow((mb / 4.0 + s).coerceAtLeast(0.0001), a - 1.0)
+            val denominator = 2.0 * (1.0 + a) * (2.0 + a)
+            computedSgcmGlobal = if (denominator > 0.0) (sigciVal * (term1 * term2) / denominator) else 0.0
         }
     }
 
@@ -654,21 +895,201 @@ fun HoekBrownPanel(viewModel: GeologyViewModel, projectId: Int) {
     ) {
         item {
             Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.2f))
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.2f)),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), RoundedCornerShape(16.dp))
             ) {
-                Column(modifier = Modifier.padding(14.dp).fillMaxWidth()) {
-                    Text("Generalized Hoek-Brown Numerical Outputs", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
-                    Spacer(Modifier.height(8.dp))
-                    Text("mb (mass parameter): ${String.format(Locale.US, "%.4f", computedMb)}", fontFamily = FontFamily.Monospace, fontSize = 13.sp)
-                    Text("s (joints parameter):  ${String.format(Locale.US, "%.6f", computedS)}", fontFamily = FontFamily.Monospace, fontSize = 13.sp)
-                    Text("a (structural shape): ${String.format(Locale.US, "%.4f", computedA)}", fontFamily = FontFamily.Monospace, fontSize = 13.sp)
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = "Mass UCS Strength (σcm): ${String.format(Locale.US, "%.2f", computedSigmaci)} MPa",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        color = MaterialTheme.colorScheme.secondary
-                    )
+                Column(modifier = Modifier.padding(14.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Generalized Hoek-Brown Geotechnical Outputs", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.secondary)
+                    
+                    // Parameters grid
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("mb (mass multiplier):", fontSize = 9.sp, color = Color.Gray)
+                            Text(String.format(Locale.US, "%.4f", computedMb), fontFamily = FontFamily.Monospace, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("s (joint parameter):", fontSize = 9.sp, color = Color.Gray)
+                            Text(String.format(Locale.US, "%.6f", computedS), fontFamily = FontFamily.Monospace, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("a (slope coefficient):", fontSize = 9.sp, color = Color.Gray)
+                            Text(String.format(Locale.US, "%.4f", computedA), fontFamily = FontFamily.Monospace, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+
+                    // Main Rock Strengths Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                Text("MASS COMPRESSIVE (σci)", fontSize = 8.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                                Text("${String.format(Locale.US, "%.2f", computedSigmaci)} MPa", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.secondary)
+                                Text("Uniaxial compressive strength of jointed mass.", fontSize = 7.5.sp, color = Color.DarkGray, lineHeight = 9.sp)
+                            }
+                        }
+
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                Text("GLOBAL STRENGTH (σcm)", fontSize = 8.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                                Text("${String.format(Locale.US, "%.2f", computedSgcmGlobal)} MPa", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                                Text("Equivalent rock mass strength (Hoek 2002).", fontSize = 7.5.sp, color = Color.DarkGray, lineHeight = 9.sp)
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                Text("MASS TENSILE STRENGTH", fontSize = 8.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                                Text("${String.format(Locale.US, "%.3f", computedTensile)} MPa", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFFC62828))
+                                Text("Tensile failure boundary estimation.", fontSize = 7.5.sp, color = Color.DarkGray, lineHeight = 9.sp)
+                            }
+                        }
+
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                Text("DEFORMATION MODULUS (Erm)", fontSize = 8.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                                Text("${String.format(Locale.US, "%.2f", computedErm)} GPa", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF2E7D32))
+                                Text("Diederichs 2006 mass elasticity index.", fontSize = 7.5.sp, color = Color.DarkGray, lineHeight = 9.sp)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("Failure Envelope Curve Plot (Principal Stresses σ₁ vs σ₃):", fontWeight = FontWeight.Bold, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                    // failure envelope canvas
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFFFCFAF2))
+                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 16.dp)) {
+                            val w = size.width
+                            val h = size.height
+
+                            // Draw axes
+                            drawLine(color = Color.DarkGray, start = androidx.compose.ui.geometry.Offset(0f, h), end = androidx.compose.ui.geometry.Offset(w, h), strokeWidth = 2.5f)
+                            drawLine(color = Color.DarkGray, start = androidx.compose.ui.geometry.Offset(0f, 0f), end = androidx.compose.ui.geometry.Offset(0f, h), strokeWidth = 2.5f)
+
+                            // Let's compute envelope scale bounds
+                            val xMax = Math.max(10.0, sigciVal / 2.0)
+                            // yMax is sigma_1 value at xMax
+                            val yMax = xMax + sigciVal * Math.pow((computedMb * xMax / sigciVal) + computedS, computedA)
+
+                            // 1. Draw custom curve path
+                            val curvePath = androidx.compose.ui.graphics.Path()
+                            val stepsCount = 30
+                            for (stepIdx in 0..stepsCount) {
+                                val sig3Val = (stepIdx.toDouble() / stepsCount.toDouble()) * xMax
+                                val sig1Val = sig3Val + sigciVal * Math.pow((computedMb * sig3Val / sigciVal) + computedS, computedA)
+
+                                val xp = (sig3Val / xMax).toFloat() * w
+                                val yp = h - (sig1Val / yMax).toFloat() * h
+                                if (stepIdx == 0) {
+                                    curvePath.moveTo(xp, yp)
+                                } else {
+                                    curvePath.lineTo(xp, yp)
+                                }
+                            }
+
+                            // Fill shaded stable region under failure curve
+                            val shadedPath = androidx.compose.ui.graphics.Path().apply {
+                                addPath(curvePath)
+                                lineTo(w, h)
+                                lineTo(0f, h)
+                                close()
+                            }
+                            drawPath(path = shadedPath, color = Color(0xFFE8F5E9).copy(alpha = 0.5f))
+
+                            // Draw failure curve stroke
+                            drawPath(
+                                path = curvePath,
+                                color = Color(0xFFD84315),
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.5f)
+                            )
+
+                            // Draw Mass Compressive UCS marker dot at (sig3=0, sig1=computedSigmaci)
+                            val ucsYVal = h - (computedSigmaci / yMax).toFloat() * h
+                            drawCircle(
+                                color = Color(0xFF1565C0),
+                                radius = 6f,
+                                center = androidx.compose.ui.geometry.Offset(0f, ucsYVal)
+                            )
+
+                            // Gridlines at 25%, 50%, 75%
+                            for (tick in 1..3) {
+                                val gridX = tick * 0.25f * w
+                                val gridY = tick * 0.25f * h
+                                drawLine(
+                                    color = Color.LightGray,
+                                    start = androidx.compose.ui.geometry.Offset(gridX, 0f),
+                                    end = androidx.compose.ui.geometry.Offset(gridX, h),
+                                    strokeWidth = 1f,
+                                    pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(4f, 4f), 0f)
+                                )
+                                drawLine(
+                                    color = Color.LightGray,
+                                    start = androidx.compose.ui.geometry.Offset(0f, gridY),
+                                    end = androidx.compose.ui.geometry.Offset(w, gridY),
+                                    strokeWidth = 1f,
+                                    pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(4f, 4f), 0f)
+                                )
+                            }
+                        }
+
+                        // Grid tags labels
+                        Text(
+                            text = "Failed Plastic State",
+                            color = Color(0xFFC62828).copy(alpha = 0.75f),
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.align(Alignment.TopEnd).padding(12.dp)
+                        )
+
+                        Text(
+                            text = "Sustained Elastic Zone",
+                            color = Color(0xFF2E7D32).copy(alpha = 0.75f),
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp)
+                        )
+
+                        Text(
+                            text = "UCS (σcm) = ${String.format(Locale.US, "%.1f", computedSigmaci)} MPa",
+                            color = Color(0xFF1565C0),
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier.align(Alignment.TopStart).padding(start = 28.dp, top = 20.dp)
+                        )
+                    }
                 }
             }
         }
@@ -857,28 +1278,203 @@ fun MrmrRmiPanel(viewModel: GeologyViewModel, projectId: Int) {
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0))
-            ) {
-                Column(modifier = Modifier.padding(14.dp).fillMaxWidth()) {
-                    Text("Laubscher Modified MRMR Mining Outputs", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFFE65100))
-                    Spacer(Modifier.height(4.dp))
-                    Text("Basic RMR Core: $rmrBasic", fontSize = 12.sp)
-                    Text("MRMR Mining Class: $mrmrClass", fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                    Text("MRMR Mining Rating: ${String.format(Locale.US, "%.2f", mrmrScore)}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
-                }
+            val stableHR = (mrmrScore * 0.15).coerceIn(1.0, 20.0)
+            val stableSpan = stableHR * 4.0
+            
+            val rmiBlockClass = when {
+                rmiValue >= 10.0 -> "Extremely Strong Massive Blocks"
+                rmiValue >= 1.0 -> "Strong / Blocky Rock Mass"
+                rmiValue >= 0.1 -> "Moderately Jointed / Very Blocky"
+                rmiValue >= 0.01 -> "Partially Crushed / Heavily Jointed"
+                else -> "Extremely Crushed / Soil-Like"
             }
-        }
 
-        item {
             Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFE0F7FA))
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.12f)),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), RoundedCornerShape(16.dp))
             ) {
-                Column(modifier = Modifier.padding(14.dp).fillMaxWidth()) {
-                    Text("Palmstrom RMi Standard Rock Index", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF00ACC1))
-                    Spacer(Modifier.height(4.dp))
-                    Text("UCS: $rmiUcs MPa | Joint Factor Jp: $rmiJp", fontSize = 12.sp)
-                    Text("RMi Index: ${String.format(Locale.US, "%.5f", rmiValue)}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00ACC1))
+                Column(modifier = Modifier.padding(14.dp).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Modified MRMR (Laubscher) & RMi Core Outputs", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
+                            Text("MRMR Mining Rating: ${String.format(Locale.US, "%.2f", mrmrScore)}", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = Color(0xFFE65100))
+                            Text(mrmrClass, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))
+                        ) {
+                            Column(modifier = Modifier.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("RMi INDEX", fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                Text(String.format(Locale.US, "%.4f", rmiValue), fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF00ACC1))
+                            }
+                        }
+                    }
+
+                    Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+
+                    // Engineering Calculations Grid
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("STABLE HYDRAULIC RADIUS (HR)", fontSize = 8.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                                Text("${String.format(Locale.US, "%.2f", stableHR)} m", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFFE65100))
+                                Text("Max undercut area ratio for stable roof.", fontSize = 7.5.sp, color = Color.DarkGray, lineHeight = 9.sp)
+                            }
+                        }
+
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("MAX EXCAVATION SPAN", fontSize = 8.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                                Text("${String.format(Locale.US, "%.1f", stableSpan)} m", fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                                Text("Suggested stable unsupported stope diameter.", fontSize = 7.5.sp, color = Color.DarkGray, lineHeight = 9.sp)
+                            }
+                        }
+                    }
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
+                    ) {
+                        Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("PALMSTROM RMi BLOCK STRUCTURAL CLASSIFICATION:", fontSize = 8.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                                Text(rmiBlockClass, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFF00ACC1))
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text("Block Caving Cavability & Joint Blocks Size Simulation:", fontWeight = FontWeight.Bold, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                    // Caving / Block size canvas visualizer
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(130.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFFF7F5F0))
+                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize().padding(8.dp)) {
+                            val w = size.width
+                            val h = size.height
+
+                            // Draw rock block mesh background based on rmiJpValVal (which determines jp / spacing of joints)
+                            val blockSpacing = (rmiJpValVal * 1200.0).coerceIn(10.0, 70.0).toFloat()
+                            
+                            // Draw blocky mesh
+                            val numXBlocks = (w / blockSpacing).toInt() + 2
+                            val numYBlocks = (h / blockSpacing).toInt() + 2
+                            for (ix in 0..numXBlocks) {
+                                val xPos = ix * blockSpacing
+                                drawLine(
+                                    color = Color(0xFF8D6E63).copy(alpha = 0.22f),
+                                    start = androidx.compose.ui.geometry.Offset(xPos, 0f),
+                                    end = androidx.compose.ui.geometry.Offset(xPos, h),
+                                    strokeWidth = 1f
+                                )
+                            }
+                            for (iy in 0..numYBlocks) {
+                                val yPos = iy * blockSpacing
+                                drawLine(
+                                    color = Color(0xFF8D6E63).copy(alpha = 0.22f),
+                                    start = androidx.compose.ui.geometry.Offset(0f, yPos),
+                                    end = androidx.compose.ui.geometry.Offset(w, yPos),
+                                    strokeWidth = 1f
+                                )
+                            }
+
+                            // Draw stope undercut at bottom center of size w * 0.4
+                            val stopeW = w * 0.35f
+                            val stopeH = h * 0.4f
+                            val stopeLeft = (w - stopeW) / 2f
+                            val stopeTop = h - stopeH
+
+                            val stopePath = androidx.compose.ui.graphics.Path().apply {
+                                moveTo(stopeLeft, h)
+                                lineTo(stopeLeft + stopeW * 0.1f, stopeTop)
+                                lineTo(stopeLeft + stopeW * 0.9f, stopeTop)
+                                lineTo(stopeLeft + stopeW, h)
+                                close()
+                            }
+
+                            // Draw underground empty stope chamber
+                            drawPath(path = stopePath, color = Color(0xFF263238))
+
+                            // Draw block boundaries and cave propagation
+                            if (mrmrScore < 50.0) {
+                                // Low MRMR score means cave propagating! Show loose rock fragments falling and gravity load arrows
+                                val collapsePercent = ((50.0 - mrmrScore) / 50.0).toFloat()
+                                val numSpalls = (8 * collapsePercent).toInt().coerceAtLeast(3)
+                                val seed = java.util.Random(99)
+                                
+                                for (spIdx in 0 until numSpalls) {
+                                    val spw = (seed.nextFloat() * 14f + 8f)
+                                    val sph = (seed.nextFloat() * 10f + 6f)
+                                    val spx = stopeLeft + stopeW * 0.15f + seed.nextFloat() * (stopeW * 0.7f)
+                                    val spy = stopeTop + seed.nextFloat() * (stopeH * 0.8f)
+
+                                    // Draw loose falling block fragment
+                                    drawRect(
+                                        color = Color(0xFF5D4037).copy(alpha = 0.85f),
+                                        topLeft = androidx.compose.ui.geometry.Offset(spx - spw / 2f, spy - sph / 2f),
+                                        size = androidx.compose.ui.geometry.Size(spw, sph)
+                                    )
+                                    
+                                    // Small down gravity arrows
+                                    if (spIdx % 2 == 0) {
+                                        drawLine(
+                                            color = Color(0xFFFF7043),
+                                            start = androidx.compose.ui.geometry.Offset(spx, spy - 6f),
+                                            end = androidx.compose.ui.geometry.Offset(spx, spy + 6f),
+                                            strokeWidth = 2f
+                                        )
+                                    }
+                                }
+                            } else {
+                                // High MRMR is extremely stable! Draw steady anchor beams or bolts holding stope arch
+                                drawLine(color = Color(0xFF4CAF50), start = androidx.compose.ui.geometry.Offset(stopeLeft + stopeW * 0.3f, stopeTop), end = androidx.compose.ui.geometry.Offset(stopeLeft + stopeW * 0.3f, stopeTop - 15f), strokeWidth = 2.5f)
+                                drawLine(color = Color(0xFF4CAF50), start = androidx.compose.ui.geometry.Offset(stopeLeft + stopeW * 0.5f, stopeTop), end = androidx.compose.ui.geometry.Offset(stopeLeft + stopeW * 0.5f, stopeTop - 15f), strokeWidth = 2.5f)
+                                drawLine(color = Color(0xFF4CAF50), start = androidx.compose.ui.geometry.Offset(stopeLeft + stopeW * 0.7f, stopeTop), end = androidx.compose.ui.geometry.Offset(stopeLeft + stopeW * 0.7f, stopeTop - 15f), strokeWidth = 2.5f)
+                            }
+                        }
+
+                        // Labels
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(6.dp)
+                                .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(3.dp))
+                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                "Joint block parameter: ${String.format(Locale.US, "%.3f", rmiJpValVal)}",
+                                color = Color.White,
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            if (mrmrScore < 50.0) {
+                                Text("Undercut Level: Active Gravity Cave Propagation", color = Color(0xFFFFB74D), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                            } else {
+                                Text("Undercut Level: Completely Stable", color = Color(0xFF81C784), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1038,6 +1634,9 @@ fun QSystemPanel(
     var jaSelected by remember { mutableStateOf(1.0) } // Default: Unaltered walls (Ja = 1.0)
     var jwSelected by remember { mutableStateOf(1.0) } // Default: Dry (Jw = 1.0)
     var srfSelected by remember { mutableStateOf(1.0) } // Default: Medium stress (SRF = 1.0)
+
+    var tunnelSpan by remember { mutableStateOf(8.0f) }
+    var esrSelected by remember { mutableStateOf(1.3f) }
 
     val rqd = rqdStr.toDoubleOrNull() ?: 0.0
     val qScore = (if (rqd <= 0.0) 10.0 else rqd) / jnSelected * (jrSelected / jaSelected) * (jwSelected / srfSelected)
@@ -1266,7 +1865,7 @@ fun QSystemPanel(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f)),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f))
             ) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Calculated Structural Q-Value:", fontWeight = FontWeight.Bold, fontSize = 10.sp, color = MaterialTheme.colorScheme.secondary)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -1287,29 +1886,345 @@ fun QSystemPanel(
                         fontSize = 11.5.sp,
                         color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
+                    
                     Spacer(Modifier.height(4.dp))
                     Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
                     Spacer(Modifier.height(4.dp))
-                    val supportAdvice = when {
-                        qScore < 0.1 -> "Extremely Poor Rock: Requires urgent heavy systematic steel sets, thick fiber-reinforced shotcrete (>150mm), and immediate structural ribs."
-                        qScore < 1.0 -> "Very Poor Rock: Systematic rock bolting (1.5m spacing) with 100-150mm of reinforced shotcrete is recommended."
-                        qScore < 4.0 -> "Poor Rock Mass: Systematic pattern rock bolting (1.5-2.0m spacing) with 50-100mm of shotcrete is advised."
-                        qScore < 10.0 -> "Fair Rock Quality: Spaced pattern bolting is suggested. Spot shotcrete (50mm) as local condition requires."
-                        qScore < 40.0 -> "Good Rock Mass: Spot/local key-block bolting is recommended where joint sets intersect. Shotcrete generally unnecessary."
-                        else -> "Excellent Rock Mass: Normally unsupported (no major structural reinforcement required for standard mining spans)."
-                    }
+
                     Text(
-                        text = "Tunnel Support Advisory:",
+                        text = "🔬 Scientific Tunnel Support Simulator (Barton & Grimstad Standard)",
                         fontWeight = FontWeight.Bold,
-                        fontSize = 9.5.sp,
+                        fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.primary
                     )
+
+                    // Tunnel Span entry
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Column(modifier = Modifier.weight(1.1f)) {
+                            Text("Tunnel Span / Width: ${String.format(Locale.US, "%.1f", tunnelSpan)} m", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Slider(
+                                value = tunnelSpan,
+                                onValueChange = { tunnelSpan = it },
+                                valueRange = 2.0f..25.0f,
+                                modifier = Modifier.height(20.dp)
+                            )
+                        }
+
+                        // ESR Selector
+                        Column(modifier = Modifier.weight(0.9f)) {
+                            Text("ESR Ratio:", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            var esrExpanded by remember { mutableStateOf(false) }
+                            val esrOptions = listOf(
+                                0.8f to "0.8 Tunnels",
+                                1.0f to "1.0 Rail/Road",
+                                1.3f to "1.3 Conduits",
+                                1.6f to "1.6 Mining Drifts",
+                                3.0f to "3.0 Temp Shafts"
+                            )
+                            Box {
+                                OutlinedButton(
+                                    onClick = { esrExpanded = true },
+                                    modifier = Modifier.fillMaxWidth().height(36.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp),
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
+                                    Text(
+                                        text = esrOptions.firstOrNull { it.first == esrSelected }?.second ?: String.format(Locale.US, "%.1f", esrSelected),
+                                        fontSize = 10.sp
+                                    )
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(16.dp))
+                                }
+                                DropdownMenu(expanded = esrExpanded, onDismissRequest = { esrExpanded = false }) {
+                                    esrOptions.forEach { opt ->
+                                        DropdownMenuItem(
+                                            text = { Text(opt.second, fontSize = 11.sp) },
+                                            onClick = { esrSelected = opt.first; esrExpanded = false }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Perform precise engineering math
+                    val deValue = tunnelSpan / esrSelected
+                    val maxUnsupportedSpan = 2.0 * esrSelected * Math.pow(qScore, 0.4)
+                    val boltLength = 2.0 + (0.15 * tunnelSpan / esrSelected)
+
+                    // Spacing estimates (continuous curve modeling based on Q-value)
+                    val boltSpacingVal = if (qScore < 0.001) {
+                        0.8
+                    } else if (qScore < 0.1) {
+                        0.8 + 0.15 * Math.log10(qScore * 1000) // 0.8m to 1.1m
+                    } else if (qScore < 10) {
+                        1.1 + 0.35 * Math.log10(qScore * 10) // 1.1m to 1.8m
+                    } else {
+                        1.8 + 0.5 * Math.log10(qScore / 10) // 1.8m to 3.0m
+                    }
+                    val finalBoltSpacing = boltSpacingVal.coerceIn(0.8, 3.0)
+
+                    // Shotcrete Thickness formula (based on Q and equivalent dimension De)
+                    val baseShotcreteThickness = when {
+                        qScore < 0.001 -> 250f
+                        qScore < 0.01 -> 160f + 45f * (3f - Math.log10(qScore * 100000).toFloat())
+                        qScore < 0.1 -> 100f + 30f * (2f - Math.log10(qScore * 1000).toFloat())
+                        qScore < 1.0 -> 60f + 20f * (1f - Math.log10(qScore * 100).toFloat())
+                        qScore < 10.0 -> 30f + 15f * (1f - Math.log10(qScore * 10).toFloat())
+                        qScore < 40.0 -> 0f + 10f * (1f - Math.log10(qScore / 10).toFloat())
+                        else -> 0f
+                    }
+                    val sizeFactor = Math.pow(deValue / 6.0, 0.25).toFloat().coerceIn(0.5f, 2.0f)
+                    val shotcreteThicknessMm = (baseShotcreteThickness * sizeFactor).coerceIn(0f, 300f)
+
+                    // Support Class Category designation (Grimstad 9 Classes)
+                    val (supportClassStr, supportClassDesc) = when {
+                        qScore < 0.001 -> "Category 9" to "Cast concrete lining or extremely thick reinforced ribs (>200mm shotcrete)."
+                        qScore < 0.01 -> "Category 8" to "Systematic bolting with >150mm fiber-reinforced shotcrete and heavy steel arches."
+                        qScore < 0.1 -> "Category 7" to "Systematic bolting with 120-150mm fiber-reinforced shotcrete and reinforced ribs (RRS)."
+                        qScore < 1.0 -> "Category 6" to "Systematic bolting with 90-120mm fiber-reinforced shotcrete."
+                        qScore < 4.0 -> "Category 5" to "Systematic bolting with 50-90mm fiber-reinforced shotcrete."
+                        qScore < 10.0 -> "Category 4" to "Systematic bolting with 50mm unreinforced shotcrete."
+                        qScore < 40.0 -> "Category 3" to "Systematic bolting, spot shotcrete as needed."
+                        qScore < 1000.0 -> "Category 2" to "Spot bolting, usually unsupported walls."
+                        else -> "Category 1" to "Completely unsupported rock mass."
+                    }
+
+                    // Barton Active Support Pressure (P_roof)
+                    val safeJr = if (jrSelected <= 0.0) 1.0 else jrSelected
+                    val safeJn = if (jnSelected <= 0.0) 1.0 else jnSelected
+                    val pRoofKgCm2 = (2.0 * Math.sqrt(safeJn)) / (3.0 * safeJr * Math.pow(qScore, 1.0/3.0))
+                    val pRoofKpa = pRoofKgCm2 * 98.0665
+
+                    // Render dynamic values inside nice layout
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("SUPPORT CLASS", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Text(supportClassStr, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+                                Text(supportClassDesc, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 11.sp)
+                            }
+                        }
+
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("BOLTING SCHEME", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Text("S: ${String.format(Locale.US, "%.2f", finalBoltSpacing)}m | L: ${String.format(Locale.US, "%.2f", boltLength)}m", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Suggested systematic spacing and length of structural rock bolts.", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 11.sp)
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("FIBER SHOTCRETE (S(fr))", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Text(if (shotcreteThicknessMm > 0) "${shotcreteThicknessMm.toInt()} mm" else "None Required", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = if (shotcreteThicknessMm > 0) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurface)
+                                Text("Fiber-reinforced concrete thickness computed via Grimstad criteria.", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 11.sp)
+                            }
+                        }
+
+                        Card(
+                            modifier = Modifier.weight(1f),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text("SUPPORT PRESSURE (Pr)", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Text("${String.format(Locale.US, "%.1f", pRoofKpa)} kPa", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFFC62828))
+                                Text("Equivalent to ${String.format(Locale.US, "%.3f", pRoofKgCm2)} kg/cm² active reinforcement load.", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, lineHeight = 11.sp)
+                            }
+                        }
+                    }
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.1f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp).fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text("MAX UNSUPPORTED SPAN", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                Text("${String.format(Locale.US, "%.2f", maxUnsupportedSpan)} meters", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
+                            }
+                            Text(
+                                text = "Equivalent Dimension (De): ${String.format(Locale.US, "%.2f", deValue)}",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = supportAdvice,
-                        fontSize = 10.5.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        lineHeight = 14.sp
+                        text = "Tunnel Support Cross Section Simulation Pattern:",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    
+                    // Render the visual canvas drawing
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                            val w = size.width
+                            val h = size.height
+                            
+                            val centerX = w / 2f
+                            val centerY = h * 0.75f 
+                            
+                            val scale = (w * 0.40f) / 16.0f 
+                            val tunnelRadius = (tunnelSpan / 2f) * scale
+                            
+                            val path = androidx.compose.ui.graphics.Path().apply {
+                                moveTo(centerX - tunnelRadius, centerY)
+                                val wallHeight = tunnelRadius * 0.5f
+                                lineTo(centerX - tunnelRadius, centerY - wallHeight)
+                                cubicTo(
+                                    centerX - tunnelRadius, centerY - wallHeight * 2.2f,
+                                    centerX + tunnelRadius, centerY - wallHeight * 2.2f,
+                                    centerX + tunnelRadius, centerY - wallHeight
+                                )
+                                lineTo(centerX + tunnelRadius, centerY)
+                                lineTo(centerX - tunnelRadius, centerY)
+                                close()
+                            }
+                            
+                            // Background rock mass
+                            drawRect(
+                                color = Color(0xFFF1EFEA).copy(alpha = 0.1f),
+                                size = size
+                            )
+                            
+                            // Dark tunnel cave interior
+                            drawPath(
+                                path = path,
+                                color = Color(0xFF1E1E1E)
+                            )
+                            
+                            // 1. Fiber shotcrete coloring surrounding path
+                            if (shotcreteThicknessMm > 0) {
+                                val strokeWidth = (shotcreteThicknessMm / 10f).coerceIn(3f, 15f)
+                                drawPath(
+                                    path = path,
+                                    color = Color(0xFF4CAF50).copy(alpha = 0.8f),
+                                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                        width = strokeWidth,
+                                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                    )
+                                )
+                            }
+                            
+                            // 2. Protruding radial Rock Bolts
+                            val boltLenPx = (boltLength * scale * 1.5f).toFloat() // exaggerated to show visual difference nicely
+                            val numBolts = 7
+                            for (i in 0 until numBolts) {
+                                val angleRad = Math.toRadians(15.0 + i * (150.0 / (numBolts - 1))).toFloat()
+                                val cos = Math.cos(angleRad.toDouble()).toFloat()
+                                val sin = Math.sin(angleRad.toDouble()).toFloat()
+                                
+                                val archX = centerX + tunnelRadius * cos
+                                val archY = centerY - tunnelRadius * 0.4f - tunnelRadius * sin
+                                
+                                val endX = archX + boltLenPx * cos
+                                val endY = archY - boltLenPx * sin
+                                
+                                // Anchor bolt line
+                                drawLine(
+                                    color = Color(0xFFFF9100),
+                                    start = androidx.compose.ui.geometry.Offset(archX, archY),
+                                    end = androidx.compose.ui.geometry.Offset(endX, endY),
+                                    strokeWidth = 3f
+                                )
+                                
+                                // Anchor washer dot on face
+                                drawCircle(
+                                    color = Color(0xFFFFCC80),
+                                    radius = 4f,
+                                    center = androidx.compose.ui.geometry.Offset(archX, archY)
+                                )
+                            }
+                            
+                            // Tunnel floor roadway line
+                            drawLine(
+                                color = Color.White.copy(alpha = 0.3f),
+                                start = androidx.compose.ui.geometry.Offset(centerX - tunnelRadius, centerY),
+                                end = androidx.compose.ui.geometry.Offset(centerX + tunnelRadius, centerY),
+                                strokeWidth = 2f
+                            )
+                        }
+                        
+                        // Dimensions label overlay at bottom left of Canvas
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(8.dp)
+                                .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text("Tunnel Span: ${String.format(Locale.US, "%.1f", tunnelSpan)}m", color = Color.White, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                            if (shotcreteThicknessMm > 0) {
+                                Text("Shotcrete: ${shotcreteThicknessMm.toInt()}mm", color = Color(0xFF81C784), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                            } else {
+                                Text("Shotcrete: None", color = Color.White, fontSize = 8.sp)
+                            }
+                        }
+                        
+                        // Dimensions label overlay at bottom right of Canvas
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(8.dp)
+                                .background(Color.Black.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text("Bolt Length: ${String.format(Locale.US, "%.2f", boltLength)}m", color = Color(0xFFFFE082), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                            Text("Bolt Spacing: ${String.format(Locale.US, "%.2f", finalBoltSpacing)}m", color = Color(0xFFFFB74D), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                        }
+                        
+                        Text(
+                            text = "Geotechnical Support Design Cross-Section (ESR = ${String.format(Locale.US, "%.1f", esrSelected)})",
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 6.dp)
+                        )
+                    }
                 }
             }
         }
@@ -1354,6 +2269,461 @@ fun QSystemPanel(
                 Icon(Icons.Default.Save, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text("Commit Q-System Log")
+            }
+        }
+    }
+}
+
+@Composable
+fun KinematicStereonetPanel(
+    viewModel: GeologyViewModel,
+    projectId: Int
+) {
+    val context = LocalContext.current
+    val stations by viewModel.activeProjectStations.collectAsStateWithLifecycle()
+    val allObservations by viewModel.allObservations.collectAsStateWithLifecycle()
+
+    var slopeDip by remember { mutableStateOf("65") }
+    var slopeDipDir by remember { mutableStateOf("135") }
+    var frictionAngle by remember { mutableStateOf("30") }
+    var lateralLimit by remember { mutableStateOf("20") }
+    
+    val stationIds = remember(stations) { stations.map { it.id }.toSet() }
+    val projectObservations = remember(allObservations, stationIds) {
+        allObservations.filter { it.stationId in stationIds }
+    }
+
+    val dipsJson = remember(projectObservations) {
+        val filtered = projectObservations.filter { it.strike != null && it.dip != null }
+        filtered.joinToString(prefix = "[", postfix = "]") { obs ->
+            val strikeStr = obs.strike ?: 0
+            val dipStr = obs.dip ?: 0
+            val dipDirStr = obs.dipDirection ?: 0
+            val code = (obs.notes ?: "").replace("\"", "\\\"").replace("\n", " ")
+            """{"strike": $strikeStr, "dip": $dipStr, "dipDir": $dipDirStr, "code": "$code"}"""
+        }
+    }
+
+    val htmlContent = remember(slopeDip, slopeDipDir, frictionAngle, lateralLimit, dipsJson) {
+        """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <style>
+                body {
+                    background-color: #0c100d;
+                    color: #fff;
+                    font-family: system-ui, -apple-system, sans-serif;
+                    padding: 8px;
+                    margin: 0;
+                    text-align: center;
+                }
+                canvas {
+                    background-color: #0c100d;
+                    border: 1px solid #444;
+                    border-radius: 8px;
+                    display: block;
+                    margin: 12px auto;
+                    max-width: 95%;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+                }
+                .label {
+                    color: #0dffe1;
+                    font-weight: bold;
+                }
+                .card {
+                    background: #151c17;
+                    border-radius: 8px;
+                    padding: 10px;
+                    margin-top: 8px;
+                    text-align: left;
+                    font-size: 11px;
+                    line-height: 1.5;
+                }
+            </style>
+        </head>
+        <body>
+            <h4 style="margin:4px 0; color:#0dffe1;">3D Equal-Angle Schmidt Projection</h4>
+            <canvas id="stereonet" width="300" height="300"></canvas>
+            
+            <div class="card">
+                <span class="label">PLANAR SLIDING VERDICT:</span> <span id="planar_verdict" style="color:#ff5252; font-weight:bold;">0%</span><br/>
+                <span class="label">WEDGE SLIDING VERDICT:</span> <span id="wedge_verdict" style="color:#e040fb; font-weight:bold;">0%</span><br/>
+                <span class="label">TOPPLING HAZARD VERDICT:</span> <span id="toppling_verdict" style="color:#ffab40; font-weight:bold;">0%</span>
+            </div>
+
+            <script>
+                var canvas = document.getElementById('stereonet');
+                var ctx = canvas.getContext('2d');
+                var cx = 150, cy = 150, r = 135;
+
+                var slopeD = parseFloat("$slopeDip") || 65;
+                var slopeDD = parseFloat("$slopeDipDir") || 135;
+                var friction = parseFloat("$frictionAngle") || 30;
+                var latLimit = parseFloat("$lateralLimit") || 20;
+                var joints = $dipsJson;
+
+                function drawNet() {
+                    ctx.clearRect(0, 0, 300, 300);
+                    
+                    // Main circum
+                    ctx.strokeStyle = '#444';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, r, 0, 2*Math.PI);
+                    ctx.stroke();
+
+                    // Net rings
+                    ctx.strokeStyle = '#222';
+                    for (var r_ang = 20; r_ang <= 80; r_ang += 20) {
+                        ctx.beginPath();
+                        var rad_i = r * Math.tan((r_ang/2) * Math.PI / 180);
+                        ctx.arc(cx, cy, rad_i, 0, 2*Math.PI);
+                        ctx.stroke();
+                    }
+
+                    // Card axes
+                    ctx.strokeStyle = '#2d332f';
+                    ctx.beginPath();
+                    ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy);
+                    ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r);
+                    ctx.stroke();
+
+                    // North label
+                    ctx.fillStyle = '#ffb300';
+                    ctx.font = 'bold 11px Arial';
+                    ctx.fillText('N', cx - 4, cy - r - 4);
+                }
+
+                // Convert dip, dipDir to projection coordinate
+                function getPoleCoords(dip, dipDir) {
+                    var trend = (dipDir - 180) * Math.PI / 180;
+                    var rad_dist = r * Math.tan((dip / 2) * Math.PI / 180);
+                    var px = cx + rad_dist * Math.sin(trend);
+                    var py = cy - rad_dist * Math.cos(trend);
+                    return {x: px, y: py};
+                }
+
+                function drawEnvelopes() {
+                    // Planar Limit friction zone
+                    var f_rad = r * Math.tan((friction / 2) * Math.PI / 180);
+                    ctx.fillStyle = 'rgba(255, 82, 82, 0.08)';
+                    ctx.beginPath();
+                    ctx.arc(cx, cy, f_rad, 0, 2*Math.PI);
+                    ctx.fill();
+
+                    // Lateral limits
+                    ctx.strokeStyle = 'rgba(255, 171, 64, 0.4)';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath();
+                    var latMin = (slopeDD - latLimit) * Math.PI / 180;
+                    var latMax = (slopeDD + latLimit) * Math.PI / 180;
+                    ctx.moveTo(cx, cy);
+                    ctx.lineTo(cx + r * Math.sin(latMin), cy - r * Math.cos(latMin));
+                    ctx.moveTo(cx, cy);
+                    ctx.lineTo(cx + r * Math.sin(latMax), cy - r * Math.cos(latMax));
+                    ctx.stroke();
+                }
+
+                function logAnalysis() {
+                    var planarFail = 0, toppleFail = 0, wedgeFail = 0;
+                    var total = joints.length || 1;
+
+                    joints.forEach(function(j) {
+                        var jd = j.dip;
+                        var jdd = j.dipDir;
+
+                        // Coords plotting
+                        var pt = getPoleCoords(jd, jdd);
+                        
+                        // Check Planar Sliding failure conditions
+                        var ang_diff = Math.abs(jdd - slopeDD);
+                        if (ang_diff > 180) ang_diff = 360 - ang_diff;
+
+                        var inPlanarRegion = (ang_diff <= latLimit) && (jd < slopeD) && (jd > friction);
+                        if (inPlanarRegion) planarFail++;
+
+                        // Check Toppling conditions
+                        var topple_diff = Math.abs(jdd - (slopeDD - 180));
+                        if (topple_diff > 180) topple_diff = 360 - topple_diff;
+                        var inToppleRegion = (topple_diff <= latLimit) && (jd >= (90 - slopeD + friction));
+                        if (inToppleRegion) toppleFail++;
+
+                        // Wedge sliding bounds indicator
+                        if (jd > friction && jd < slopeD) {
+                            wedgeFail++;
+                        }
+
+                        // Draw joint point
+                        ctx.fillStyle = inPlanarRegion ? '#ff5252' : (inToppleRegion ? '#ffab40' : '#4caf50');
+                        ctx.beginPath();
+                        ctx.arc(pt.x, pt.y, 5, 0, 2*Math.PI);
+                        ctx.fill();
+                        ctx.strokeStyle = '#fff';
+                        ctx.lineWidth = 1;
+                        ctx.stroke();
+                    });
+
+                    document.getElementById('planar_verdict').innerText = Math.round((planarFail / total) * 100) + "% Risk (" + planarFail + " joints)";
+                    document.getElementById('toppling_verdict').innerText = Math.round((toppleFail / total) * 100) + "% Risk (" + toppleFail + " joints)";
+                    document.getElementById('wedge_verdict').innerText = Math.round((wedgeFail / total) * 100 * 0.7) + "% Risk";
+                }
+
+                function render() {
+                    drawNet();
+                    drawEnvelopes();
+                    logAnalysis();
+                }
+
+                render();
+            </script>
+        </body>
+        </html>
+        """.trimIndent()
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "Slope Face & Discontinuity Analyzer Configuration",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = slopeDip,
+                        onValueChange = { slopeDip = it },
+                        label = { Text("Slope Dip°", fontSize = 10.sp) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = slopeDipDir,
+                        onValueChange = { slopeDipDir = it },
+                        label = { Text("Slope Dip Direction°", fontSize = 10.sp) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = frictionAngle,
+                        onValueChange = { frictionAngle = it },
+                        label = { Text("Basal Friction Angle°", fontSize = 10.sp) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = lateralLimit,
+                        onValueChange = { lateralLimit = it },
+                        label = { Text("Lateral Limit (Standard 20°)", fontSize = 10.sp) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+
+        AndroidView(
+            factory = { ctx ->
+                WebView(ctx).apply {
+                    webViewClient = WebViewClient()
+                    settings.javaScriptEnabled = true
+                    settings.useWideViewPort = true
+                    settings.loadWithOverviewMode = true
+                    loadDataWithBaseURL("https://localhost", htmlContent, "text/html", "UTF-8", null)
+                }
+            },
+            update = { webView ->
+                webView.loadDataWithBaseURL("https://localhost", htmlContent, "text/html", "UTF-8", null)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(380.dp)
+                .clip(RoundedCornerShape(12.dp))
+        )
+    }
+}
+
+@Composable
+fun DynamicSupportPanel(
+    viewModel: GeologyViewModel,
+    projectId: Int
+) {
+    var excavationSpan by remember { mutableStateOf("10.0") }
+    var esr by remember { mutableStateOf("1.0") } // Tunnel Excavation Support Ratio
+    var customQ by remember { mutableStateOf("4.0") }
+    var peakDynamicPpv by remember { mutableStateOf("500") } // Peak Particle Velocity (mm/s) under seismicity/blasting
+    
+    val spanVal = excavationSpan.toDoubleOrNull() ?: 10.0
+    val esrVal = esr.toDoubleOrNull() ?: 1.0
+    val qVal = customQ.toDoubleOrNull() ?: 4.0
+    val ppvVal = peakDynamicPpv.toDoubleOrNull() ?: 500.0
+
+    // Calculations
+    val deq = spanVal / esrVal
+    val boltLength = 2.0 + (0.15 * spanVal) / esrVal
+    
+    // Support pressure (Barton formula updated with dynamic load expansion)
+    val supportPressureBase = (2.0 * 2.0 * Math.pow(qVal, -0.33)) / 1.5
+    val dynamicMultiplier = 1.0 + (ppvVal / 1000.0) // multiplier based on peak dynamic vibration
+    val correctedPressure = supportPressureBase * dynamicMultiplier
+
+    // Shotcrete requirement
+    val shotcreteThickness = if (qVal < 0.1) {
+        (correctedPressure * 12.0).coerceIn(15.0, 30.0)
+    } else if (qVal < 1.0) {
+        (correctedPressure * 8.0).coerceIn(10.0, 15.0)
+    } else if (qVal < 10.0) {
+        (correctedPressure * 5.0).coerceIn(5.0, 10.0)
+    } else {
+        0.0
+    }
+
+    // Dynamic energy absorption requirement for yielding bolts (kJ)
+    val kineticEnergyKJ = (1.5 * (ppvVal * ppvVal) / 1000000.0) * correctedPressure
+    val boltYieldingClass = if (kineticEnergyKJ < 5.0) {
+        "Standard Mechanical/Rebar (Anchor Bolts)"
+    } else if (kineticEnergyKJ < 15.0) {
+        "High-Energy Yielding Rock Bolts (e.g. Swellex Manganese)"
+    } else {
+        "Heavy-Duty Deep Yielding Dynamic D-Bolts (Energy Absorbing)"
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "Dynamic & Shock-Reinforced Support Design Input",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = excavationSpan,
+                        onValueChange = { excavationSpan = it },
+                        label = { Text("Excavation Span (m)", fontSize = 10.sp) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = esr,
+                        onValueChange = { esr = it },
+                        label = { Text("ESR Factor", fontSize = 10.sp) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = customQ,
+                        onValueChange = { customQ = it },
+                        label = { Text("Barton Q-Value", fontSize = 10.sp) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = peakDynamicPpv,
+                        onValueChange = { peakDynamicPpv = it },
+                        label = { Text("Shock Peak Velocity PPV (mm/s)", fontSize = 10.sp) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+
+        Card(
+            shape = RoundedCornerShape(12.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f))
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "Computed Dynamic Support Verdict",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Deq (Equivalent Dimension):", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(String.format(Locale.US, "%.2f m", deq), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Design Bolt Length (L):", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(String.format(Locale.US, "%.2f meters", boltLength), fontWeight = FontWeight.Bold, fontSize = 12.sp, color = Color(0xFF00C853))
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Dynamic Shock Support Pressure:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(String.format(Locale.US, "%.2f kg/cm²", correctedPressure), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Dynamic Impact Energy Requirement:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(String.format(Locale.US, "%.2f kJ/m²", kineticEnergyKJ), fontWeight = FontWeight.Bold, fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
+                }
+
+                Divider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f))
+
+                Text(
+                    "Dynamic Bolt Classification:",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    boltYieldingClass,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                if (shotcreteThickness > 0) {
+                    Text(
+                        "Reinforced Shotcrete Specification:",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        String.format(Locale.US, "%.1f cm Steel Fiber Reinforced Shotcrete (Dosage: 45kg/m³)", shotcreteThickness),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
+                } else {
+                    Text("No dynamic shotcrete reinforcement required.", fontSize = 12.sp, color = Color.Gray)
+                }
             }
         }
     }

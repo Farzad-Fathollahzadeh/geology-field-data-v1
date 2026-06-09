@@ -1197,6 +1197,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                 // Perform heavy query, creation, and compression tasks inside Dispatchers.IO background thread
                 val shareData = withContext(Dispatchers.IO) {
                     // Fetch all data synchronously
+                    val project = dao.getProjectById(projectId).firstOrNull() ?: Project(id = projectId, name = "Geology Project", description = "Field survey data package", date = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()))
                     val stations = dao.getStationsForProjectSync(projectId)
                     val observations = dao.getObservationsForProjectSync(projectId)
                     val samples = dao.getSamplesForProjectSync(projectId)
@@ -1313,6 +1314,64 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                         zos.putNextEntry(java.util.zip.ZipEntry("Geology_Logs_Workbook.xlsx"))
                         tempExcelFile.inputStream().use { it.copyTo(zos) }
                         zos.closeEntry()
+
+                        // Add GIS Vector: KML Map
+                        try {
+                            val obsByStation = observations.groupBy { it.stationId }
+                            val samplesByObs = samples.groupBy { it.observationId }
+                            val kmlContent = buildKmlContent(project.name, stations, obsByStation, samplesByObs, isKmzMode = false)
+                            zos.putNextEntry(java.util.zip.ZipEntry("gis_vectors/field_map_placemarks.kml"))
+                            zos.write(kmlContent.toByteArray(java.nio.charset.StandardCharsets.UTF_8))
+                            zos.closeEntry()
+                        } catch (e: Exception) {
+                            // fallback on individual write failures
+                        }
+
+                        // Add GIS Vector: GeoJSON locations Map
+                        try {
+                            val geoJsonSb = StringBuilder()
+                            geoJsonSb.append("{\n  \"type\": \"FeatureCollection\",\n  \"features\": [\n")
+                            stations.forEachIndexed { index, st ->
+                                geoJsonSb.append("    {\n")
+                                geoJsonSb.append("      \"type\": \"Feature\",\n")
+                                geoJsonSb.append("      \"geometry\": {\n")
+                                geoJsonSb.append("        \"type\": \"Point\",\n")
+                                geoJsonSb.append("        \"coordinates\": [${st.longitude}, ${st.latitude}]\n")
+                                geoJsonSb.append("      },\n")
+                                geoJsonSb.append("      \"properties\": {\n")
+                                geoJsonSb.append("        \"stationCode\": \"${st.stationCode}\",\n")
+                                geoJsonSb.append("        \"prefix\": \"${st.prefix}\",\n")
+                                geoJsonSb.append("        \"elevation\": ${st.elevation},\n")
+                                geoJsonSb.append("        \"utmZone\": \"${st.utmZone}\",\n")
+                                geoJsonSb.append("        \"utmEasting\": ${st.utmEasting},\n")
+                                geoJsonSb.append("        \"utmNorthing\": ${st.utmNorthing}\n")
+                                geoJsonSb.append("      }\n")
+                                geoJsonSb.append("    }")
+                                if (index < stations.size - 1) geoJsonSb.append(",")
+                                geoJsonSb.append("\n")
+                            }
+                            geoJsonSb.append("  ]\n}")
+                            zos.putNextEntry(java.util.zip.ZipEntry("gis_vectors/stations_locations.geojson"))
+                            zos.write(geoJsonSb.toString().toByteArray(java.nio.charset.StandardCharsets.UTF_8))
+                            zos.closeEntry()
+                        } catch (e: Exception) {
+                            // fallback
+                        }
+
+                        // Add Rich PDF Field Report inside the ZIP
+                        try {
+                            val pdfDoc = generatePdfDocumentSync(project, stations, observations, samples)
+                            val tempPdfFile = File.createTempFile("temp_zip_pdf", ".pdf", context.cacheDir)
+                            tempPdfFile.outputStream().use { pdfDoc.writeTo(it) }
+                            pdfDoc.close()
+                            
+                            zos.putNextEntry(java.util.zip.ZipEntry("reports/Visual_Field_Survey_Report.pdf"))
+                            tempPdfFile.inputStream().use { it.copyTo(zos) }
+                            zos.closeEntry()
+                            tempPdfFile.delete()
+                        } catch (e: Exception) {
+                            // fallback
+                        }
 
                         // Add CSV: stations
                         val stationCsv = toCsvString(
@@ -1711,57 +1770,16 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
             try {
                 val file = withContext(Dispatchers.IO) {
                     val stations = dao.getStationsForProjectSync(projectId)
+                    val observations = dao.getObservationsForProjectSync(projectId)
+                    val samples = dao.getSamplesForProjectSync(projectId)
                     val project = dao.getProjectById(projectId).firstOrNull() ?: return@withContext null
                     
-                    val pdfDocument = android.graphics.pdf.PdfDocument()
-                    val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, 1).create() // A4 Size: 595 x 842 pt
-                    val page = pdfDocument.startPage(pageInfo)
-                    val canvas = page.canvas
+                    val pdfDocument = generatePdfDocumentSync(project, stations, observations, samples)
                     
-                    val paint = android.graphics.Paint()
-                    
-                    // Header title
-                    paint.color = android.graphics.Color.DKGRAY
-                    paint.textSize = 18f
-                    paint.isFakeBoldText = true
-                    canvas.drawText("Geology & Mine Field Report", 40f, 60f, paint)
-                    
-                    // Subtitle
-                    paint.textSize = 12f
-                    paint.isFakeBoldText = false
-                    canvas.drawText("Project: ${project.name}", 40f, 90f, paint)
-                    canvas.drawText("Description: ${project.description ?: "General Survey"}", 40f, 110f, paint)
-                    
-                    paint.color = android.graphics.Color.LTGRAY
-                    canvas.drawLine(40f, 130f, 555f, 130f, paint)
-                    
-                    paint.color = android.graphics.Color.BLACK
-                    paint.textSize = 10f
-                    canvas.drawText("Logged Stations Summary:", 40f, 160f, paint)
-                    
-                    var drawY = 190f
-                    stations.take(20).forEach { st ->
-                        if (drawY < 800) {
-                            canvas.drawText(
-                                "Station: ${st.stationCode} | Coords: ${String.format("%.5f", st.latitude)}, ${String.format("%.5f", st.longitude)} | UTM: Z${st.utmZone} E:${st.utmEasting.toInt()} N:${st.utmNorthing.toInt()}",
-                                60f,
-                                drawY,
-                                paint
-                            )
-                            drawY += 22f
-                        }
-                    }
-                    
-                    if (stations.size > 20) {
-                        canvas.drawText("... and ${stations.size - 20} more stations logged.", 60f, drawY, paint)
-                    }
-                    
-                    pdfDocument.finishPage(page)
-                    
-                    val fileName = "Geotech_Report_${projectId}.pdf"
+                    val fileName = "GeoField_Suite_Report_${projectId}.pdf"
                     val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
                     val pdfFile = File(dir, fileName)
-                    pdfDocument.writeTo(pdfFile.outputStream())
+                    pdfFile.outputStream().use { pdfDocument.writeTo(it) }
                     pdfDocument.close()
                     pdfFile
                 } ?: return@launch
@@ -1772,18 +1790,666 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                 val intent = Intent(Intent.ACTION_SEND).apply {
                     type = "application/pdf"
                     putExtra(Intent.EXTRA_STREAM, fileUri)
-                    putExtra(Intent.EXTRA_SUBJECT, "PDF Field Report Export")
+                    putExtra(Intent.EXTRA_SUBJECT, "GeoField Professional Field Report")
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 }
-                val chooser = Intent.createChooser(intent, "Share PDF Report")
+                val chooser = Intent.createChooser(intent, "Share Professional Field Report")
                 chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 context.startActivity(chooser)
 
-                Toast.makeText(context, "PDF Report Saved to Downloads: ${file.name}", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "Premium PDF Saved to Downloads: ${file.name}", Toast.LENGTH_LONG).show()
             } catch (e: Exception) {
-                Toast.makeText(context, "PDF Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "PDF Report generation failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                e.printStackTrace()
             }
         }
+    }
+
+    private fun generatePdfDocumentSync(
+        project: Project,
+        stations: List<Station>,
+        observations: List<Observation>,
+        samples: List<Sample>
+    ): android.graphics.pdf.PdfDocument {
+        val pdfDocument = android.graphics.pdf.PdfDocument()
+        val pageWidth = 595
+        val pageHeight = 842
+        
+        var pageNumber = 1
+        var currentPage: android.graphics.pdf.PdfDocument.Page? = null
+        var canvas: android.graphics.Canvas? = null
+        var currentY = 50f
+        
+        val paintText = android.graphics.Paint()
+        val paintDraw = android.graphics.Paint()
+        
+        // HELPER for dynamic automatic page layouting
+        fun startNewPage() {
+            if (currentPage != null) {
+                pdfDocument.finishPage(currentPage)
+            }
+            val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber++).create()
+            val newPage = pdfDocument.startPage(pageInfo)
+            currentPage = newPage
+            canvas = newPage.canvas
+            currentY = 50f
+            
+            // Page headers/footers for normal pages (not cover page)
+            val c = canvas!!
+            
+            // Header background accent bar at top
+            paintDraw.color = android.graphics.Color.parseColor("#004D40") // Dark Teal
+            paintDraw.style = android.graphics.Paint.Style.FILL
+            c.drawRect(40f, 25f, 555f, 28f, paintDraw)
+            
+            // Header text
+            paintText.color = android.graphics.Color.GRAY
+            paintText.textSize = 7.5f
+            paintText.isFakeBoldText = false
+            paintText.textAlign = android.graphics.Paint.Align.LEFT
+            c.drawText("FIELD REPORT | PROJECT: ${project.name.uppercase()}", 40f, 20f, paintText)
+            paintText.textAlign = android.graphics.Paint.Align.RIGHT
+            c.drawText("GEOTECH & GIS SYSTEM LOG", 555f, 20f, paintText)
+            
+            // Footer line and page numbering
+            paintDraw.color = android.graphics.Color.parseColor("#E0E0E0")
+            c.drawLine(40f, 805f, 555f, 805f, paintDraw)
+            
+            paintText.color = android.graphics.Color.GRAY
+            paintText.textSize = 8f
+            paintText.textAlign = android.graphics.Paint.Align.LEFT
+            c.drawText("Page ${pageNumber - 1} | Produced Offline via GeoField Pro Suite", 40f, 820f, paintText)
+            val dateFormatted = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
+            paintText.textAlign = android.graphics.Paint.Align.RIGHT
+            c.drawText("Date Exported: $dateFormatted", 555f, 820f, paintText)
+            
+            currentY = 60f
+        }
+        
+        // ==========================================
+        // PAGE 1: PROFESSIONAL COVERSHEET
+        // ==========================================
+        val pageInfo1 = android.graphics.pdf.PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber++).create()
+        currentPage = pdfDocument.startPage(pageInfo1)
+        val c1 = currentPage!!.canvas
+        canvas = c1
+        
+        // Elegance background borders
+        paintDraw.style = android.graphics.Paint.Style.STROKE
+        paintDraw.strokeWidth = 1.5f
+        paintDraw.color = android.graphics.Color.parseColor("#004D40") // Primary Teal
+        c1.drawRect(30f, 30f, 565f, 812f, paintDraw)
+        paintDraw.strokeWidth = 0.5f
+        paintDraw.color = android.graphics.Color.GRAY
+        c1.drawRect(33f, 33f, 562f, 809f, paintDraw)
+        
+        // Colored Banner Header Box in Cover page
+        paintDraw.style = android.graphics.Paint.Style.FILL
+        paintDraw.color = android.graphics.Color.parseColor("#004D40")
+        c1.drawRect(34f, 34f, 561f, 180f, paintDraw)
+        
+        // Decorative Line in Header
+        paintDraw.color = android.graphics.Color.parseColor("#00E676") // Cool green accent
+        c1.drawRect(34f, 174f, 561f, 180f, paintDraw)
+        
+        // Banner Title Text
+        paintText.color = android.graphics.Color.WHITE
+        paintText.textSize = 21f
+        paintText.isFakeBoldText = true
+        paintText.textAlign = android.graphics.Paint.Align.CENTER
+        c1.drawText("GEOLOGICAL FIELD SURVEY REPORT", 297f, 105f, paintText)
+        
+        paintText.textSize = 10.5f
+        paintText.isFakeBoldText = false
+        c1.drawText("PROFESSIONAL GIS & MINING COGNITIVE DATA SUITE", 297f, 130f, paintText)
+        
+        // Secondary Metadata Info Box (Cover Page middle)
+        paintText.textAlign = android.graphics.Paint.Align.LEFT
+        paintText.color = android.graphics.Color.parseColor("#212121")
+        paintText.textSize = 17f
+        paintText.isFakeBoldText = true
+        c1.drawText("PROJECT SUMMARY LOGS", 60f, 240f, paintText)
+        
+        // Draw accent underline
+        paintDraw.color = android.graphics.Color.parseColor("#009688")
+        paintDraw.style = android.graphics.Paint.Style.FILL
+        c1.drawRect(60f, 248f, 280f, 252f, paintDraw)
+        
+        // Details Table Box (Cover Page center-bottom)
+        paintDraw.style = android.graphics.Paint.Style.FILL
+        paintDraw.color = android.graphics.Color.parseColor("#F5F5F5")
+        c1.drawRoundRect(60f, 275f, 535f, 440f, 8f, 8f, paintDraw)
+        
+        paintDraw.style = android.graphics.Paint.Style.STROKE
+        paintDraw.strokeWidth = 0.5f
+        paintDraw.color = android.graphics.Color.parseColor("#BDBDBD")
+        c1.drawRoundRect(60f, 275f, 535f, 440f, 8f, 8f, paintDraw)
+        
+        // Metadata list details
+        paintText.textSize = 11f
+        paintText.isFakeBoldText = false
+        paintText.color = android.graphics.Color.DKGRAY
+        
+        val itemsY = floatArrayOf(310f, 340f, 370f, 400f, 425f)
+        val labelText = arrayOf(
+            "Project Name:",
+            "Description / Context:",
+            "Total Locations (Stations):",
+            "Total Recorded Observations:",
+            "Total Samples Collected:"
+        )
+        val valText = arrayOf(
+            project.name,
+            project.description ?: "General Greenfield Mineral Survey",
+            "${stations.size} Stations logged",
+            "${observations.size} Observations details",
+            "${samples.size} Specimens in hand inventory"
+        )
+        
+        for (i in labelText.indices) {
+            paintText.isFakeBoldText = true
+            paintText.color = android.graphics.Color.parseColor("#004D40")
+            c1.drawText(labelText[i], 80f, itemsY[i], paintText)
+            
+            paintText.isFakeBoldText = false
+            paintText.color = android.graphics.Color.parseColor("#212121")
+            c1.drawText(valText[i], 270f, itemsY[i], paintText)
+        }
+        
+        // Cover Footer branding
+        paintText.textAlign = android.graphics.Paint.Align.CENTER
+        paintText.textSize = 9.5f
+        paintText.isFakeBoldText = true
+        paintText.color = android.graphics.Color.parseColor("#37474F")
+        c1.drawText("GEOFIELD PROFESSIONAL GIS SYSTEMS LLC", 298f, 740f, paintText)
+        paintText.isFakeBoldText = false
+        paintText.color = android.graphics.Color.GRAY
+        c1.drawText("All structures, lithologies, orientations and sample datasets are collected offline & verified digitally.", 298f, 758f, paintText)
+        
+        // ==========================================
+        // PAGE 2: GRAPHICAL ANALYTICAL DASHBOARDS
+        // ==========================================
+        startNewPage()
+        val c2 = canvas!!
+        
+        paintText.textAlign = android.graphics.Paint.Align.LEFT
+        paintText.textSize = 13.5f
+        paintText.isFakeBoldText = true
+        paintText.color = android.graphics.Color.parseColor("#004D40")
+        c2.drawText("1. STATISTICAL DISTRIBUTION AND SPATIAL GEOMETRY", 40f, 75f, paintText)
+        
+        // Draw divide line
+        paintDraw.style = android.graphics.Paint.Style.STROKE
+        paintDraw.strokeWidth = 0.5f
+        paintDraw.color = android.graphics.Color.parseColor("#CFD8DC")
+        c2.drawLine(40f, 85f, 555f, 85f, paintDraw)
+        
+        // Let's draw Chart 1: Lithology Bar Chart
+        // Count prefixes
+        val prefixCounts = mapOf(
+            "LITH" to stations.count { it.prefix == "LITH" },
+            "ALT" to stations.count { it.prefix == "ALT" },
+            "FLT" to stations.count { it.prefix == "FLT" },
+            "STR" to stations.count { it.prefix == "STR" || it.prefix == "JV" },
+            "SMP" to samples.size
+        )
+        val maxVal = prefixCounts.values.maxOrNull()?.coerceAtLeast(1) ?: 1
+        
+        // Visual Framing Layout
+        paintDraw.style = android.graphics.Paint.Style.FILL
+        paintDraw.color = android.graphics.Color.parseColor("#ECEFF1")
+        c2.drawRoundRect(40f, 105f, 280f, 290f, 6f, 6f, paintDraw)
+        
+        paintText.textSize = 9.5f
+        paintText.isFakeBoldText = true
+        paintText.color = android.graphics.Color.parseColor("#37474F")
+        c2.drawText("LOGGED SPECIES GRAPH", 55f, 125f, paintText)
+        
+        // Draw Bars (Chart 1)
+        val chartBottomY = 250f
+        val chartTopY = 145f
+        val chartHeight = chartBottomY - chartTopY
+        val labelsList = listOf("Litho", "Alter", "Fault", "Struct", "Sample")
+        val keysList = listOf("LITH", "ALT", "FLT", "STR", "SMP")
+        val colList = listOf("#2E7D32", "#FF8F00", "#C62828", "#1565C0", "#6A1B9A")
+        val barWidth = 24f
+        val barSpacing = 16f
+        val chartStartX = 75f
+        
+        // Y Axis line
+        paintDraw.color = android.graphics.Color.parseColor("#78909C")
+        paintDraw.strokeWidth = 1f
+        c2.drawLine(chartStartX - 6f, chartTopY - 5f, chartStartX - 6f, chartBottomY, paintDraw)
+        // X Axis line
+        c2.drawLine(chartStartX - 6f, chartBottomY, chartStartX + (barWidth + barSpacing) * 5, chartBottomY, paintDraw)
+        
+        for (i in keysList.indices) {
+            val countVal = prefixCounts[keysList[i]] ?: 0
+            val valRatio = countVal.toFloat() / maxVal.toFloat()
+            val currentBarHeight = chartHeight * valRatio
+            val currentBarTop = chartBottomY - currentBarHeight
+            
+            val lX = chartStartX + i * (barWidth + barSpacing)
+            val rX = lX + barWidth
+            
+            // Draw individual colored bar
+            paintDraw.style = android.graphics.Paint.Style.FILL
+            paintDraw.color = android.graphics.Color.parseColor(colList[i])
+            c2.drawRect(lX, currentBarTop, rX, chartBottomY, paintDraw)
+            
+            // Draw value above bar
+            paintText.textSize = 8f
+            paintText.isFakeBoldText = true
+            paintText.color = android.graphics.Color.parseColor("#263238")
+            paintText.textAlign = android.graphics.Paint.Align.CENTER
+            c2.drawText("$countVal", lX + (barWidth / 2), currentBarTop - 4f, paintText)
+            
+            // Draw label underneath axis
+            paintText.isFakeBoldText = false
+            paintText.color = android.graphics.Color.parseColor("#546E7A")
+            c2.drawText(labelsList[i], lX + (barWidth / 2), chartBottomY + 12f, paintText)
+        }
+        
+        // CHART 2: GEOLOGICAL CONCENTRIC STEREONET COMPASS PLOT
+        paintDraw.style = android.graphics.Paint.Style.FILL
+        paintDraw.color = android.graphics.Color.parseColor("#ECEFF1")
+        c2.drawRoundRect(310f, 105f, 555f, 290f, 6f, 6f, paintDraw)
+        
+        paintText.textAlign = android.graphics.Paint.Align.LEFT
+        paintText.isFakeBoldText = true
+        paintText.textSize = 9.5f
+        paintText.color = android.graphics.Color.parseColor("#37474F")
+        c2.drawText("STRUCTURAL PLANE POLES (STEREONET)", 325f, 125f, paintText)
+        
+        val sCenterX = 432f
+        val sCenterY = 205f
+        val sRadius = 55f
+        
+        // Draw outer circle
+        paintDraw.style = android.graphics.Paint.Style.STROKE
+        paintDraw.strokeWidth = 1.2f
+        paintDraw.color = android.graphics.Color.parseColor("#37474F")
+        c2.drawCircle(sCenterX, sCenterY, sRadius, paintDraw)
+        
+        // Draw Concentric Dip rings (30 and 60 degrees)
+        paintDraw.strokeWidth = 0.5f
+        paintDraw.color = android.graphics.Color.parseColor("#90A4AE")
+        paintDraw.pathEffect = android.graphics.DashPathEffect(floatArrayOf(3f, 3f), 0f)
+        c2.drawCircle(sCenterX, sCenterY, sRadius * 0.33f, paintDraw) // 30 deg ring
+        c2.drawCircle(sCenterX, sCenterY, sRadius * 0.66f, paintDraw) // 60 deg ring
+        paintDraw.pathEffect = null // Reset
+        
+        // Axis Cross lines
+        c2.drawLine(sCenterX - sRadius, sCenterY, sCenterX + sRadius, sCenterY, paintDraw)
+        c2.drawLine(sCenterX, sCenterY - sRadius, sCenterX, sCenterY + sRadius, paintDraw)
+        
+        // Draw Compass Direction labels
+        paintText.textSize = 7.5f
+        paintText.isFakeBoldText = true
+        paintText.color = android.graphics.Color.parseColor("#37474F")
+        paintText.textAlign = android.graphics.Paint.Align.CENTER
+        c2.drawText("N", sCenterX, sCenterY - sRadius - 4f, paintText)
+        c2.drawText("S", sCenterX, sCenterY + sRadius + 9f, paintText)
+        paintText.textAlign = android.graphics.Paint.Align.LEFT
+        c2.drawText("E", sCenterX + sRadius + 3f, sCenterY + 3f, paintText)
+        paintText.textAlign = android.graphics.Paint.Align.RIGHT
+        c2.drawText("W", sCenterX - sRadius - 3f, sCenterY + 3f, paintText)
+        
+        // Plot structural observations (dip and dip directions) on the stereonets
+        val structureObservations = observations.filter { 
+            (it.observationType == "Fault" || it.observationType == "Joint" || it.observationType == "Vein") && 
+            it.dip != null && it.dipDirection != null 
+        }
+        
+        structureObservations.forEach { ob ->
+            val dip = ob.dip ?: 0
+            val ddir = ob.dipDirection ?: 0
+            
+            // Radians
+            val radDir = Math.toRadians((ddir - 90).toDouble())
+            // Equal-angle net project distance: r = R * tan(dip/2)
+            val poleRatio = Math.tan(Math.toRadians(dip / 2.0)) / Math.tan(Math.toRadians(45.0))
+            val finalRadius = (sRadius * poleRatio).coerceAtMost(sRadius.toDouble())
+            
+            val pX = (sCenterX + finalRadius * Math.cos(radDir)).toFloat()
+            val pY = (sCenterY + finalRadius * Math.sin(radDir)).toFloat()
+            
+            // Dot color based on structure type
+            paintDraw.style = android.graphics.Paint.Style.FILL
+            paintDraw.color = when(ob.observationType) {
+                "Fault" -> android.graphics.Color.RED
+                "Joint" -> android.graphics.Color.BLUE
+                else -> android.graphics.Color.MAGENTA // veins etc.
+            }
+            c2.drawCircle(pX, pY, 3.5f, paintDraw)
+        }
+        
+        // Draw stereonet quick visual legend
+        paintText.textAlign = android.graphics.Paint.Align.LEFT
+        paintText.textSize = 7f
+        paintText.isFakeBoldText = false
+        paintText.color = android.graphics.Color.parseColor("#455A64")
+        
+        paintDraw.style = android.graphics.Paint.Style.FILL
+        paintDraw.color = android.graphics.Color.RED
+        c2.drawCircle(325f, 280f, 2.5f, paintDraw)
+        c2.drawText("Fault Planes Plotted", 332f, 282f, paintText)
+        
+        paintDraw.color = android.graphics.Color.BLUE
+        c2.drawCircle(410f, 280f, 2.5f, paintDraw)
+        c2.drawText("Joint Fractures", 417f, 282f, paintText)
+        
+        paintDraw.color = android.graphics.Color.MAGENTA
+        c2.drawCircle(490f, 280f, 2.5f, paintDraw)
+        c2.drawText("Mineralized Veins", 497f, 282f, paintText)
+        
+        // Section 2 Header (Table preview in Dashboard Page)
+        paintText.textAlign = android.graphics.Paint.Align.LEFT
+        paintText.textSize = 12f
+        paintText.isFakeBoldText = true
+        paintText.color = android.graphics.Color.parseColor("#004D40")
+        c2.drawText("2. CORE GEOLOGICAL STATION LOCATION METALS", 40f, 312f, paintText)
+        
+        // Draw divide line
+        paintDraw.style = android.graphics.Paint.Style.STROKE
+        paintDraw.color = android.graphics.Color.parseColor("#CFD8DC")
+        c2.drawLine(40f, 320f, 555f, 320f, paintDraw)
+        
+        // Draw beautiful table header for station summaries
+        var tableY = 335f
+        paintDraw.style = android.graphics.Paint.Style.FILL
+        paintDraw.color = android.graphics.Color.parseColor("#004D40")
+        c2.drawRect(40f, tableY, 555f, tableY + 22f, paintDraw)
+        
+        paintText.color = android.graphics.Color.WHITE
+        paintText.textSize = 8.5f
+        paintText.isFakeBoldText = true
+        
+        c2.drawText("CODE", 48f, tableY + 14f, paintText)
+        c2.drawText("PREFIX", 115f, tableY + 14f, paintText)
+        c2.drawText("COORDINATES (LAT / LON)", 175f, tableY + 14f, paintText)
+        c2.drawText("ELEVATION (M)", 350f, tableY + 14f, paintText)
+        c2.drawText("UTM EASTING/NORTHING", 442f, tableY + 14f, paintText)
+        
+        tableY += 22f
+        
+        stations.take(15).forEachIndexed { index, st ->
+            // Background zebra alternation band
+            paintDraw.style = android.graphics.Paint.Style.FILL
+            paintDraw.color = if (index % 2 == 0) android.graphics.Color.WHITE else android.graphics.Color.parseColor("#F9FBFB")
+            c2.drawRect(40f, tableY, 555f, tableY + 20f, paintDraw)
+            
+            // Table thin bounds lines
+            paintDraw.style = android.graphics.Paint.Style.STROKE
+            paintDraw.strokeWidth = 0.3f
+            paintDraw.color = android.graphics.Color.parseColor("#ECEFF1")
+            c2.drawRect(40f, tableY, 555f, tableY + 20f, paintDraw)
+            
+            paintText.color = android.graphics.Color.parseColor("#263238")
+            paintText.textSize = 8f
+            paintText.isFakeBoldText = false
+            
+            c2.drawText(st.stationCode, 48f, tableY + 12f, paintText)
+            c2.drawText(st.prefix, 115f, tableY + 12f, paintText)
+            val latStr = String.format("%.5f", st.latitude)
+            val lonStr = String.format("%.5f", st.longitude)
+            c2.drawText("$latStr, $lonStr", 175f, tableY + 12f, paintText)
+            c2.drawText("${st.elevation.toInt()} m", 350f, tableY + 12f, paintText)
+            c2.drawText("Z${st.utmZone} E:${st.utmEasting.toInt()} N:${st.utmNorthing.toInt()}", 442f, tableY + 12f, paintText)
+            
+            tableY += 20f
+        }
+        
+        // Notice if extra stations exist
+        if (stations.size > 15) {
+            paintText.color = android.graphics.Color.parseColor("#00796B")
+            paintText.textSize = 8.5f
+            paintText.isFakeBoldText = true
+            c2.drawText("* Total ${stations.size} stations logged. Continuing full tables on subsequent pages...", 40f, tableY + 15f, paintText)
+        }
+        
+        // ==========================================
+        // PAGE 3+: COMPREHENSIVE STATION OUTLOG DATABASES
+        // ==========================================
+        if (stations.isNotEmpty()) {
+            startNewPage()
+            var cN = canvas!!
+            
+            paintText.textAlign = android.graphics.Paint.Align.LEFT
+            paintText.textSize = 12f
+            paintText.isFakeBoldText = true
+            paintText.color = android.graphics.Color.parseColor("#004D40")
+            cN.drawText("3. DETAILED LOGGED STATION STATIONEER DATA SHEET", 40f, 75f, paintText)
+            
+            paintDraw.style = android.graphics.Paint.Style.STROKE
+            paintDraw.strokeWidth = 0.5f
+            paintDraw.color = android.graphics.Color.parseColor("#CFD8DC")
+            cN.drawLine(40f, 83f, 555f, 83f, paintDraw)
+            
+            currentY = 95f
+            
+            stations.forEachIndexed { i, st ->
+                val estimatedHeight = 100f
+                if (currentY + estimatedHeight > 780f) {
+                    startNewPage()
+                    cN = canvas!!
+                    currentY = 70f
+                }
+                
+                // Station Card Border Frame
+                paintDraw.style = android.graphics.Paint.Style.FILL
+                paintDraw.color = android.graphics.Color.parseColor("#FAFAFA")
+                cN.drawRoundRect(40f, currentY, 555f, currentY + 86f, 6f, 6f, paintDraw)
+                
+                paintDraw.style = android.graphics.Paint.Style.STROKE
+                paintDraw.strokeWidth = 0.5f
+                paintDraw.color = android.graphics.Color.parseColor("#CFD8DC")
+                cN.drawRoundRect(40f, currentY, 555f, currentY + 86f, 6f, 6f, paintDraw)
+                
+                // Left vertical category visual color identifier bar
+                paintDraw.style = android.graphics.Paint.Style.FILL
+                paintDraw.color = when (st.prefix) {
+                    "LITH" -> android.graphics.Color.parseColor("#2E7D32")
+                    "ALT" -> android.graphics.Color.parseColor("#FF8F00")
+                    "FLT" -> android.graphics.Color.parseColor("#C62828")
+                    else -> android.graphics.Color.parseColor("#00796B")
+                }
+                cN.drawRect(40f, currentY, 44f, currentY + 86f, paintDraw)
+                
+                // Write codes inside cards
+                paintText.color = android.graphics.Color.parseColor("#212121")
+                paintText.textSize = 10f
+                paintText.isFakeBoldText = true
+                cN.drawText("STATION: ${st.stationCode}", 52f, currentY + 18f, paintText)
+                
+                // Extra properties inside card grid
+                paintText.textSize = 8.2f
+                paintText.color = android.graphics.Color.parseColor("#37474F")
+                paintText.isFakeBoldText = false
+                
+                // Grid Column 1
+                cN.drawText("Latitude: ${String.format("%.6f", st.latitude)}°", 52f, currentY + 36f, paintText)
+                cN.drawText("Longitude: ${String.format("%.6f", st.longitude)}°", 52f, currentY + 50f, paintText)
+                cN.drawText("Elevation: ${st.elevation} m (±${st.accuracy}m accuracy)", 52f, currentY + 64f, paintText)
+                
+                // Grid Column 2
+                cN.drawText("UTM Coordinates: Zone ${st.utmZone}", 260f, currentY + 36f, paintText)
+                cN.drawText("UTM Easting:  ${st.utmEasting.toInt()} m E", 260f, currentY + 50f, paintText)
+                cN.drawText("UTM Northing: ${st.utmNorthing.toInt()} m N", 260f, currentY + 64f, paintText)
+                
+                // Timestamp at top right
+                val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(st.createdAt))
+                paintText.textAlign = android.graphics.Paint.Align.RIGHT
+                paintText.color = android.graphics.Color.GRAY
+                paintText.textSize = 7.5f
+                cN.drawText("Logged: $dateStr", 545f, currentY + 16f, paintText)
+                paintText.textAlign = android.graphics.Paint.Align.LEFT // reset
+                
+                currentY += 98f
+            }
+        }
+        
+        // ==========================================
+        // PAGE 4+: RICH OBSERVATIONS, STRUCTURES AND SPECIMENS LOG
+        // ==========================================
+        if (observations.isNotEmpty()) {
+            startNewPage()
+            var cN = canvas!!
+            
+            paintText.textAlign = android.graphics.Paint.Align.LEFT
+            paintText.textSize = 12f
+            paintText.isFakeBoldText = true
+            paintText.color = android.graphics.Color.parseColor("#004D40")
+            cN.drawText("4. SURVEY OBSERVATIONS, STRUCTURAL PLOT ATTITUDES & SAMPLES LOG", 40f, 75f, paintText)
+            
+            paintDraw.style = android.graphics.Paint.Style.STROKE
+            paintDraw.strokeWidth = 0.5f
+            paintDraw.color = android.graphics.Color.parseColor("#CFD8DC")
+            cN.drawLine(40f, 83f, 555f, 83f, paintDraw)
+            
+            currentY = 95f
+            
+            val stationCodeMap = stations.associate { it.id to it.stationCode }
+            
+            observations.forEachIndexed { idx, ob ->
+                val linkedStationCode = stationCodeMap[ob.stationId] ?: "N/A"
+                
+                // Calculate dynamic card height securely
+                var cardHeight = 115f
+                if (!ob.notes.isNullOrBlank()) cardHeight += 20f
+                
+                if (currentY + cardHeight > 780f) {
+                    startNewPage()
+                    cN = canvas!!
+                    currentY = 70f
+                }
+                
+                // Outer capsule container
+                paintDraw.style = android.graphics.Paint.Style.FILL
+                paintDraw.color = android.graphics.Color.parseColor("#FAFAFA")
+                cN.drawRoundRect(40f, currentY, 555f, currentY + cardHeight - 10f, 6f, 6f, paintDraw)
+                
+                paintDraw.style = android.graphics.Paint.Style.STROKE
+                paintDraw.strokeWidth = 0.5f
+                paintDraw.color = android.graphics.Color.parseColor("#CFD8DC")
+                cN.drawRoundRect(40f, currentY, 555f, currentY + cardHeight - 10f, 6f, 6f, paintDraw)
+                
+                // Color classification bar
+                paintDraw.style = android.graphics.Paint.Style.FILL
+                paintDraw.color = when (ob.observationType) {
+                    "Lithology" -> android.graphics.Color.parseColor("#2E7D32")
+                    "Alteration" -> android.graphics.Color.parseColor("#FF8F00")
+                    "Fault" -> android.graphics.Color.RED
+                    else -> android.graphics.Color.parseColor("#6A1B9A")
+                }
+                cN.drawRect(40f, currentY, 44f, currentY + cardHeight - 10f, paintDraw)
+                
+                // Header row details inside the observation log card
+                paintText.textSize = 9.5f
+                paintText.isFakeBoldText = true
+                paintText.color = android.graphics.Color.parseColor("#212121")
+                cN.drawText("STATION REFER: $linkedStationCode  |  TYPE: ${ob.observationType.uppercase()}", 52f, currentY + 18f, paintText)
+                
+                // Timestamp
+                val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(ob.createdAt))
+                paintText.textAlign = android.graphics.Paint.Align.RIGHT
+                paintText.color = android.graphics.Color.GRAY
+                paintText.textSize = 7.5f
+                cN.drawText("Record Time: $dateStr", 545f, currentY + 16f, paintText)
+                paintText.textAlign = android.graphics.Paint.Align.LEFT // reset
+                
+                paintText.textSize = 8.5f
+                paintText.color = android.graphics.Color.parseColor("#37474F")
+                paintText.isFakeBoldText = false
+                
+                // Detail properties drawing values of specific type
+                var itemY = currentY + 36f
+                
+                when (ob.observationType) {
+                    "Lithology" -> {
+                        cN.drawText("Lithology Class:  ${ob.lithologyType ?: "-"}", 52f, itemY, paintText)
+                        cN.drawText("Rock Texture:     ${ob.texture ?: "-"}", 52f, itemY + 14f, paintText)
+                        cN.drawText("Rock Solid Color: ${ob.color ?: "-"}", 280f, itemY, paintText)
+                        cN.drawText("Grain Dimensions: ${ob.grainSize ?: "-"}", 280f, itemY + 14f, paintText)
+                        itemY += 28f
+                        
+                        if (!ob.lithologyAlteration.isNullOrBlank() || !ob.lithologyMineralization.isNullOrBlank()) {
+                            cN.drawText("Syn-Alteration:   ${ob.lithologyAlteration ?: "-"}", 52f, itemY, paintText)
+                            cN.drawText("Mineralizations:  ${ob.lithologyMineralization ?: "-"}", 280f, itemY, paintText)
+                            itemY += 14f
+                        }
+                    }
+                    "Alteration" -> {
+                        cN.drawText("Alteration Class: ${ob.alterationType ?: "-"}", 52f, itemY, paintText)
+                        cN.drawText("Intensity Level:  ${ob.intensity ?: "-"}", 52f, itemY + 14f, paintText)
+                        cN.drawText("Host Parent Rock: ${ob.hostRock ?: "-"}", 280f, itemY, paintText)
+                        cN.drawText("Mineral Links:    ${ob.associatedMinerals ?: "-"}", 280f, itemY + 14f, paintText)
+                        itemY += 28f
+                    }
+                    "Fault" -> {
+                        cN.drawText("Fault Style:      ${ob.faultType ?: "-"}", 52f, itemY, paintText)
+                        cN.drawText("Fault Strike:     ${ob.strike ?: 0}°", 52f, itemY + 14f, paintText)
+                        cN.drawText("Movement Type:    ${ob.movement ?: "-"}", 52f, itemY + 28f, paintText)
+                        
+                        cN.drawText("Attitude Dip:     ${ob.dip ?: 0}°", 280f, itemY, paintText)
+                        cN.drawText("Dip Direction:    ${ob.dipDirection ?: 0}°", 280f, itemY + 14f, paintText)
+                        cN.drawText("Rake / Slippage:  ${ob.rake ?: 0}° ${ob.rakeDirection ?: ""}", 280f, itemY + 28f, paintText)
+                        itemY += 42f
+                    }
+                    "Joint" -> {
+                        cN.drawText("Fracture Joint:   ${ob.jointType ?: "-"}", 52f, itemY, paintText)
+                        cN.drawText("Strike Angle:     ${ob.strike ?: 0}°", 52f, itemY + 14f, paintText)
+                        cN.drawText("Spacing Width:    ${ob.jointSpacing ?: 0.0} cm", 280f, itemY, paintText)
+                        cN.drawText("Fracture Dip:     ${ob.dip ?: 0}°  Dir: ${ob.dipDirection ?: 0}°", 280f, itemY + 14f, paintText)
+                        itemY += 28f
+                    }
+                    "Vein" -> {
+                        cN.drawText("Vein Type / Class: ${ob.veinType ?: "-"}", 52f, itemY, paintText)
+                        cN.drawText("Mineralogy Comps: ${ob.veinMineralogy ?: "-"}", 52f, itemY + 14f, paintText)
+                        cN.drawText("Planar Strike/Dip: ${ob.strike ?: 0}° / ${ob.dip ?: 0}°", 280f, itemY, paintText)
+                        cN.drawText("Vein Aperture:    ${ob.width ?: 0.0} cm", 280f, itemY + 14f, paintText)
+                        itemY += 28f
+                    }
+                    else -> {
+                        cN.drawText("Category Details:  ${ob.observationType}", 52f, itemY, paintText)
+                        itemY += 14f
+                    }
+                }
+                
+                // Append custom field notes if present
+                if (!ob.notes.isNullOrBlank()) {
+                    paintText.color = android.graphics.Color.parseColor("#455A64")
+                    paintText.isFakeBoldText = true
+                    cN.drawText("Geologist Field Notes: ", 52f, itemY, paintText)
+                    paintText.isFakeBoldText = false
+                    cN.drawText(ob.notes ?: "", 152f, itemY, paintText)
+                    itemY += 14f
+                }
+                
+                // Check description of samples if taken linked via database sync
+                val linkedSample = samples.firstOrNull { it.observationId == ob.id }
+                if (linkedSample != null) {
+                    paintDraw.style = android.graphics.Paint.Style.FILL
+                    paintDraw.color = android.graphics.Color.parseColor("#F3E5F5")
+                    cN.drawRoundRect(50f, itemY, 545f, itemY + 18f, 3f, 3f, paintDraw)
+                    
+                    paintText.textSize = 8f
+                    paintText.isFakeBoldText = true
+                    paintText.color = android.graphics.Color.parseColor("#6A1B9A")
+                    cN.drawText("LOCKED SPECIMEN DISCOVERY: ", 56f, itemY + 12f, paintText)
+                    paintText.isFakeBoldText = false
+                    cN.drawText("Code: ${linkedSample.sampleCodeId} | Category: ${linkedSample.sampleType} | ${linkedSample.description ?: ""}", 180f, itemY + 12f, paintText)
+                }
+                
+                currentY += cardHeight
+            }
+        }
+        
+        if (currentPage != null) {
+            pdfDocument.finishPage(currentPage)
+        }
+        
+        return pdfDocument
     }
 
     fun exportCsv(context: Context, projectId: Int) {
@@ -2316,6 +2982,167 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, "Seeding error: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
                 }
+            }
+        }
+    }
+
+    fun exportProjectAgs(context: Context, projectId: Int) {
+        viewModelScope.launch {
+            try {
+                val agsString = withContext(Dispatchers.IO) {
+                    val project = dao.getProjectById(projectId).firstOrNull()
+                    val projectName = project?.name ?: "Project_$projectId"
+                    val stations = dao.getStationsForProjectSync(projectId)
+                    val obsList = dao.getObservationsForProjectSync(projectId)
+                    val boreholes = dao.getBoreholesForProjectSync(projectId)
+
+                    val sb = java.lang.StringBuilder()
+                    sb.append("\"GROUP\",\"PROJ\"\n")
+                    sb.append("\"HEADING\",\"PROJ_ID\",\"PROJ_NAME\",\"PROJ_DESC\"\n")
+                    sb.append("\"UNIT\",\"\",\"\",\"\"\n")
+                    sb.append("\"TYPE\",\"X\",\"X\",\"X\"\n")
+                    sb.append("\"DATA\",\"$projectId\",\"${projectName.replace("\"", "''")}\",\"Geotechnical Field Studies AGS Export\"\n\n")
+
+                    sb.append("\"GROUP\",\"LOCA\"\n")
+                    sb.append("\"HEADING\",\"LOCA_ID\",\"LOCA_TYPE\",\"LOCA_NORT\",\"LOCA_EAST\",\"LOCA_ALTD\",\"LOCA_LAT\",\"LOCA_LON\"\n")
+                    sb.append("\"UNIT\",\"\",\"\",\"m\",\"m\",\"m\",\"\",\"\"\n")
+                    sb.append("\"TYPE\",\"X\",\"X\",\"DP\",\"DP\",\"DP\",\"DP\",\"DP\"\n")
+                    
+                    stations.forEach { st ->
+                        sb.append("\"DATA\",\"${st.stationCode}\",\"Field Station\",\"${st.utmNorthing}\",\"${st.utmEasting}\",\"${st.elevation}\",\"${st.latitude}\",\"${st.longitude}\"\n")
+                    }
+                    boreholes.forEach { bh ->
+                        sb.append("\"DATA\",\"${bh.boreholeCode}\",\"Borehole\",\"\",\"\",\"${bh.elevation}\",\"${bh.latitude}\",\"${bh.longitude}\"\n")
+                    }
+                    sb.append("\n")
+
+                    // Field Observations group
+                    sb.append("\"GROUP\",\"GEOL\"\n")
+                    sb.append("\"HEADING\",\"LOCA_ID\",\"GEOL_DESC\",\"GEOL_TYPE\",\"STRIKE\",\"DIP\",\"DIP_DIR\"\n")
+                    sb.append("\"UNIT\",\"\",\"\",\"\",\"deg\",\"deg\",\"deg\"\n")
+                    sb.append("\"TYPE\",\"X\",\"X\",\"X\",\"DP\",\"DP\",\"DP\"\n")
+                    obsList.forEach { obs ->
+                        val station = stations.firstOrNull { it.id == obs.stationId }
+                        if (station != null) {
+                            val notesClean = (obs.notes ?: "").replace("\"", "''").replace("\n", " ")
+                            val typeClean = obs.observationType
+                            val strike = obs.strike ?: ""
+                            val dip = obs.dip ?: ""
+                            val dipDir = obs.dipDirection ?: ""
+                            sb.append("\"DATA\",\"${station.stationCode}\",\"$notesClean\",\"$typeClean\",\"$strike\",\"$dip\",\"$dipDir\"\n")
+                        }
+                    }
+                    sb.append("\n")
+
+                    // Core logs group
+                    val coreRuns = mutableListOf<BoreholeCoreRun>()
+                    boreholes.forEach { bh ->
+                        coreRuns.addAll(dao.getCoreRunsForBoreholeSync(bh.id))
+                    }
+                    if (coreRuns.isNotEmpty()) {
+                        sb.append("\"GROUP\",\"CORE\"\n")
+                        sb.append("\"HEADING\",\"LOCA_ID\",\"CORE_RUN\",\"CORE_TOP\",\"CORE_BASE\",\"CORE_REC\",\"CORE_RQD\",\"GEOL_DESC\"\n")
+                        sb.append("\"UNIT\",\"\",\"\",\"m\",\"m\",\"%\",\"%\",\"\"\n")
+                        sb.append("\"TYPE\",\"X\",\"X\",\"DP\",\"DP\",\"DP\",\"DP\",\"X\"\n")
+                        coreRuns.forEach { run ->
+                            val bh = boreholes.firstOrNull { it.id == run.boreholeId }
+                            if (bh != null) {
+                                val desc = "Lith: ${run.lithology}, Alt: ${run.alteration}, Min: ${run.mineralization}".replace("\"", "''")
+                                sb.append("\"DATA\",\"${bh.boreholeCode}\",\"${run.runNumber}\",\"${run.depthFrom}\",\"${run.depthTo}\",\"${run.recoveryPercent}\",\"${run.rqdPercent}\",\"$desc\"\n")
+                            }
+                        }
+                    }
+
+                    sb.toString()
+                }
+
+                val fileName = "Project_${projectId}_Geotechnical_AGS4.ags"
+                val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir
+                val file = File(dir, fileName)
+                file.writeText(agsString)
+
+                val authority = "${context.packageName}.fileprovider"
+                val fileUri: Uri = FileProvider.getUriForFile(context, authority, file)
+
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_STREAM, fileUri)
+                    putExtra(Intent.EXTRA_SUBJECT, "AGS v4 Engineering Geotechnical Export")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                val chooser = Intent.createChooser(intent, "Share AGS v4 File")
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(chooser)
+
+                Toast.makeText(context, "AGS file exported to Downloads: $fileName", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "AGS Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun exportProjectSurpacCsv(context: Context, projectId: Int) {
+        viewModelScope.launch {
+            try {
+                val zipFile = withContext(Dispatchers.IO) {
+                    val boreholes = dao.getBoreholesForProjectSync(projectId)
+                    
+                    val collarSb = java.lang.StringBuilder()
+                    collarSb.append("Hole_ID,Latitude,Longitude,Elevation,Planned_Depth,Azimuth,Dip\n")
+                    boreholes.forEach { bh ->
+                        collarSb.append("${bh.boreholeCode},${bh.latitude},${bh.longitude},${bh.elevation},${bh.plannedDepth},${bh.azimuth},${bh.dip}\n")
+                    }
+
+                    val intervalSb = java.lang.StringBuilder()
+                    intervalSb.append("Hole_ID,Depth_From,Depth_To,Recovery_Pct,RQD_Pct,Lithology,Alteration,Mineralization,UCS_MPa\n")
+                    
+                    boreholes.forEach { bh ->
+                        val coreRuns = dao.getCoreRunsForBoreholeSync(bh.id)
+                        coreRuns.forEach { run ->
+                            val lith = run.lithology.replace(",", ";")
+                            val alt = run.alteration.replace(",", ";")
+                            val min = run.mineralization.replace(",", ";")
+                            intervalSb.append("${bh.boreholeCode},${run.depthFrom},${run.depthTo},${run.recoveryPercent},${run.rqdPercent},$lith,$alt,$min,${run.ucsMpa}\n")
+                        }
+                    }
+
+                    val tempCollar = File.createTempFile("collar_", ".csv", context.cacheDir)
+                    tempCollar.writeText(collarSb.toString())
+
+                    val tempInterval = File.createTempFile("interval_", ".csv", context.cacheDir)
+                    tempInterval.writeText(intervalSb.toString())
+
+                    val targetZip = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.cacheDir, "Project_${projectId}_Leapfrog_3D_Modeling_Tables.zip")
+                    java.util.zip.ZipOutputStream(java.io.FileOutputStream(targetZip)).use { zos ->
+                        zos.putNextEntry(java.util.zip.ZipEntry("collar.csv"))
+                        zos.write(tempCollar.readBytes())
+                        zos.closeEntry()
+
+                        zos.putNextEntry(java.util.zip.ZipEntry("intervals.csv"))
+                        zos.write(tempInterval.readBytes())
+                        zos.closeEntry()
+                    }
+                    tempCollar.delete()
+                    tempInterval.delete()
+                    targetZip
+                }
+
+                val authority = "${context.packageName}.fileprovider"
+                val fileUri: Uri = FileProvider.getUriForFile(context, authority, zipFile)
+
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/zip"
+                    putExtra(Intent.EXTRA_STREAM, fileUri)
+                    putExtra(Intent.EXTRA_SUBJECT, "Leapfrog/Surpac 3D Geological Data Import Tables")
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                val chooser = Intent.createChooser(intent, "Share Geological 3D Tables")
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(chooser)
+
+                Toast.makeText(context, "Leapfrog ZIP exported: ${zipFile.name}", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "Leapfrog/Surpac Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
             }
         }
     }

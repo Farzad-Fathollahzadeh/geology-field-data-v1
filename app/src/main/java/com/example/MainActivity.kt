@@ -17,6 +17,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.ui.window.Dialog
@@ -541,7 +542,8 @@ fun MainScreenContent(
                                         },
                                         onUpdateStation = {
                                             viewModel.updateStation(it)
-                                        }
+                                        },
+                                        coordSystemSetting = coordSystemSetting
                                     )
                                 }
                                 is Screen.AddObservation -> {
@@ -607,7 +609,8 @@ fun MainScreenContent(
                                         },
                                         onCancel = {
                                             viewModel.navigateTo(Screen.StationDetail(activeStation?.id ?: 0))
-                                        }
+                                        },
+                                        coordSystemSetting = coordSystemSetting
                                     )
                                 }
                             }
@@ -898,6 +901,36 @@ fun MainScreenContent(
                                                 Text("KMZ (Orients + Photos)", fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
                                             }
                                         }
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            // AGS Engineering Geotechnical Format
+                                            Button(
+                                                onClick = { viewModel.exportProjectAgs(context, proj.id) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00796B)),
+                                                modifier = Modifier.weight(1f).height(28.dp),
+                                                contentPadding = PaddingValues(horizontal = 2.dp),
+                                                shape = RoundedCornerShape(3.dp)
+                                            ) {
+                                                Icon(Icons.Default.Schema, contentDescription = null, modifier = Modifier.size(10.dp), tint = Color.White)
+                                                Spacer(Modifier.width(2.dp))
+                                                Text("AGS v4 Format", fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                            }
+                                            // Surpac/Leapfrog 3D modeling CSV zip
+                                            Button(
+                                                onClick = { viewModel.exportProjectSurpacCsv(context, proj.id) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7E57C2)),
+                                                modifier = Modifier.weight(1f).height(28.dp),
+                                                contentPadding = PaddingValues(horizontal = 2.dp),
+                                                shape = RoundedCornerShape(3.dp)
+                                            ) {
+                                                Icon(Icons.Default.Dashboard, contentDescription = null, modifier = Modifier.size(10.dp), tint = Color.White)
+                                                Spacer(Modifier.width(2.dp))
+                                                Text("Leapfrog 3D CSV", fontSize = 8.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1184,6 +1217,88 @@ fun MainScreenContent(
                                         )
                                         Text(
                                             text = "Rich KMZ archive containing complete styled database and embedded field/sample photos inside popup markers.",
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Option 5: AGS v4 Format
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        showExportDialog = false
+                                        viewModel.exportProjectAgs(context, activeProjId)
+                                    },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                ),
+                                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Schema,
+                                        contentDescription = null,
+                                        tint = Color(0xFF00796B),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "AGS v4 Geotechnical Transfer (.ags)",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "International industry-standard format for transferring ground investigation / borehole and laboratory data.",
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Option 6: Leapfrog 3D Modeling Tables
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        showExportDialog = false
+                                        viewModel.exportProjectSurpacCsv(context, activeProjId)
+                                    },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                ),
+                                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Dashboard,
+                                        contentDescription = null,
+                                        tint = Color(0xFF7E57C2),
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Leapfrog / Surpac 3D Import Tables (.zip)",
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "Generates perfectly formatted Collar and Interval CSV tables for rapid import into 3D modeling programs.",
                                             fontSize = 12.sp,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -1810,6 +1925,7 @@ fun ProjectDashboardScreen(
     var showEditProjDialog by remember { mutableStateOf(false) }
     var editProjName by remember { mutableStateOf(project.name) }
     var editProjDesc by remember { mutableStateOf(project.description ?: "") }
+    val coordSystemSetting by viewModel.coordSystemSetting.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier
@@ -1993,7 +2109,11 @@ fun ProjectDashboardScreen(
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = "Zone ${station.utmZone} | ${String.format(Locale.US, "%.0f E, %.0f N", station.utmEasting, station.utmNorthing)}",
+                                    text = if (coordSystemSetting == "WGS84_DECIMAL") {
+                                        String.format(Locale.US, "%.6f°, %.6f°", station.latitude, station.longitude)
+                                    } else {
+                                        "Zone ${station.utmZone} | ${String.format(Locale.US, "%.0f E, %.0f N", station.utmEasting, station.utmNorthing)}"
+                                    },
                                     fontSize = 12.sp,
                                     fontFamily = FontFamily.Monospace,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -2089,6 +2209,7 @@ fun CreateStationScreen(
     val context = LocalContext.current
     val gps by viewModel.gpsState.collectAsStateWithLifecycle()
     val activeProject by viewModel.activeProject.collectAsStateWithLifecycle()
+    val coordSystemSetting by viewModel.coordSystemSetting.collectAsStateWithLifecycle()
     
     val prefixes = listOf("LITH", "ALT", "FLT", "STR", "SMP")
     var selectedPrefix by remember { mutableStateOf("LITH") }
@@ -2538,38 +2659,74 @@ fun CreateStationScreen(
                                 )
                             }
                         } else {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("Latitude | Longitude", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
-                                Text(
-                                    text = String.format(Locale.US, "%.6f°, %.6f°", gps.latitude, gps.longitude),
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    fontSize = 14.sp
-                                )
+                            if (coordSystemSetting == "WGS84_DECIMAL") {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Latitude | Longitude (Primary)", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 13.sp)
+                                    Text(
+                                        text = String.format(Locale.US, "%.6f°, %.6f°", gps.latitude, gps.longitude),
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                            } else {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text("Latitude | Longitude", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                                    Text(
+                                        text = String.format(Locale.US, "%.6f°, %.6f°", gps.latitude, gps.longitude),
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontSize = 13.sp
+                                    )
+                                }
                             }
                         }
                         
                         Divider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("UTM Coordinates", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
-                            Text(
-                                  text = String.format(Locale.US, "%.1f E | %.1f N", gps.utmEasting, gps.utmNorthing),
-                                fontFamily = FontFamily.Monospace,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp
-                            )
-                        }
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("UTM Grid Zone", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
-                            Text(
-                                text = "Zone ${gps.utmZone}", 
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                fontSize = 14.sp
-                            )
+                        if (coordSystemSetting == "WGS84_DECIMAL") {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("UTM Coordinates", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                                Text(
+                                    text = String.format(Locale.US, "%.1f E | %.1f N", gps.utmEasting, gps.utmNorthing),
+                                    fontFamily = FontFamily.Monospace,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                            }
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("UTM Grid Zone", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                                Text(
+                                    text = "Zone ${gps.utmZone}", 
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        } else {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("UTM Coordinates (Primary)", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 13.sp)
+                                Text(
+                                    text = String.format(Locale.US, "%.1f E | %.1f N", gps.utmEasting, gps.utmNorthing),
+                                    fontFamily = FontFamily.Monospace,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                            }
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("UTM Grid Zone", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 13.sp)
+                                Text(
+                                    text = "Zone ${gps.utmZone}", 
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontSize = 14.sp
+                                )
+                            }
                         }
                         Divider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -3642,7 +3799,8 @@ fun StationDetailScreen(
     onUpdateObservation: (Observation) -> Unit,
     onAddObservationClick: () -> Unit,
     onDeleteObservation: (Int) -> Unit,
-    onUpdateStation: (Station) -> Unit
+    onUpdateStation: (Station) -> Unit,
+    coordSystemSetting: String = "UTM"
 ) {
     if (station == null) return
 
@@ -3762,7 +3920,7 @@ fun StationDetailScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "UTM COORDINATES", 
+                            text = if (coordSystemSetting == "WGS84_DECIMAL") "GEOGRAPHIC COORDS" else "UTM COORDINATES", 
                             fontSize = 11.sp, 
                             fontWeight = FontWeight.Bold, 
                             color = MaterialTheme.colorScheme.primary,
@@ -3770,7 +3928,11 @@ fun StationDetailScreen(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = String.format(Locale.US, "%.1f E\n%.1f N\nZone %s", station.utmEasting, station.utmNorthing, station.utmZone),
+                            text = if (coordSystemSetting == "WGS84_DECIMAL") {
+                                String.format(Locale.US, "%.6f° N\n%.6f° E", station.latitude, station.longitude)
+                            } else {
+                                String.format(Locale.US, "%.1f E\n%.1f N\nZone %s", station.utmEasting, station.utmNorthing, station.utmZone)
+                            },
                             fontFamily = FontFamily.Monospace,
                             fontSize = 13.sp,
                             lineHeight = 18.sp,
@@ -3803,7 +3965,11 @@ fun StationDetailScreen(
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 Text(
-                    text = "WGS84 Lat/Lon: ${String.format(Locale.US, "%.6f, %.6f", station.latitude, station.longitude)}",
+                    text = if (coordSystemSetting == "WGS84_DECIMAL") {
+                        "UTM Grid Zone: ${station.utmZone} • Easting: ${String.format(Locale.US, "%.1f m", station.utmEasting)} • Northing: ${String.format(Locale.US, "%.1f m", station.utmNorthing)}"
+                    } else {
+                        "WGS84 Lat/Lon: ${String.format(Locale.US, "%.6f, %.6f", station.latitude, station.longitude)}"
+                    },
                     fontFamily = FontFamily.Monospace,
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -4635,7 +4801,8 @@ fun AutoCompleteTextField(
 fun AddObservationScreen(
     station: Station?,
     onSave: (String, String, Map<String, Any?>, Boolean, Map<String, String>?) -> Unit,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    coordSystemSetting: String = "UTM"
 ) {
     val stationCode = station?.stationCode ?: "SMP-001"
     var obsType by remember { mutableStateOf("Lithology") }
@@ -6046,8 +6213,8 @@ fun AddObservationScreen(
                                 Text(
                                     "${String.format(Locale.US, "%.6f°", station?.latitude ?: 0.0)}, ${String.format(Locale.US, "%.6f°", station?.longitude ?: 0.0)}",
                                     fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = if (coordSystemSetting == "WGS84_DECIMAL") FontWeight.Bold else FontWeight.Medium,
+                                    color = if (coordSystemSetting == "WGS84_DECIMAL") Color(0xFF00A86B) else MaterialTheme.colorScheme.onSurface,
                                     fontFamily = FontFamily.Monospace
                                 )
                             }
@@ -6056,8 +6223,8 @@ fun AddObservationScreen(
                                 Text(
                                     "z${station?.utmZone ?: "39N"} ${String.format(Locale.US, "%.1f E", station?.utmEasting ?: 0.0)}",
                                     fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF00A86B),
+                                    fontWeight = if (coordSystemSetting == "UTM") FontWeight.Bold else FontWeight.Medium,
+                                    color = if (coordSystemSetting == "UTM") Color(0xFF00A86B) else MaterialTheme.colorScheme.onSurface,
                                     fontFamily = FontFamily.Monospace
                                 )
                             }
@@ -6591,6 +6758,159 @@ fun classifyPlutonicQAP(q: Float, a: Float, p: Float): String {
     }
 }
 
+fun classifyVolcanicQAP(q: Float, a: Float, p: Float): String {
+    if (q >= 90f) return "Quartzolite (Volcanic tuff equivalent / Silexite)"
+    if (q >= 60f) return "Quartz-rich Glassy/Aphanitic Rock (Acid Tuff)"
+    
+    val totalFeldspar = a + p
+    if (totalFeldspar <= 0f) return "Volcanic Rock (Indeterminate)"
+    val pRatio = p / totalFeldspar
+    
+    if (q >= 20f) {
+        return when {
+            pRatio < 0.10f -> "Alkali Feldspar Rhyolite"
+            pRatio < 0.35f -> "Rhyolite (Granite equivalent)"
+            pRatio < 0.65f -> "Rhyodacite / Dacite"
+            pRatio < 0.90f -> "Dacite"
+            else -> "Plagidacite / Quartz Andesite"
+        }
+    } else if (q >= 5f) {
+        return when {
+            pRatio < 0.10f -> "Quartz Alkali Feldspar Trachyte"
+            pRatio < 0.35f -> "Quartz Trachyte"
+            pRatio < 0.65f -> "Quartz Latite"
+            pRatio < 0.90f -> "Quartz Latite-Andesite"
+            else -> "Quartz Andesite / Quartz Basalt"
+        }
+    } else {
+        return when {
+            pRatio < 0.10f -> "Alkali Feldspar Trachyte"
+            pRatio < 0.35f -> "Trachyte"
+            pRatio < 0.65f -> "Latite"
+            pRatio < 0.90f -> "Latite-Andesite / Mugearite"
+            else -> "Andesite / Basalt (Aphanitic)"
+        }
+    }
+}
+
+fun classifySedimentaryMixedQCC(q: Float, c: Float, clay: Float): String {
+    val total = q + c + clay
+    if (total <= 0f) return "Mixed Clay-Lime-Silica Rock (Indeterminate)"
+    val qNorm = (q / total) * 100f
+    val cNorm = (c / total) * 100f
+    val clayNorm = (clay / total) * 100f
+
+    return when {
+        // High Sandy / Siliceous
+        qNorm >= 90f -> "Pure Quartz Arenite (Siliceous Sandstone)"
+        qNorm >= 50f -> {
+            when {
+                cNorm >= 30f -> "Calcareous Sandstone / Sandy Limestone transition"
+                clayNorm >= 30f -> "Argillaceous Sandstone"
+                else -> "Quartzose Sandstone (Siliceous Mixed)"
+            }
+        }
+        // High Carbonate
+        cNorm >= 90f -> "Pure Limestone / Chalk (Carbonate)"
+        cNorm >= 50f -> {
+            when {
+                qNorm >= 30f -> "Sandy Limestone (Calcite-Rich)"
+                clayNorm >= 30f -> "Marly Limestone / Margel (Calc-Clay)"
+                else -> "Dolostone / Limestone"
+            }
+        }
+        // High Shale / Clay
+        clayNorm >= 90f -> "Pure Claystone / Mudshale"
+        clayNorm >= 50f -> {
+            when {
+                qNorm >= 30f -> "Silty Shale / Sandy Mudstone"
+                cNorm >= 30f -> "Calcareous Shale / Marl"
+                else -> "Pelitic Mudstone / Shale"
+            }
+        }
+        // Evenly Mixed
+        else -> "Mixed Calcareous Argillaceous Sandstone / Greywacke"
+    }
+}
+
+fun classifyCarbonateDunham(
+    grainPercent: Float,
+    mudPercent: Float,
+    boundOrganic: Boolean,
+    crystallineTexture: Boolean
+): String {
+    if (crystallineTexture) return "Crystalline Carbonate (Texture Not Recognizable)"
+    if (boundOrganic) return "Boundstone (Organic components bound together during deposition)"
+    val total = grainPercent + mudPercent
+    if (total <= 0f) return "Limestone / Carbonate (Indeterminate)"
+    val grainRatio = grainPercent / total
+    
+    return if (mudPercent > 0.1f) {
+        if (grainRatio < 0.10f) {
+            "Mudstone (< 10% grains, Mud-supported Carbonate)"
+        } else if (grainRatio < 0.50f) {
+            "Wackestone (> 10% grains, Mud-supported Lime)"
+        } else {
+            "Packstone (Grain-supported Carbonate with muddy matrix)"
+        }
+    } else {
+        "Grainstone (Grain-supported Carbonate, containing no Lime Mud)"
+    }
+}
+
+fun classifyMetamorphic(tempC: Float, depthKm: Float, protolith: String): String {
+    val pressureKb = depthKm * 0.27f
+    val facies = when {
+        tempC < 150f -> "Low-Temperature Diagenetic Zone"
+        tempC < 300f -> "Zeolite / Prehnite-Pumpellyite Facies"
+        pressureKb < 2.5f -> "Sanidinite / Hornfels Facies (Contact Metamorphism)"
+        pressureKb >= 10f && tempC >= 600f -> "Eclogite Facies (High-Pressure Mantle Zone)"
+        pressureKb >= 8f && tempC in 300f..500f -> "Blueschist Facies (Subduction Metamorphism)"
+        tempC in 300f..450f -> "Greenschist Facies (Low-Grade Regional)"
+        tempC in 450f..650f -> "Amphibolite Facies (Medium-to-High Regional)"
+        tempC >= 650f -> "Granulite Facies (High-Grade Crustal)"
+        else -> "Greenschist-Amphibolite Transition Facies"
+    }
+
+    val rockName = when (protolith.lowercase().trim()) {
+        "shale", "mudstone", "claystone" -> {
+            when {
+                tempC < 250f -> "Slate"
+                tempC < 400f -> "Phyllite"
+                tempC < 600f -> "Mica Schist (Quartz-Mica-Garnet)"
+                else -> "Paragneiss / Migmatite"
+            }
+        }
+        "basalt", "gabbro", "volcanic" -> {
+            when {
+                facies.contains("Blueschist") -> "Blueschist"
+                facies.contains("Greenschist") -> "Greenschist / Greenstone"
+                facies.contains("Amphibolite") -> "Amphibolite (Hornblende rock)"
+                facies.contains("Eclogite") -> "Eclogite (Omphacite-Garnet)"
+                else -> "Metabasite / Greenstone"
+            }
+        }
+        "limestone", "dolostone", "carbonate" -> {
+            if (tempC >= 200f) "Marble" else "Metacalcite / Carbonate Slate"
+        }
+        "sandstone", "quartzose", "silica" -> {
+            if (tempC >= 200f) "Quartzite" else "Meta-sandstone"
+        }
+        "granite", "rhyolite" -> {
+            if (tempC >= 500f) "Orthogneiss (Granitic Gneiss)" else "Meta-granitoid"
+        }
+        else -> {
+            when {
+                tempC < 300f -> "Meta-rock"
+                tempC < 550f -> "Schistose Crystal Rock"
+                else -> "Foliated Gneiss"
+            }
+        }
+    }
+
+    return "$rockName ($facies)"
+}
+
 @Composable
 fun GeologicalCompassDial(
     strike: String,
@@ -7120,17 +7440,38 @@ fun GeotechnicalUnitConverter() {
 @Composable
 fun QAPFClassifierPanel() {
     var isExpanded by remember { mutableStateOf(false) }
-    var activeClassifierTab by remember { mutableStateOf(0) } // 0 = Plutonic igneous (QAP), 1 = Sandstone Sedimentary (QFL)
+    var activeClassifierTab by remember { mutableStateOf(0) } // 0 = Plutonic (QAP), 1 = Volcanic (QAP), 2 = Sandstone (QFL), 3 = Mixed (QCC), 4 = Limestone (Dunham), 5 = Metamorphic
 
     // QAP Inputs
     var qInput by remember { mutableStateOf(35f) }
     var aInput by remember { mutableStateOf(40f) }
     var pInput by remember { mutableStateOf(25f) }
 
+    // Volcanic QAP Inputs
+    var volqInput by remember { mutableStateOf(20f) }
+    var volaInput by remember { mutableStateOf(30f) }
+    var volpInput by remember { mutableStateOf(50f) }
+
     // QFL Inputs
     var qflQInput by remember { mutableStateOf(80f) }
     var qflFInput by remember { mutableStateOf(15f) }
     var qflLInput by remember { mutableStateOf(5f) }
+
+    // QCC Inputs
+    var qccQInput by remember { mutableStateOf(40f) }
+    var qccCInput by remember { mutableStateOf(30f) }
+    var qccClayInput by remember { mutableStateOf(30f) }
+
+    // Carbonate Dunham Inputs
+    var carbonateGrainInput by remember { mutableStateOf(40f) }
+    var carbonateMudInput by remember { mutableStateOf(60f) }
+    var carbonateBoundOrganic by remember { mutableStateOf(false) }
+    var carbonateCrystalline by remember { mutableStateOf(false) }
+
+    // Metamorphic Inputs
+    var metamorphicTempInput by remember { mutableStateOf(400f) }
+    var metamorphicDepthInput by remember { mutableStateOf(12f) }
+    var metamorphicProtolithSelected by remember { mutableStateOf("Shale") }
 
     // Normalize QAP
     val sum = qInput + aInput + pInput
@@ -7138,18 +7479,51 @@ fun QAPFClassifierPanel() {
     val aNorm = if (sum > 0) (aInput / sum) * 100f else 33.3f
     val pNorm = if (sum > 0) (pInput / sum) * 100f else 33.3f
 
+    // Normalize Volcanic QAP
+    val volSum = volqInput + volaInput + volpInput
+    val volqNorm = if (volSum > 0) (volqInput / volSum) * 100f else 33.3f
+    val volaNorm = if (volSum > 0) (volaInput / volSum) * 100f else 33.3f
+    val volpNorm = if (volSum > 0) (volpInput / volSum) * 100f else 33.3f
+
     // Normalize QFL
     val qflSum = qflQInput + qflFInput + qflLInput
     val qflQNorm = if (qflSum > 0) (qflQInput / qflSum) * 100f else 33.3f
     val qflFNorm = if (qflSum > 0) (qflFInput / qflSum) * 100f else 33.3f
     val qflLNorm = if (qflSum > 0) (qflLInput / qflSum) * 100f else 33.3f
 
+    // Normalize QCC
+    val qccSum = qccQInput + qccCInput + qccClayInput
+    val qccQNorm = if (qccSum > 0) (qccQInput / qccSum) * 100f else 33.3f
+    val qccCNorm = if (qccSum > 0) (qccCInput / qccSum) * 100f else 33.3f
+    val qccClayNorm = if (qccSum > 0) (qccClayInput / qccSum) * 100f else 33.3f
+
+    // Normalize Carbonates
+    val carbonateSum = carbonateGrainInput + carbonateMudInput
+    val carbGrainNorm = if (carbonateSum > 0) (carbonateGrainInput / carbonateSum) * 100f else 50f
+    val carbMudNorm = if (carbonateSum > 0) (carbonateMudInput / carbonateSum) * 100f else 50f
+
     val classifiedName = remember(qNorm, aNorm, pNorm) {
         classifyPlutonicQAP(qNorm, aNorm, pNorm)
     }
 
+    val classifiedVolcanicName = remember(volqNorm, volaNorm, volpNorm) {
+        classifyVolcanicQAP(volqNorm, volaNorm, volpNorm)
+    }
+
     val classifiedSandstoneName = remember(qflQNorm, qflFNorm, qflLNorm) {
         classifySandstoneQFL(qflQNorm, qflFNorm, qflLNorm)
+    }
+
+    val classifiedQccName = remember(qccQNorm, qccCNorm, qccClayNorm) {
+        classifySedimentaryMixedQCC(qccQNorm, qccCNorm, qccClayNorm)
+    }
+
+    val classifiedDunhamName = remember(carbGrainNorm, carbMudNorm, carbonateBoundOrganic, carbonateCrystalline) {
+        classifyCarbonateDunham(carbGrainNorm, carbMudNorm, carbonateBoundOrganic, carbonateCrystalline)
+    }
+
+    val classifiedMetamorphicName = remember(metamorphicTempInput, metamorphicDepthInput, metamorphicProtolithSelected) {
+        classifyMetamorphic(metamorphicTempInput, metamorphicDepthInput, metamorphicProtolithSelected)
     }
 
     Card(
@@ -7192,7 +7566,14 @@ fun QAPFClassifierPanel() {
                         .padding(horizontal = 7.dp, vertical = 2.5.dp)
                 ) {
                     Text(
-                        if (activeClassifierTab == 0) "IGNEOUS (QAP)" else "SEDIMENTARY (QFL)",
+                        when (activeClassifierTab) {
+                            0 -> "PLUTONIC (QAP)"
+                            1 -> "VOLCANIC (QAP)"
+                            2 -> "SEDIMENTARY (QFL)"
+                            3 -> "SEDIMENTARY (QCC)"
+                            4 -> "LIMESTONE (DUNHAM)"
+                            else -> "METAMORPHIC"
+                        },
                         fontSize = 8.5.sp, 
                         fontWeight = FontWeight.Bold, 
                         color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -7203,24 +7584,24 @@ fun QAPFClassifierPanel() {
             if (isExpanded) {
                 Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
 
-                // Selector tabs for Igneous (QAP) vs Sedimentary Sandstone (QFL)
+                // Selector tabs for Igneous vs Sedimentary
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 14.dp, vertical = 6.dp)
                         .background(MaterialTheme.colorScheme.surfaceVariant.copy(0.4f), RoundedCornerShape(8.dp))
-                        .padding(4.dp),
+                        .padding(4.dp)
+                        .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    listOf("Plutonic Igneous (QAP)", "Sandstone Sedimentary (QFL)").forEachIndexed { index, title ->
+                    listOf("Plutonic (QAP)", "Volcanic (QAP)", "Sandstone (QFL)", "Mixed (QCC)", "Limestone (Dunham)", "Metamorphic").forEachIndexed { index, title ->
                         Button(
                             onClick = { activeClassifierTab = index },
-                            modifier = Modifier.weight(1f),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (activeClassifierTab == index) MaterialTheme.colorScheme.primary else Color.Transparent,
                                 contentColor = if (activeClassifierTab == index) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
                             ),
-                            contentPadding = PaddingValues(vertical = 6.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                             shape = RoundedCornerShape(6.dp)
                         ) {
                             Text(title, fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
@@ -7410,7 +7791,173 @@ fun QAPFClassifierPanel() {
                                 )
                             }
                         }
-                    } else {
+                    } else if (activeClassifierTab == 1) {
+                        // Volcanic Igneous QAP Tab
+                        Text(
+                            text = "Interactive plot for volcanic rocks based on Normalized Quartz (Q), Alkali Feldspar (A), and Plagioclase (P) percentages. Drag sliders or tap directly on the vector triangle.",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 14.sp
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Triangle Plotter Canvas
+                            Box(
+                                modifier = Modifier
+                                    .size(145.dp)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(0.2f), RoundedCornerShape(8.dp))
+                                    .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(0.4f), RoundedCornerShape(8.dp))
+                                    .pointerInput(Unit) {
+                                        detectTapGestures { offset ->
+                                            val w = size.width.toFloat()
+                                            val h = size.height.toFloat()
+                                            val xQ = w / 2f
+                                            val yQ = 12f
+                                            val xA = 12f
+                                            val yA = h - 12f
+                                            val xP = w - 12f
+                                            val yP = h - 12f
+
+                                            val det = (xA - xP) * (yQ - yP) - (xQ - xP) * (yA - yP)
+                                            if (det != 0f) {
+                                                val u = ((yQ - yP) * (offset.x - xP) + (xP - xQ) * (offset.y - yP)) / det
+                                                val v = ((yP - yA) * (offset.x - xP) + (xA - xP) * (offset.y - yP)) / det
+                                                val wr = 1f - u - v
+                                                if (u >= -0.05f && v >= -0.05f && wr >= -0.05f) {
+                                                    val uClamp = u.coerceIn(0f, 1f)
+                                                    val vClamp = v.coerceIn(0f, 1f)
+                                                    val wrClamp = (1f - uClamp - vClamp).coerceIn(0f, 1f)
+                                                    volqInput = vClamp * 100f
+                                                    volaInput = uClamp * 100f
+                                                    volpInput = wrClamp * 100f
+                                                }
+                                            }
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    val w = size.width
+                                    val h = size.height
+                                    val xQ = w / 2f
+                                    val yQ = 12f
+                                    val xA = 12f
+                                    val yA = h - 12f
+                                    val xP = w - 12f
+                                    val yP = h - 12f
+
+                                    // Geological Fields Division lines
+                                    val volcanicPath = androidx.compose.ui.graphics.Path().apply {
+                                        moveTo(xQ, yQ)
+                                        lineTo(xA + 0.2f * (xQ - xA), yQ + 0.8f * (yA - yQ))
+                                        lineTo(xP - 0.2f * (xP - xQ), yQ + 0.8f * (yP - yQ))
+                                        close()
+                                    }
+                                    drawPath(path = volcanicPath, color = Color(0xFFCE93D8).copy(0.12f))
+
+                                    // Field division lines
+                                    val y90 = yQ + 0.9f * (yA - yQ)
+                                    val xL90 = xA + 0.1f * (xQ - xA)
+                                    val xR90 = xP - 0.1f * (xP - xQ)
+                                    drawLine(color = Color.LightGray.copy(0.4f), start = Offset(xL90, y90), end = Offset(xR90, y90), strokeWidth = 1f)
+
+                                    val y60 = yQ + 0.6f * (yA - yQ)
+                                    val xL60 = xA + 0.4f * (xQ - xA)
+                                    val xR60 = xP - 0.4f * (xP - xQ)
+                                    drawLine(color = Color.LightGray.copy(0.4f), start = Offset(xL60, y60), end = Offset(xR60, y60), strokeWidth = 1.2f)
+
+                                    val y20 = yQ + 0.2f * (yA - yQ)
+                                    val xL20 = xA + 0.8f * (xQ - xA)
+                                    val xR20 = xP - 0.8f * (xP - xQ)
+                                    drawLine(color = Color(0xFF64B5F6).copy(0.6f), start = Offset(xL20, y20), end = Offset(xR20, y20), strokeWidth = 1.5f)
+
+                                    drawLine(color = Color.Gray, start = Offset(xQ, yQ), end = Offset(xA, yA), strokeWidth = 1.5f)
+                                    drawLine(color = Color.Gray, start = Offset(xA, yA), end = Offset(xP, yP), strokeWidth = 1.5f)
+                                    drawLine(color = Color.Gray, start = Offset(xP, yP), end = Offset(xQ, yQ), strokeWidth = 1.5f)
+
+                                    drawContext.canvas.nativeCanvas.apply {
+                                        val paint = android.graphics.Paint().apply {
+                                            color = android.graphics.Color.GRAY
+                                            textSize = 18f
+                                            textAlign = android.graphics.Paint.Align.CENTER
+                                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                                        }
+                                        drawText("Q", xQ, yQ - 2f, paint)
+                                        drawText("A", xA - 5f, yA + 6f, paint)
+                                        drawText("P", xP + 7f, yP + 6f, paint)
+                                    }
+
+                                    val px = (volaNorm * xA + volpNorm * xP + volqNorm * xQ) / 100f
+                                    val py = (volaNorm * yA + volpNorm * yP + volqNorm * yQ) / 100f
+
+                                    drawCircle(color = Color(0xFF9C27B0).copy(0.3f), radius = 11f, center = Offset(px, py))
+                                    drawCircle(color = Color(0xFF9C27B0), radius = 4.5f, center = Offset(px, py))
+                                }
+                            }
+
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(text = "Quartz (Q): ${volqNorm.toInt()}%", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                                Slider(
+                                    value = volqInput,
+                                    onValueChange = { volqInput = it },
+                                    valueRange = 0f..100f,
+                                    modifier = Modifier.height(20.dp)
+                                )
+
+                                Text(text = "Alkali Feld. (A): ${volaNorm.toInt()}%", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                                Slider(
+                                    value = volaInput,
+                                    onValueChange = { volaInput = it },
+                                    valueRange = 0f..100f,
+                                    modifier = Modifier.height(20.dp)
+                                )
+
+                                Text(text = "Plagioclase (P): ${volpNorm.toInt()}%", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                                Slider(
+                                    value = volpInput,
+                                    onValueChange = { volpInput = it },
+                                    valueRange = 0f..100f,
+                                    modifier = Modifier.height(20.dp)
+                                )
+                            }
+                        }
+
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    "IUGS Volcanic Classification Result:",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                                Text(
+                                    text = classifiedVolcanicName,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                                Text(
+                                    text = "Normalized ratio: Q: ${volqNorm.toInt()}%  A: ${volaNorm.toInt()}%  P: ${volpNorm.toInt()}%",
+                                    fontSize = 8.5.sp,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(0.75f)
+                                )
+                            }
+                        }
+                    } else if (activeClassifierTab == 2) {
                         // Sandstone Sedimentary QFL Tab
                         Text(
                             text = "Folk & Pettijohn standard Sandstone classification based on normalized Quartz grains (Q), Feldspar (F), and Lithic rock fragments (L) ratios. Tap directly on the triangle or adjust raw inputs below.",
@@ -7566,6 +8113,333 @@ fun QAPFClassifierPanel() {
                                 )
                                 Text(
                                     text = "Normalized ratio: Q: ${qflQNorm.toInt()}%  F: ${qflFNorm.toInt()}%  L: ${qflLNorm.toInt()}%",
+                                    fontSize = 8.5.sp,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(0.75f)
+                                )
+                            }
+                        }
+                    } else if (activeClassifierTab == 3) {
+                        // Mixed Clay-Lime-Silica QCC Tab
+                        Text(
+                            text = "Ternary classification for mixed sedimentary rocks based on normalized Quartz grains (Q), Carbonate / Lime (C), and Clay / Mud (Clay) content. Tap directly on the triangle or adjust inputs below.",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 14.sp
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Sedimentary QCC Triangle Canvas
+                            Box(
+                                modifier = Modifier
+                                    .size(145.dp)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(0.2f), RoundedCornerShape(8.dp))
+                                    .border(0.5.dp, MaterialTheme.colorScheme.outline.copy(0.4f), RoundedCornerShape(8.dp))
+                                    .pointerInput(Unit) {
+                                        detectTapGestures { offset ->
+                                            val w = size.width.toFloat()
+                                            val h = size.height.toFloat()
+                                            val xQ = w / 2f
+                                            val yQ = 12f
+                                            val xC = 12f
+                                            val yC = h - 12f
+                                            val xClay = w - 12f
+                                            val yClay = h - 12f
+
+                                            val det = (xC - xClay) * (yQ - yClay) - (xQ - xClay) * (yC - yClay)
+                                            if (det != 0f) {
+                                                val u = ((yQ - yClay) * (offset.x - xClay) + (xClay - xQ) * (offset.y - yClay)) / det
+                                                val v = ((yClay - yC) * (offset.x - xClay) + (xC - xClay) * (offset.y - yClay)) / det
+                                                val wr = 1f - u - v
+                                                if (u >= -0.05f && v >= -0.05f && wr >= -0.05f) {
+                                                    val uClamp = u.coerceIn(0f, 1f)
+                                                    val vClamp = v.coerceIn(0f, 1f)
+                                                    val wrClamp = (1f - uClamp - vClamp).coerceIn(0f, 1f)
+                                                    qccQInput = vClamp * 100f
+                                                    qccCInput = uClamp * 100f
+                                                    qccClayInput = wrClamp * 100f
+                                                }
+                                            }
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    val w = size.width
+                                    val h = size.height
+                                    val xQ = w / 2f
+                                    val yQ = 12f
+                                    val xC = 12f
+                                    val yC = h - 12f
+                                    val xClay = w - 12f
+                                    val yClay = h - 12f
+
+                                    // Outer triangle boundary
+                                    drawLine(color = Color.Gray, start = Offset(xQ, yQ), end = Offset(xC, yC), strokeWidth = 1.5f)
+                                    drawLine(color = Color.Gray, start = Offset(xC, yC), end = Offset(xClay, yClay), strokeWidth = 1.5f)
+                                    drawLine(color = Color.Gray, start = Offset(xClay, yClay), end = Offset(xQ, yQ), strokeWidth = 1.5f)
+
+                                    // Draw Q = 50% line
+                                    val y50 = yQ + 0.5f * (yC - yQ)
+                                    val xLC50 = xC + 0.5f * (xQ - xC)
+                                    val xLClay50 = xClay - 0.5f * (xClay - xQ)
+                                    drawLine(color = Color(0xFF673AB7).copy(0.6f), start = Offset(xLC50, y50), end = Offset(xLClay50, y50), strokeWidth = 1.2f)
+
+                                    drawContext.canvas.nativeCanvas.apply {
+                                        val paint = android.graphics.Paint().apply {
+                                            color = android.graphics.Color.GRAY
+                                            textSize = 18f
+                                            textAlign = android.graphics.Paint.Align.CENTER
+                                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                                        }
+                                        drawText("Q", xQ, yQ - 2f, paint)
+                                        drawText("C", xC - 5f, yC + 6f, paint)
+                                        drawText("Clay", xClay + 7f, yClay + 6f, paint)
+                                    }
+
+                                    // Plot dynamic normalized point marker
+                                    val px = (qccCNorm * xC + qccClayNorm * xClay + qccQNorm * xQ) / 100f
+                                    val py = (qccCNorm * yC + qccClayNorm * yClay + qccQNorm * yQ) / 100f
+
+                                    drawCircle(color = Color(0xFFFF5722).copy(0.3f), radius = 11f, center = Offset(px, py))
+                                    drawCircle(color = Color(0xFFFF5722), radius = 4.5f, center = Offset(px, py))
+                                }
+                            }
+
+                            // Sliders for QCC values
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(text = "Quartz (Q): ${qccQNorm.toInt()}%", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                                Slider(
+                                    value = qccQInput,
+                                    onValueChange = { qccQInput = it },
+                                    valueRange = 0f..100f,
+                                    modifier = Modifier.height(20.dp)
+                                )
+
+                                Text(text = "Carbonate (C): ${qccCNorm.toInt()}%", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                                Slider(
+                                    value = qccCInput,
+                                    onValueChange = { qccCInput = it },
+                                    valueRange = 0f..100f,
+                                    modifier = Modifier.height(20.dp)
+                                )
+
+                                Text(text = "Clay / Mud: ${qccClayNorm.toInt()}%", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                                Slider(
+                                    value = qccClayInput,
+                                    onValueChange = { qccClayInput = it },
+                                    valueRange = 0f..100f,
+                                    modifier = Modifier.height(20.dp)
+                                )
+                            }
+                        }
+
+                        // QCC classification result
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    "Sedimentary QCC Classification Result:",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                Text(
+                                    text = classifiedQccName,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                Text(
+                                    text = "Normalized ratio: Q: ${qccQNorm.toInt()}%  C: ${qccCNorm.toInt()}%  Clay: ${qccClayNorm.toInt()}%",
+                                    fontSize = 8.5.sp,
+                                    color = MaterialTheme.colorScheme.onErrorContainer.copy(0.75f)
+                                )
+                            }
+                        }
+                    } else if (activeClassifierTab == 4) {
+                        // Limestone Dunham Classification
+                        Text(
+                            text = "Dunham classification for carbonate rocks based on matrix mud abundance vs grain support, or secondary textures.",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 14.sp
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1.2f),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(text = "Carbonate Grains (Allochems): ${carbGrainNorm.toInt()}%", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                                Slider(
+                                    value = carbonateGrainInput,
+                                    onValueChange = { carbonateGrainInput = it },
+                                    valueRange = 0f..100f,
+                                    modifier = Modifier.height(20.dp)
+                                )
+
+                                Text(text = "Lime Mud Matrix (Micrite): ${carbMudNorm.toInt()}%", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                                Slider(
+                                    value = carbonateMudInput,
+                                    onValueChange = { carbonateMudInput = it },
+                                    valueRange = 0f..100f,
+                                    modifier = Modifier.height(20.dp)
+                                )
+                            }
+
+                            Column(
+                                modifier = Modifier.weight(0.8f),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Checkbox(
+                                        checked = carbonateBoundOrganic,
+                                        onCheckedChange = { carbonateBoundOrganic = it }
+                                    )
+                                    Text("Bound Organic", fontSize = 9.5.sp, fontWeight = FontWeight.Medium)
+                                }
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Checkbox(
+                                        checked = carbonateCrystalline,
+                                        onCheckedChange = { carbonateCrystalline = it }
+                                    )
+                                    Text("Crystalline", fontSize = 9.5.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        }
+
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "Dunham Classification Result:",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                                Text(
+                                    text = classifiedDunhamName,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                                )
+                                Text(
+                                    text = "Matrix mud: ${carbMudNorm.toInt()}% | Grains: ${carbGrainNorm.toInt()}%",
+                                    fontSize = 8.5.sp,
+                                    color = MaterialTheme.colorScheme.onTertiaryContainer.copy(0.75f)
+                                )
+                            }
+                        }
+                    } else {
+                        // Metamorphic Grade & Facies Classification
+                        Text(
+                            text = "Metamorphic rock and metamorphic facies classifier based on protolith, temperature, and crustal depth.",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 14.sp
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1.1f),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(text = "Temperature: ${metamorphicTempInput.toInt()} °C", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                                Slider(
+                                    value = metamorphicTempInput,
+                                    onValueChange = { metamorphicTempInput = it },
+                                    valueRange = 0f..1000f,
+                                    modifier = Modifier.height(20.dp)
+                                )
+
+                                Text(text = "Depth: ${metamorphicDepthInput.toInt()} km", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
+                                Slider(
+                                    value = metamorphicDepthInput,
+                                    onValueChange = { metamorphicDepthInput = it },
+                                    valueRange = 0f..50f,
+                                    modifier = Modifier.height(20.dp)
+                                )
+                            }
+
+                            Column(
+                                modifier = Modifier.weight(0.9f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text("Protolith Stack:", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                listOf("Shale", "Basalt", "Limestone", "Sandstone", "Granite").forEach { protolith ->
+                                    val isSelected = metamorphicProtolithSelected == protolith
+                                    Button(
+                                        onClick = { metamorphicProtolithSelected = protolith },
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                            contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                        ),
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                        modifier = Modifier.fillMaxWidth().height(26.dp),
+                                        shape = RoundedCornerShape(4.dp)
+                                    ) {
+                                        Text(protolith, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "Metamorphic Facies & Name Result:",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                                Text(
+                                    text = classifiedMetamorphicName,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                                val pressureKbVal = metamorphicDepthInput * 0.27f
+                                Text(
+                                    text = "Estimated Pressure: ${String.format("%.2f", pressureKbVal)} kbar | Protolith: $metamorphicProtolithSelected",
                                     fontSize = 8.5.sp,
                                     color = MaterialTheme.colorScheme.onSecondaryContainer.copy(0.75f)
                                 )
@@ -8132,6 +9006,7 @@ fun openBrowserLink(context: android.content.Context, url: String) {
 
 fun generateLeafletHtml(
     stations: List<Station>,
+    observations: List<Observation>,
     trackPoints: List<TrackPoint>,
     isRealPos: Boolean,
     currentLat: Double,
@@ -8142,7 +9017,12 @@ fun generateLeafletHtml(
     lockGpsCenter: Boolean
 ): String {
     val stationsJson = stations.joinToString(prefix = "[", postfix = "]") { st ->
-        """{"lat": ${st.latitude}, "lon": ${st.longitude}, "code": "${st.stationCode.replace("\"", "\\\"")}"}"""
+        val obs = observations.firstOrNull { it.stationId == st.id && (it.strike != null || it.dip != null) }
+        val strikeVal = obs?.strike ?: -1
+        val dipVal = obs?.dip ?: -1
+        val dipDirVal = obs?.dipDirection ?: -1
+        val typeStr = obs?.observationType ?: ""
+        """{"lat": ${st.latitude}, "lon": ${st.longitude}, "code": "${st.stationCode.replace("\"", "\\\"")}", "strike": $strikeVal, "dip": $dipVal, "dipDir": $dipDirVal, "type": "$typeStr"}"""
     }
     
     val trackJson = trackPoints.joinToString(prefix = "[", postfix = "]") { pt ->
@@ -8199,14 +9079,38 @@ fun generateLeafletHtml(
 
                 var stations = $stationsJson;
                 stations.forEach(function(st) {
-                    var marker = L.marker([st.lat, st.lon], {
-                        icon: L.divIcon({
+                    var markerIcon;
+                    if (st.strike >= 0 && st.dip >= 0) {
+                        var rotation = st.dipDir - 180;
+                        var svgHtml = '<div style="position: relative; width: 40px; height: 40px; left: -14px; top: -14px;">' +
+                            '<svg width="40" height="40" viewBox="0 0 40 40" style="overflow: visible;">' +
+                            '  <g transform="rotate(' + rotation + ', 20, 20)">' +
+                            '    <line x1="8" y1="20" x2="32" y2="20" stroke="#ffeb3b" stroke-width="3" />' +
+                            '    <line x1="20" y1="20" x2="20" y2="30" stroke="#ffeb3b" stroke-width="3" />' +
+                            '  </g>' +
+                            '  <text x="28" y="38" fill="#ffffff" font-size="11" font-weight="bold" font-family="sans-serif" style="text-shadow: 1px 1px 1px black;">' + st.dip + '</text>' +
+                            '  <div style="position: absolute; left: 26px; top: -12px; color: #00ffcc; font-weight: bold; font-size: 10px; text-shadow: 1px 1px 1.5px black; white-space: nowrap;">' + st.code + '</div>' +
+                            '</svg>' +
+                            '</div>';
+                        markerIcon = L.divIcon({
+                            className: 'custom-struct-icon',
+                            html: svgHtml,
+                            iconSize: [40, 40],
+                            iconAnchor: [20, 20]
+                        });
+                    } else {
+                        markerIcon = L.divIcon({
                             className: 'custom-div-icon',
                             html: '<div style="position: absolute; left: 16px; top: -6px; color: #ffeb3b; font-weight: bold; font-size: 11px; text-shadow: 1px 1px 2px black; white-space: nowrap;">' + st.code + '</div>',
                             iconSize: [12, 12]
-                        })
-                    }).addTo(map);
-                    marker.bindPopup("<b>" + st.code + "</b><br>Lat: " + st.lat + "<br>Lon: " + st.lon);
+                        });
+                    }
+                    var marker = L.marker([st.lat, st.lon], { icon: markerIcon }).addTo(map);
+                    var popupText = "<b>" + st.code + "</b><br>Lat: " + st.lat + "<br>Lon: " + st.lon;
+                    if (st.strike >= 0 && st.dip >= 0) {
+                        popupText += "<br><b>Structure Type: " + st.type + "</b><br>Strike: " + st.strike + "°<br>Dip: " + st.dip + "° (Dir: " + st.dipDir + "°)";
+                    }
+                    marker.bindPopup(popupText);
                 });
 
                 var trackPoints = $trackJson;
@@ -8260,6 +9164,7 @@ fun generateLeafletHtml(
 @Composable
 fun WebViewMap(
     stations: List<Station>,
+    observations: List<Observation>,
     trackPoints: List<TrackPoint>,
     isRealPos: Boolean,
     currentLat: Double,
@@ -8276,8 +9181,8 @@ fun WebViewMap(
     } else {
         tileUrl
     }
-    val htmlContent = remember(stations, trackPoints, isRealPos, currentLat, currentLon, zoom, resolvedTileUrl, gpsAccuracy, lockGpsCenter) {
-        generateLeafletHtml(stations, trackPoints, isRealPos, currentLat, currentLon, zoom, resolvedTileUrl, gpsAccuracy, lockGpsCenter)
+    val htmlContent = remember(stations, observations, trackPoints, isRealPos, currentLat, currentLon, zoom, resolvedTileUrl, gpsAccuracy, lockGpsCenter) {
+        generateLeafletHtml(stations, observations, trackPoints, isRealPos, currentLat, currentLon, zoom, resolvedTileUrl, gpsAccuracy, lockGpsCenter)
     }
 
     AndroidView(
@@ -8317,6 +9222,8 @@ fun MapContent(viewModel: GeologyViewModel) {
     val allStationsList by viewModel.allStations.collectAsStateWithLifecycle()
     val savedTracks by viewModel.tracks.collectAsStateWithLifecycle()
     val activeProject by viewModel.activeProject.collectAsStateWithLifecycle()
+    val coordSystemSetting by viewModel.coordSystemSetting.collectAsStateWithLifecycle()
+    val allObservationsList by viewModel.allObservations.collectAsStateWithLifecycle()
 
     val stationsToShow = if (projectStations.isNotEmpty()) projectStations else allStationsList
     var zoomLevel by remember { mutableStateOf(4) } // 1 to 8, default 4
@@ -8489,6 +9396,7 @@ fun MapContent(viewModel: GeologyViewModel) {
         if (mapMode == MapMode.ONLINE) {
             WebViewMap(
                 stations = stationsToShow,
+                observations = allObservationsList,
                 trackPoints = activePointsList,
                 isRealPos = isRealPositionEnabled,
                 currentLat = currentLat,
@@ -8533,10 +9441,52 @@ fun MapContent(viewModel: GeologyViewModel) {
                         val innerColor = if (isOutdoorMode) Color(0xFFFAFAFA) else Color(0xFF0B1411)
                         val dotColor = if (isOutdoorMode) Color(0xFFFF6D00) else Color(0xFFFFB300)
 
-                        // Diamond polygon outer shape representing geological points
-                        drawCircle(color = outerColor, radius = 8f, center = androidx.compose.ui.geometry.Offset(cx, cy))
-                        drawCircle(color = innerColor, radius = 4.5f, center = androidx.compose.ui.geometry.Offset(cx, cy))
-                        drawCircle(color = dotColor, radius = 2.5f, center = androidx.compose.ui.geometry.Offset(cx, cy))
+                        // Core structural symbol drawing
+                        val obs = allObservationsList.firstOrNull { it.stationId == station.id && (it.strike != null || it.dip != null) }
+                        val strike = obs?.strike
+                        val dip = obs?.dip
+                        val dipDir = obs?.dipDirection
+                        if (strike != null && dip != null && dipDir != null) {
+                            val rad = Math.toRadians((dipDir - 180).toDouble())
+                            val L_line = 24f
+                            val L_tick = 10f
+                            
+                            // Strike line resides at orthogonal direction
+                            val sx = -Math.cos(rad) * L_line
+                            val sy = -Math.sin(rad) * L_line
+                            
+                            val dx = Math.sin(rad) * L_tick
+                            val dy = -Math.cos(rad) * L_tick
+                            
+                            drawLine(
+                                color = if (isOutdoorMode) Color(0xFFC62828) else Color(0xFFFFEB3B),
+                                start = androidx.compose.ui.geometry.Offset((cx - sx).toFloat(), (cy - sy).toFloat()),
+                                end = androidx.compose.ui.geometry.Offset((cx + sx).toFloat(), (cy + sy).toFloat()),
+                                strokeWidth = 3.5f
+                            )
+                            drawLine(
+                                color = if (isOutdoorMode) Color(0xFFC62828) else Color(0xFFFFEB3B),
+                                start = androidx.compose.ui.geometry.Offset(cx, cy),
+                                end = androidx.compose.ui.geometry.Offset((cx + dx).toFloat(), (cy + dy).toFloat()),
+                                strokeWidth = 3.5f
+                            )
+                            
+                            drawContext.canvas.nativeCanvas.drawText(
+                                dip.toString(),
+                                (cx + dx * 1.8).toFloat(),
+                                (cy + dy * 1.8 + 8f).toFloat(),
+                                android.graphics.Paint().apply {
+                                    color = if (isOutdoorMode) android.graphics.Color.RED else android.graphics.Color.YELLOW
+                                    textSize = 22f
+                                    isFakeBoldText = true
+                                }
+                            )
+                        } else {
+                            // Standard geological mapping diamond node
+                            drawCircle(color = outerColor, radius = 8f, center = androidx.compose.ui.geometry.Offset(cx, cy))
+                            drawCircle(color = innerColor, radius = 4.5f, center = androidx.compose.ui.geometry.Offset(cx, cy))
+                            drawCircle(color = dotColor, radius = 2.5f, center = androidx.compose.ui.geometry.Offset(cx, cy))
+                        }
                         
                         drawContext.canvas.nativeCanvas.drawText(
                             station.stationCode,

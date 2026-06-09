@@ -401,6 +401,9 @@ interface GeologyDao {
     @Query("SELECT * FROM tracks WHERE projectId = :projectId ORDER BY id DESC")
     fun getTracksForProject(projectId: Int): Flow<List<Track>>
 
+    @Query("SELECT * FROM tracks WHERE projectId = :projectId ORDER BY id DESC")
+    suspend fun getTracksForProjectSync(projectId: Int): List<Track>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTrack(track: Track): Long
 
