@@ -8985,6 +8985,7 @@ fun RockMechanicsContent() {
 // 4. MAP TAB: CANVAS GIS PLOTTER & TRACK RECORDER
 // -------------------------------------------------------------------------
 enum class MapMode { ONLINE, OFFLINE }
+enum class GisTab { MAP, LAYERS, DATA, POSITION, SETTINGS }
 
 data class GeologicalContact(
     val id: String = java.util.UUID.randomUUID().toString(),
@@ -9025,7 +9026,8 @@ fun generateLeafletHtml(
     zoom: Int,
     tileUrl: String,
     gpsAccuracy: Double,
-    lockGpsCenter: Boolean
+    lockGpsCenter: Boolean,
+    isOutdoorMode: Boolean
 ): String {
     val stationsJson = stations.joinToString(prefix = "[", postfix = "]") { st ->
         val obs = observations.firstOrNull { it.stationId == st.id && (it.strike != null || it.dip != null) }
@@ -9062,6 +9064,9 @@ fun generateLeafletHtml(
         else -> 14
     }
 
+    val bgColor = if (isOutdoorMode) "#F4F6F4" else "#0C100D"
+    val gridColor = if (isOutdoorMode) "rgba(0,121,107,0.12)" else "rgba(0,229,255,0.12)"
+
     return """
         <!DOCTYPE html>
         <html>
@@ -9070,9 +9075,13 @@ fun generateLeafletHtml(
             <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
             <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
             <style>
-                body { padding: 0; margin: 0; background-color: #0F1B16; }
-                html, body, #map { height: 100%; width: 100%; }
-                .leaflet-container { background: #0F1B16; }
+                body { padding: 0; margin: 0; background-color: $bgColor; }
+                html, body, #map { height: 100%; width: 100%; overflow: hidden; }
+                .leaflet-container { 
+                    background-color: $bgColor; 
+                    background-image: radial-gradient($gridColor 1px, transparent 1px);
+                    background-size: 20px 20px;
+                }
                 .custom-div-icon {
                     background-color: #ffb300;
                     border: 2px solid #000;
@@ -9085,10 +9094,292 @@ fun generateLeafletHtml(
         <body>
             <div id="map"></div>
             <script>
-                var map = L.map('map', {
-                    zoomControl: false,
-                    attributionControl: false
-                }).setView([$defaultLat, $defaultLon], $leafZoom);
+                // ---------------------------------------------------------------------
+                // OFFLINE HEAL / FALLBACK: If Leaflet is missing, load raw Canvas map!
+                // ---------------------------------------------------------------------
+                if (typeof L === 'undefined') {
+                    console.warn("Leaflet lib offline. Falling back to High-Survival UTM Grid Canvas Canvas.");
+                    document.getElementById('map').innerHTML = `
+                        <div id="canvas-host" style="position: relative; width: 100%; height: 100%; overflow: hidden;">
+                            <canvas id="offlineCanvas" style="position: absolute; top:0; left:0; width:100%; height:100%; display:block;"></canvas>
+                        </div>
+                    `;
+                    initOfflineCanvasMap();
+                } else {
+                    initLeafletMap();
+                }
+
+                function initOfflineCanvasMap() {
+                    var canvas = document.getElementById('offlineCanvas');
+                    if (!canvas) return;
+                    var ctx = canvas.getContext('2d');
+                    
+                    var centerX = $defaultLat;
+                    var centerY = $defaultLon;
+                    var zoomLevel = $leafZoom;
+                    
+                    function getScale() {
+                        return Math.pow(2, zoomLevel) * 256 / 360;
+                    }
+                    
+                    function toPixels(lat, lon) {
+                        var scaleFactor = getScale();
+                        var x = canvas.width / 2 + (lon - centerY) * scaleFactor * Math.cos(centerX * Math.PI / 180);
+                        var y = canvas.height / 2 - (lat - centerX) * scaleFactor;
+                        return { x: x, y: y };
+                    }
+                    
+                    function toCoords(px, py) {
+                        var scaleFactor = getScale();
+                        var lon = centerY + (px - canvas.width / 2) / (scaleFactor * Math.cos(centerX * Math.PI / 180));
+                        var lat = centerX - (py - canvas.height / 2) / scaleFactor;
+                        return { lat: lat, lon: lon };
+                    }
+                    
+                    function resizeCanvas() {
+                        canvas.width = canvas.parentElement.clientWidth;
+                        canvas.height = canvas.parentElement.clientHeight;
+                        draw();
+                    }
+                    window.addEventListener('resize', resizeCanvas);
+                    setTimeout(resizeCanvas, 200);
+                    
+                    var isDragging = false;
+                    var startX, startY;
+                    
+                    canvas.addEventListener('mousedown', function(e) {
+                        isDragging = true;
+                        startX = e.clientX;
+                        startY = e.clientY;
+                    });
+                    
+                    canvas.addEventListener('mousemove', function(e) {
+                        if (!isDragging) return;
+                        var dx = e.clientX - startX;
+                        var dy = e.clientY - startY;
+                        startX = e.clientX;
+                        startY = e.clientY;
+                        
+                        var dCoords = toCoords(canvas.width/2 - dx, canvas.height/2 - dy);
+                        centerX = dCoords.lat;
+                        centerY = dCoords.lon;
+                        if (window.AndroidInterface && window.AndroidInterface.onCenterChanged) {
+                            window.AndroidInterface.onCenterChanged(centerX, centerY);
+                        }
+                        draw();
+                    });
+                    
+                    canvas.addEventListener('mouseup', function() { isDragging = false; });
+                    canvas.addEventListener('mouseleave', function() { isDragging = false; });
+                    
+                    canvas.addEventListener('wheel', function(e) {
+                        if (e.deltaY < 0) {
+                            zoomLevel = Math.min(21, zoomLevel + 0.5);
+                        } else {
+                            zoomLevel = Math.max(2, zoomLevel - 0.5);
+                        }
+                        draw();
+                        e.preventDefault();
+                    });
+                    
+                    canvas.addEventListener('touchstart', function(e) {
+                        if (e.touches.length === 1) {
+                            isDragging = true;
+                            startX = e.touches[0].clientX;
+                            startY = e.touches[0].clientY;
+                        }
+                    });
+                    canvas.addEventListener('touchmove', function(e) {
+                        if (isDragging && e.touches.length === 1) {
+                            var dx = e.touches[0].clientX - startX;
+                            var dy = e.touches[0].clientY - startY;
+                            startX = e.touches[0].clientX;
+                            startY = e.touches[0].clientY;
+                            var dCoords = toCoords(canvas.width/2 - dx, canvas.height/2 - dy);
+                            centerX = dCoords.lat;
+                            centerY = dCoords.lon;
+                            if (window.AndroidInterface && window.AndroidInterface.onCenterChanged) {
+                                window.AndroidInterface.onCenterChanged(centerX, centerY);
+                            }
+                            draw();
+                        }
+                    });
+                    canvas.addEventListener('touchend', function() { isDragging = false; });
+                    
+                    function draw() {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        
+                        var isOutdoor = $isOutdoorMode;
+                        ctx.fillStyle = isOutdoor ? '#F4F6F4' : '#0C100D';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        
+                        var gridColor = isOutdoor ? '#D0D4D0' : '#1D2723';
+                        var textColor = isOutdoor ? '#2E4F43' : '#00FFE0';
+                        ctx.strokeStyle = gridColor;
+                        ctx.lineWidth = 1;
+                        ctx.font = '10px monospace';
+                        
+                        var spacing = 0.01;
+                        if (zoomLevel > 17) spacing = 0.0005;
+                        else if (zoomLevel > 15) spacing = 0.001;
+                        else if (zoomLevel > 12) spacing = 0.005;
+                        else if (zoomLevel > 9) spacing = 0.02;
+                        else if (zoomLevel > 6) spacing = 0.1;
+                        else spacing = 0.5;
+                        
+                        var latStart = Math.floor((centerX - 1) / spacing) * spacing;
+                        var latEnd = Math.ceil((centerX + 1) / spacing) * spacing;
+                        var lonStart = Math.floor((centerY - 1.5) / spacing) * spacing;
+                        var lonEnd = Math.ceil((centerY + 1.5) / spacing) * spacing;
+                        
+                        for (var lat = latStart; lat < latEnd; lat += spacing) {
+                            var pt = toPixels(lat, centerY);
+                            if (pt.y >= 0 && pt.y <= canvas.height) {
+                                ctx.beginPath();
+                                ctx.moveTo(0, pt.y);
+                                ctx.lineTo(canvas.width, pt.y);
+                                ctx.stroke();
+                                ctx.fillStyle = textColor;
+                                ctx.fillText(lat.toFixed(4) + '°N', 8, pt.y - 4);
+                            }
+                        }
+                        
+                        for (var lon = lonStart; lon < lonEnd; lon += spacing) {
+                            var pt = toPixels(centerX, lon);
+                            if (pt.x >= 0 && pt.x <= canvas.width) {
+                                ctx.beginPath();
+                                ctx.moveTo(pt.x, 0);
+                                ctx.lineTo(pt.x, canvas.height);
+                                ctx.stroke();
+                                ctx.fillStyle = textColor;
+                                ctx.fillText(lon.toFixed(4) + '°E', pt.x + 4, canvas.height - 8);
+                            }
+                        }
+                        
+                        ctx.strokeStyle = isOutdoor ? '#007A78' : '#00FFE0';
+                        ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.arc(canvas.width/2, canvas.height/2, 12, 0, 2*Math.PI);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(canvas.width/2 - 20, canvas.height/2);
+                        ctx.lineTo(canvas.width/2 + 20, canvas.height/2);
+                        ctx.moveTo(canvas.width/2, canvas.height/2 - 20);
+                        ctx.lineTo(canvas.width/2, canvas.height/2 + 20);
+                        ctx.stroke();
+                        
+                        var contacts = $contactsJson;
+                        contacts.forEach(function(c) {
+                            if (c.latlngs && c.latlngs.length > 1) {
+                                ctx.beginPath();
+                                ctx.strokeStyle = c.color;
+                                ctx.lineWidth = c.type === 'FAULT_CONTACT' ? 3 : 2;
+                                var first = toPixels(c.latlngs[0][0], c.latlngs[0][1]);
+                                ctx.moveTo(first.x, first.y);
+                                for (var i = 1; i < c.latlngs.length; i++) {
+                                    var pt = toPixels(c.latlngs[i][0], c.latlngs[i][1]);
+                                    ctx.lineTo(pt.x, pt.y);
+                                }
+                                ctx.stroke();
+                            }
+                        });
+                        
+                        var tracks = $trackJson;
+                        if (tracks.length > 1) {
+                            ctx.beginPath();
+                            ctx.strokeStyle = '#FF3D00';
+                            ctx.lineWidth = 3;
+                            var startPt = toPixels(tracks[0].lat, tracks[0].lon);
+                            ctx.moveTo(startPt.x, startPt.y);
+                            for (var j = 1; j < tracks.length; j++) {
+                                var pt = toPixels(tracks[j].lat, tracks[j].lon);
+                                ctx.lineTo(pt.x, pt.y);
+                            }
+                            ctx.stroke();
+                        }
+                        
+                        var stations = $stationsJson;
+                        stations.forEach(function(st) {
+                            var pt = toPixels(st.lat, st.lon);
+                            if (pt.x < -20 || pt.x > canvas.width + 20 || pt.y < -20 || pt.y > canvas.height + 20) return;
+                            
+                            ctx.save();
+                            ctx.translate(pt.x, pt.y);
+                            
+                            if (st.strike >= 0 && st.dip >= 0) {
+                                var rotRad = (st.strike - 90) * Math.PI / 180;
+                                ctx.rotate(rotRad);
+                                var symbolCol = '#FFB300';
+                                var sLower = st.type.toLowerCase();
+                                if (sLower.includes('fault')) symbolCol = '#FF3D00';
+                                else if (sLower.includes('joint')) symbolCol = '#00E676';
+                                else if (sLower.includes('foli')) symbolCol = '#E040FB';
+                                
+                                ctx.strokeStyle = symbolCol;
+                                ctx.lineWidth = 3;
+                                ctx.beginPath();
+                                ctx.moveTo(-15, 0);
+                                ctx.lineTo(15, 0);
+                                ctx.stroke();
+                                ctx.beginPath();
+                                ctx.moveTo(0, 0);
+                                ctx.lineTo(0, 8);
+                                ctx.stroke();
+                                ctx.restore();
+                                
+                                ctx.fillStyle = symbolCol;
+                                ctx.font = 'bold 9px monospace';
+                                ctx.fillText(st.dip, pt.x + 8, pt.y + 12);
+                                ctx.fillStyle = isOutdoor ? '#007A78' : '#00FFE0';
+                                ctx.fillText(st.code, pt.x + 8, pt.y - 6);
+                            } else {
+                                ctx.restore();
+                                ctx.fillStyle = '#FF9100';
+                                ctx.beginPath();
+                                ctx.arc(pt.x, pt.y, 4, 0, 2*Math.PI);
+                                ctx.fill();
+                                ctx.strokeStyle = '#FFFFFF';
+                                ctx.lineWidth = 1;
+                                ctx.stroke();
+                                
+                                ctx.fillStyle = isOutdoor ? '#2E4F43' : '#FFFFFF';
+                                ctx.font = '9px sans-serif';
+                                ctx.fillText(st.code, pt.x + 6, pt.y - 2);
+                            }
+                        });
+                        
+                        var gpsPt = toPixels($currentLat, $currentLon);
+                        if (gpsPt.x >= 0 && gpsPt.x <= canvas.width && gpsPt.y >= 0 && gpsPt.y <= canvas.height) {
+                            ctx.beginPath();
+                            ctx.arc(gpsPt.x, gpsPt.y, 16, 0, 2*Math.PI);
+                            ctx.fillStyle = isOutdoor ? 'rgba(0,121,107,0.15)' : 'rgba(0,229,255,0.15)';
+                            ctx.fill();
+                            ctx.beginPath();
+                            ctx.arc(gpsPt.x, gpsPt.y, 5, 0, 2*Math.PI);
+                            ctx.fillStyle = isOutdoor ? '#007A78' : '#00E5FF';
+                            ctx.fill();
+                            ctx.strokeStyle = '#FFFFFF';
+                            ctx.lineWidth = 1.5;
+                            ctx.stroke();
+                        }
+                    }
+                    
+                    window.updateLiveLocation = function(lat, lon, accuracy, isRealPos, lockCenter, leafZoom) {
+                        if (lockCenter) {
+                            centerX = lat;
+                            centerY = lon;
+                        }
+                        draw();
+                    };
+                    window.updateNavigationLine = function(sLat, sLon, dLat, dLon, show) {};
+                    resizeCanvas();
+                }
+
+                function initLeafletMap() {
+                    var map = L.map('map', {
+                        zoomControl: false,
+                        attributionControl: false
+                    }).setView([$defaultLat, $defaultLon], $leafZoom);
 
                 L.tileLayer('$tileUrl', {
                     maxZoom: 21,
@@ -9479,6 +9770,7 @@ fun WebViewMap(
     onCenterChanged: (Double, Double) -> Unit,
     navigationTargetStation: Station?,
     showUtmGrid: Boolean = true,
+    isOutdoorMode: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     val resolvedTileUrl = if (tileUrl.contains("{token}")) {
@@ -9494,7 +9786,7 @@ fun WebViewMap(
         if (stations.isNotEmpty()) stations.map { it.longitude }.average() else currentLon
     }
     
-    val htmlContent = remember(stations, observations, trackPoints, contactsList, resolvedTileUrl) {
+    val htmlContent = remember(stations, observations, trackPoints, contactsList, resolvedTileUrl, isOutdoorMode) {
         generateLeafletHtml(
             stations = stations,
             observations = observations,
@@ -9506,7 +9798,8 @@ fun WebViewMap(
             zoom = zoom,
             tileUrl = resolvedTileUrl,
             gpsAccuracy = gpsAccuracy,
-            lockGpsCenter = lockGpsCenter
+            lockGpsCenter = lockGpsCenter,
+            isOutdoorMode = isOutdoorMode
         )
     }
 
@@ -9700,6 +9993,13 @@ fun MapContent(viewModel: GeologyViewModel) {
     var isAddPointDialogVisible by remember { mutableStateOf(false) }
     var isOutdoorMode by remember { mutableStateOf(false) }
     var showSimulator by remember { mutableStateOf(false) }
+    var showStationsOverlay by remember { mutableStateOf(true) }
+    var showSymbolsOverlay by remember { mutableStateOf(true) }
+    var showContactsOverlay by remember { mutableStateOf(true) }
+    var showTracksOverlay by remember { mutableStateOf(true) }
+    var simWalkStepSize by remember { mutableStateOf(20f) }
+    var shareTrackTarget by remember { mutableStateOf<Track?>(null) }
+    var showFormatSelectDialog by remember { mutableStateOf(false) }
 
     // GNSS values & custom settings
     var satelliteCount by remember { mutableStateOf(16) }
@@ -9950,12 +10250,65 @@ fun MapContent(viewModel: GeologyViewModel) {
     }
 
     // Main Full-screen Box
-    val mapBgColor = if (isOutdoorMode) Color(0xFFF5F6F5) else Color(0xFF0C100D)
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(mapBgColor)
-    ) {
+    var activeGisTab by remember { mutableStateOf(GisTab.MAP) }
+
+    val liveSatelliteCount by viewModel.liveSatelliteCount.collectAsStateWithLifecycle()
+    val activeSatelliteCount = if (isRealPositionEnabled) {
+        liveSatelliteCount ?: 12
+    } else {
+        satelliteCount
+    }
+
+    Scaffold(
+        bottomBar = {
+            val barBgColor = if (isOutdoorMode) Color(0xFFF4F6F4) else Color(0xFF0F1412)
+            val indicatorColor = if (isOutdoorMode) Color(0xFF007A78) else Color(0xFF109D96)
+            val contentColor = if (isOutdoorMode) Color.Black else Color.White
+
+            NavigationBar(
+                containerColor = barBgColor,
+                tonalElevation = 8.dp,
+                modifier = Modifier.height(64.dp)
+            ) {
+                val navItems = listOf(
+                    Triple(GisTab.MAP, Icons.Default.Map, "Map"),
+                    Triple(GisTab.LAYERS, Icons.Default.Layers, "Layers"),
+                    Triple(GisTab.DATA, Icons.Default.Storage, "Data"),
+                    Triple(GisTab.POSITION, Icons.Default.MyLocation, "Position"),
+                    Triple(GisTab.SETTINGS, Icons.Default.Settings, "Settings")
+                )
+
+                navItems.forEach { (tab, icon, label) ->
+                    val isSelected = activeGisTab == tab
+                    NavigationBarItem(
+                        selected = isSelected,
+                        onClick = { activeGisTab = tab },
+                        icon = {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = label,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        },
+                        label = {
+                            Text(
+                                text = label,
+                                fontSize = 10.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    )
+                }
+            }
+        }
+    ) { scaffoldPadding ->
+        val mapBgColor = if (isOutdoorMode) Color(0xFFF5F6F5) else Color(0xFF0C100D)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(scaffoldPadding)
+                .background(mapBgColor)
+        ) {
         // -------------------------------------------------------------
         // LAYER 1: THE MAP CANVAS / WEBVIEW (OCCUPIES 100% SIZE)
         // -------------------------------------------------------------
@@ -12479,7 +12832,532 @@ fun MapContent(viewModel: GeologyViewModel) {
                 titleContentColor = Color.White
             )
         }
+
+        // -------------------------------------------------------------
+        // IMMERSIVE ACTIVE TAB PANEL OVERLAY
+        // -------------------------------------------------------------
+        if (activeGisTab != GisTab.MAP) {
+            val overlayBgColor = if (isOutdoorMode) Color(0xFFF0F2F0) else Color(0xFB0A100E)
+            val overlayCardColor = if (isOutdoorMode) Color.White else Color(0xFF141A17)
+            val overlayTextColor = if (isOutdoorMode) Color.Black else Color.White
+            val accentColor = if (isOutdoorMode) Color(0xFF007A78) else Color(0xFF00FFE0)
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(overlayBgColor)
+                    .padding(16.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = when (activeGisTab) {
+                            GisTab.LAYERS -> "GIS Map Layers Catalog"
+                            GisTab.DATA -> "Geo-Spatial Geological Records"
+                            GisTab.POSITION -> "Active GNSS & Telemetry Core"
+                            GisTab.SETTINGS -> "GIS Map Parameters & Settings"
+                            GisTab.MAP -> "GIS Interactive Map Module"
+                        },
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = accentColor
+                    )
+                    IconButton(
+                        onClick = { activeGisTab = GisTab.MAP },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close overlay",
+                            tint = overlayTextColor.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+
+                Divider(color = overlayTextColor.copy(alpha = 0.1f))
+
+                when (activeGisTab) {
+                    GisTab.MAP -> {}
+                    GisTab.LAYERS -> {
+                        // MAP CORE ENGINE MODE
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = overlayCardColor),
+                            border = BorderStroke(1.dp, overlayTextColor.copy(alpha = 0.1f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Text("MAP CORE ENGINE MODE", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Map Provider Mode", color = overlayTextColor, fontSize = 14.sp)
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Button(
+                                            onClick = { mapMode = MapMode.ONLINE },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (mapMode == MapMode.ONLINE) accentColor else overlayTextColor.copy(alpha = 0.1f),
+                                                contentColor = if (mapMode == MapMode.ONLINE) Color.Black else overlayTextColor
+                                            ),
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                            modifier = Modifier.height(34.dp)
+                                        ) {
+                                            Text("ONLINE Tiles", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                        Button(
+                                            onClick = { mapMode = MapMode.OFFLINE },
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (mapMode == MapMode.OFFLINE) accentColor else overlayTextColor.copy(alpha = 0.1f),
+                                                contentColor = if (mapMode == MapMode.OFFLINE) Color.Black else overlayTextColor
+                                            ),
+                                            shape = RoundedCornerShape(8.dp),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                            modifier = Modifier.height(34.dp)
+                                        ) {
+                                            Text("OFFLINE Canvas", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // LAYERS CHECKLISTS
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = overlayCardColor),
+                            border = BorderStroke(1.dp, overlayTextColor.copy(alpha = 0.1f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Text("GEO HYDRONIC OVERLAY LAYERS", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor)
+
+                                val layerToggles = listOf(
+                                    Triple("Coordinate Grid Lines", showUtmGrid, { showUtmGrid = !showUtmGrid }),
+                                    Triple("Geological Stations (Markers)", showStationsOverlay, { showStationsOverlay = !showStationsOverlay }),
+                                    Triple("Structural Symbols Layer", showSymbolsOverlay, { showSymbolsOverlay = !showSymbolsOverlay }),
+                                    Triple("Geological Contact Faults Layer", showContactsOverlay, { showContactsOverlay = !showContactsOverlay }),
+                                    Triple("Survey Track Paths Layer", showTracksOverlay, { showTracksOverlay = !showTracksOverlay })
+                                )
+
+                                layerToggles.forEach { (label, checked, onToggle) ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(label, color = overlayTextColor, fontSize = 14.sp)
+                                        Switch(
+                                            checked = checked,
+                                            onCheckedChange = { onToggle() },
+                                            colors = SwitchDefaults.colors(
+                                                checkedThumbColor = Color.White,
+                                                checkedTrackColor = accentColor
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // TILE PROVIDER SOURCE
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = overlayCardColor),
+                            border = BorderStroke(1.dp, overlayTextColor.copy(alpha = 0.1f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("MAP TILE PROVIDER SOURCE", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                                MapLayerProvider.values().forEach { provider ->
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { mapLayer = provider }
+                                            .padding(vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column {
+                                            Text(provider.label, color = overlayTextColor, fontSize = 14.sp, fontWeight = if (mapLayer == provider) FontWeight.Bold else FontWeight.Normal)
+                                            Text(provider.url.take(35) + "...", color = overlayTextColor.copy(alpha = 0.5f), fontSize = 10.sp)
+                                        }
+                                        RadioButton(
+                                            selected = mapLayer == provider,
+                                            onClick = { mapLayer = provider },
+                                            colors = RadioButtonDefaults.colors(selectedColor = accentColor)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    GisTab.DATA -> {
+                        // DATA ACTIONS CARD
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = overlayCardColor),
+                            border = BorderStroke(1.dp, overlayTextColor.copy(alpha = 0.1f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text("BULK SHAPE IMPORT & SEED DATA", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                                Button(
+                                    onClick = {
+                                        viewModel.seedDemoDataset(context)
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.Black),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Seed Professional GIS Demonstration Dataset", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+
+                        // SURVEY PATH TRACKS LIST
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = overlayCardColor),
+                            border = BorderStroke(1.dp, overlayTextColor.copy(alpha = 0.1f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text("SURVEY FIELD PATHS RECORDS (${savedTracks.size})", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                                if (savedTracks.isEmpty()) {
+                                    Text("No recorded tracks found.", fontSize = 12.sp, color = overlayTextColor.copy(alpha = 0.5f))
+                                } else {
+                                    savedTracks.forEach { track ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(overlayTextColor.copy(alpha = 0.04f), RoundedCornerShape(6.dp))
+                                                .padding(8.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(track.name, color = overlayTextColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                                Text("ID: ${track.id} | L: ${String.format(Locale.US, "%.0f", track.lengthMeters)} m | D: ${track.durationSeconds} s", fontSize = 10.sp, color = overlayTextColor.copy(alpha = 0.5f))
+                                            }
+                                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                IconButton(
+                                                    onClick = {
+                                                        editTrackItem = track
+                                                        editTrackItemName = track.name
+                                                        showEditDialog = true
+                                                    },
+                                                    modifier = Modifier.size(28.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Edit, contentDescription = "Edit name", tint = accentColor, modifier = Modifier.size(16.dp))
+                                                }
+                                                IconButton(
+                                                    onClick = {
+                                                        shareTrackTarget = track
+                                                        showFormatSelectDialog = true
+                                                    },
+                                                    modifier = Modifier.size(28.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Share, contentDescription = "Share", tint = accentColor, modifier = Modifier.size(16.dp))
+                                                }
+                                                IconButton(
+                                                    onClick = {
+                                                        viewModel.deleteTrack(track.id)
+                                                        Toast.makeText(context, "Track deleted", Toast.LENGTH_SHORT).show()
+                                                    },
+                                                    modifier = Modifier.size(28.dp)
+                                                ) {
+                                                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red, modifier = Modifier.size(16.dp))
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // CAPTURED STATIONS SUMMARY
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = overlayCardColor),
+                            border = BorderStroke(1.dp, overlayTextColor.copy(alpha = 0.1f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text("FIELD GEOLOGICAL STATIONS LIST (${filteredStations.size})", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                                if (filteredStations.isEmpty()) {
+                                    Text("No stations marked in this project yet.", fontSize = 12.sp, color = overlayTextColor.copy(alpha = 0.5f))
+                                } else {
+                                    filteredStations.forEach { station ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(overlayTextColor.copy(alpha = 0.04f), RoundedCornerShape(6.dp))
+                                                .padding(8.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column {
+                                                Text("Station ${station.stationCode}", color = overlayTextColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                                Text("LAT: ${String.format(Locale.US, "%.5f", station.latitude)} | LON: ${String.format(Locale.US, "%.5f", station.longitude)}", fontSize = 10.sp, color = overlayTextColor.copy(alpha = 0.5f))
+                                            }
+                                            Button(
+                                                onClick = {
+                                                    navigationTargetStation = station
+                                                    lockGpsCenter = false // allow panning to target
+                                                    activeGisTab = GisTab.MAP
+                                                    Toast.makeText(context, "Navigating to: ${station.stationCode}", Toast.LENGTH_SHORT).show()
+                                                },
+                                                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.Black),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                shape = RoundedCornerShape(4.dp),
+                                                modifier = Modifier.height(28.dp)
+                                            ) {
+                                                Text("Compass Target", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    GisTab.POSITION -> {
+                        // SATELLITES TELEMETRY DIAGNOSTICS CARD
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = overlayCardColor),
+                            border = BorderStroke(1.dp, overlayTextColor.copy(alpha = 0.1f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text("GNSS SATELLITES METRIC LOCK DIAGNOSTIC", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                                
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceAround,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("LOCK STATUS", fontSize = 10.sp, color = overlayTextColor.copy(alpha = 0.5f))
+                                        Text(if (activeSatelliteCount >= 8) "3D RTK LOCK" else "SPS 2D LOCK", color = if (activeSatelliteCount >= 8) Color.Green else Color.Yellow, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("SATELLITES", fontSize = 10.sp, color = overlayTextColor.copy(alpha = 0.5f))
+                                        Text("$activeSatelliteCount Active", color = overlayTextColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text("EST D-ACCY", fontSize = 10.sp, color = overlayTextColor.copy(alpha = 0.5f))
+                                        Text("±${String.format(Locale.US, "%.1f", gpsAccuracy)} m", color = overlayTextColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
+                                Divider(color = overlayTextColor.copy(alpha = 0.05f))
+
+                                // Satellites Grid Simulator graphic
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(100.dp)
+                                        .background(overlayTextColor.copy(alpha = 0.02f), RoundedCornerShape(8.dp))
+                                        .border(1.dp, overlayTextColor.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxSize().padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceEvenly,
+                                        verticalAlignment = Alignment.Bottom
+                                    ) {
+                                        // Draw 8 mock bar channels representing signal strengths
+                                        val signals = listOf(45, 42, 38, 48, 50, 32, 28, 41)
+                                        signals.forEachIndexed { i, snr ->
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Text("CH$i", fontSize = 8.sp, color = overlayTextColor.copy(alpha = 0.5f))
+                                                Box(
+                                                    modifier = Modifier
+                                                        .width(12.dp)
+                                                        .height((snr * 1.2).dp)
+                                                        .background(if (snr > 35) Color.Green else Color.Yellow, RoundedCornerShape(topStart = 2.dp, topEnd = 2.dp))
+                                                )
+                                                Text("$snr", fontSize = 8.sp, color = overlayTextColor, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // ERGONOMIC SIMULATED WALK D-PAD CONTROLLERS SCREEN
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = overlayCardColor),
+                            border = BorderStroke(1.dp, overlayTextColor.copy(alpha = 0.1f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("ERGONOMIC MOCK WALK SIMULATOR CONTROLS", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                                
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Simulator Trigger", color = overlayTextColor, fontSize = 14.sp)
+                                    Switch(
+                                        checked = showSimulator,
+                                        onCheckedChange = { showSimulator = it },
+                                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = accentColor)
+                                    )
+                                }
+
+                                if (showSimulator) {
+                                    // D-PAD
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.padding(top = 12.dp)
+                                    ) {
+                                        Row(horizontalArrangement = Arrangement.Center) {
+                                            IconButton(
+                                                onClick = { simulateWalkMove("NORTH") },
+                                                modifier = Modifier.size(50.dp).background(overlayTextColor.copy(alpha = 0.1f), CircleShape)
+                                            ) {
+                                                Icon(Icons.Default.KeyboardArrowUp, contentDescription = "North", tint = accentColor)
+                                            }
+                                        }
+                                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            IconButton(
+                                                onClick = { simulateWalkMove("WEST") },
+                                                modifier = Modifier.size(50.dp).background(overlayTextColor.copy(alpha = 0.1f), CircleShape)
+                                            ) {
+                                                Icon(Icons.Default.KeyboardArrowLeft, contentDescription = "West", tint = accentColor)
+                                            }
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(50.dp)
+                                                    .background(accentColor.copy(alpha = 0.1f), CircleShape),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text("WALK", color = accentColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                            IconButton(
+                                                onClick = { simulateWalkMove("EAST") },
+                                                modifier = Modifier.size(50.dp).background(overlayTextColor.copy(alpha = 0.1f), CircleShape)
+                                            ) {
+                                                Icon(Icons.Default.KeyboardArrowRight, contentDescription = "East", tint = accentColor)
+                                            }
+                                        }
+                                        Row(horizontalArrangement = Arrangement.Center) {
+                                            IconButton(
+                                                onClick = { simulateWalkMove("SOUTH") },
+                                                modifier = Modifier.size(50.dp).background(overlayTextColor.copy(alpha = 0.1f), CircleShape)
+                                            ) {
+                                                Icon(Icons.Default.KeyboardArrowDown, contentDescription = "South", tint = accentColor)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    GisTab.SETTINGS -> {
+                        // SETTINGS CARD
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = overlayCardColor),
+                            border = BorderStroke(1.dp, overlayTextColor.copy(alpha = 0.1f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                                Text("SYSTEM & RELEGATION CONTROLS", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor)
+
+                                // Outdoor mode
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text("Outdoor Sunlight HighLegibility Contrast", color = overlayTextColor, fontSize = 14.sp)
+                                        Text("Boosts contrast for direct sunlight fieldwork", color = overlayTextColor.copy(alpha = 0.5f), fontSize = 10.sp)
+                                    }
+                                    Switch(
+                                        checked = isOutdoorMode,
+                                        onCheckedChange = { isOutdoorMode = it },
+                                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = accentColor)
+                                    )
+                                }
+
+                                Divider(color = overlayTextColor.copy(alpha = 0.05f))
+
+                                // Real GPS mode vs Simulated GPS Mode
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text("Real Satellite GPS Device", color = overlayTextColor, fontSize = 14.sp)
+                                        Text("If false, switches to highly reliable mock location tracker", color = overlayTextColor.copy(alpha = 0.5f), fontSize = 10.sp)
+                                    }
+                                    Switch(
+                                        checked = isRealPositionEnabled,
+                                        onCheckedChange = { isRealPositionEnabled = it },
+                                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = accentColor)
+                                    )
+                                }
+
+                                Divider(color = overlayTextColor.copy(alpha = 0.05f))
+
+                                // Simulator walk speed
+                                Column {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("Simulator Step Interval Pace", color = overlayTextColor, fontSize = 14.sp)
+                                        Text("${simWalkStepSize.toInt()} meters", color = accentColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Slider(
+                                        value = simWalkStepSize,
+                                        onValueChange = { simWalkStepSize = it },
+                                        valueRange = 2f..100f,
+                                        colors = SliderDefaults.colors(
+                                            thumbColor = accentColor,
+                                            activeTrackColor = accentColor
+                                        )
+                                    )
+                                }
+                            }
+                        }
+
+                        // ACTIONS
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = overlayCardColor),
+                            border = BorderStroke(1.dp, overlayTextColor.copy(alpha = 0.1f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text("DATABASE MAIN MAINTENANCE", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Red)
+                                Button(
+                                    onClick = {
+                                        viewModel.clearAllData()
+                                        Toast.makeText(context, "Full spatial database reset successfully completed!", Toast.LENGTH_SHORT).show()
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red, contentColor = Color.White),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Reset Core Local Databases", fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
+}
 }
 
 // -------------------------------------------------------------------------

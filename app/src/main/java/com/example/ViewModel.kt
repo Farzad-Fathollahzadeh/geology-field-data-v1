@@ -14,6 +14,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.Room
 import com.example.UtmConverter.convertLatLngToUtm
+import android.location.GnssStatus
+import android.location.LocationManager
+import android.os.Build
 import com.google.android.gms.location.LocationRequest
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationResult
@@ -80,6 +83,12 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
     private val _liveLocation = MutableStateFlow<android.location.Location?>(null)
     val liveLocation: StateFlow<android.location.Location?> = _liveLocation
 
+    // Live GNSS Satellite count
+    private val _liveSatelliteCount = MutableStateFlow<Int?>(null)
+    val liveSatelliteCount: StateFlow<Int?> = _liveSatelliteCount
+
+    private var gnssStatusCallback: Any? = null
+
     // Track recording indicators
     private val _isTrackRecordingEnabled = MutableStateFlow(false)
     val isTrackRecordingActive: StateFlow<Boolean> = _isTrackRecordingEnabled
@@ -119,6 +128,30 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
         
         // Stop any existing callback to avoid double listeners
         stopLocationTracking()
+
+        // Also register GnssStatus callback for real satellite counts if API >= 24
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            try {
+                val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                val callback = object : GnssStatus.Callback() {
+                    override fun onSatelliteStatusChanged(status: GnssStatus) {
+                        var usedInFixCount = 0
+                        for (i in 0 until status.satelliteCount) {
+                            if (status.usedInFix(i)) {
+                                usedInFixCount++
+                            }
+                        }
+                        _liveSatelliteCount.value = usedInFixCount
+                    }
+                }
+                locationManager.registerGnssStatusCallback(callback, android.os.Handler(android.os.Looper.getMainLooper()))
+                gnssStatusCallback = callback
+            } catch (e: SecurityException) {
+                // permission not granted
+            } catch (e: Exception) {
+                // other errors
+            }
+        }
 
         val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2000L).apply {
             setMinUpdateIntervalMillis(1000L)
@@ -191,6 +224,20 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
         locationCallback?.let {
             fusedLocationClient.removeLocationUpdates(it)
             locationCallback = null
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            gnssStatusCallback?.let { callback ->
+                try {
+                    val locationManager = getApplication<Application>().getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                    if (locationManager != null) {
+                        locationManager.unregisterGnssStatusCallback(callback as GnssStatus.Callback)
+                    }
+                } catch (e: Exception) {
+                    // ignore
+                }
+                gnssStatusCallback = null
+            }
+            _liveSatelliteCount.value = null
         }
     }
 
@@ -1045,6 +1092,13 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
     fun deleteObservation(obsId: Int) {
         viewModelScope.launch {
             dao.deleteObservationById(obsId)
+        }
+    }
+
+    fun saveSample(sample: Sample, onComplete: () -> Unit) {
+        viewModelScope.launch {
+            dao.insertSample(sample)
+            onComplete()
         }
     }
 
@@ -3144,6 +3198,12 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
             } catch (e: Exception) {
                 Toast.makeText(context, "Leapfrog/Surpac Export failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
             }
+        }
+    }
+
+    fun clearAllData() {
+        viewModelScope.launch(Dispatchers.IO) {
+            db.clearAllTables()
         }
     }
 }
