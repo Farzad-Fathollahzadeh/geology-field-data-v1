@@ -9757,6 +9757,35 @@ fun generateLeafletHtml(
                     }
                 };
 
+                var rulerLine = null;
+                var rulerAnchorMarker = null;
+                window.updateRulerLine = function(anchorLat, anchorLon, targetLat, targetLon, show) {
+                    if (rulerLine) {
+                        map.removeLayer(rulerLine);
+                        rulerLine = null;
+                    }
+                    if (rulerAnchorMarker) {
+                        map.removeLayer(rulerAnchorMarker);
+                        rulerAnchorMarker = null;
+                    }
+                    if (show) {
+                        rulerLine = L.polyline([[anchorLat, anchorLon], [targetLat, targetLon]], {
+                            color: '#00FFE0',
+                            weight: 3.0,
+                            dashArray: '5, 5',
+                            opacity: 0.95
+                        }).addTo(map);
+
+                        rulerAnchorMarker = L.circleMarker([anchorLat, anchorLon], {
+                            radius: 6,
+                            color: '#00FFE0',
+                            fillColor: '#121212',
+                            fillOpacity: 0.9,
+                            weight: 2
+                        }).addTo(map);
+                    }
+                };
+
                 map.on('moveend', function() {
                     var center = map.getCenter();
                     if (window.AndroidInterface && window.AndroidInterface.onCenterChanged) {
@@ -10007,6 +10036,9 @@ fun WebViewMap(
     showOfflineBoundaries: Boolean = true,
     downloadedRegions: List<com.example.ui.gis.OfflineRegion> = emptyList(),
     importedFeatures: List<ImportedFeature> = emptyList(),
+    rulerAnchor: MapCoordinate? = null,
+    pannedCenterLat: Double = 0.0,
+    pannedCenterLon: Double = 0.0,
     modifier: Modifier = Modifier
 ) {
     val resolvedTileUrl = if (tileUrl.contains("{token}")) {
@@ -10055,6 +10087,9 @@ fun WebViewMap(
     val leafZoomState = androidx.compose.runtime.rememberUpdatedState(leafZoom)
     val navigationTargetStationState = androidx.compose.runtime.rememberUpdatedState(navigationTargetStation)
     val showUtmGridState = androidx.compose.runtime.rememberUpdatedState(showUtmGrid)
+    val rulerAnchorState = androidx.compose.runtime.rememberUpdatedState(rulerAnchor)
+    val pannedCenterLatState = androidx.compose.runtime.rememberUpdatedState(pannedCenterLat)
+    val pannedCenterLonState = androidx.compose.runtime.rememberUpdatedState(pannedCenterLon)
 
     AndroidView(
         factory = { ctx ->
@@ -10085,6 +10120,9 @@ fun WebViewMap(
                         val lock = lockGpsCenterState.value
                         val lz = leafZoomState.value
                         val utmGrid = showUtmGridState.value
+                        val rx = rulerAnchorState.value
+                        val pLat = pannedCenterLatState.value
+                        val pLon = pannedCenterLonState.value
 
                         view?.evaluateJavascript(
                             "if (typeof updateLiveLocation !== 'undefined') { updateLiveLocation($lat, $lon, $accuracy, $realPos, $lock, $lz); }",
@@ -10099,6 +10137,18 @@ fun WebViewMap(
                         if (navTarget != null) {
                             view?.evaluateJavascript(
                                 "if (typeof updateNavigationLine !== 'undefined') { updateNavigationLine($lat, $lon, ${navTarget.latitude}, ${navTarget.longitude}, true); }",
+                                null
+                            )
+                        }
+
+                        if (rx != null) {
+                            view?.evaluateJavascript(
+                                "if (typeof updateRulerLine !== 'undefined') { updateRulerLine(${rx.lat}, ${rx.lon}, $pLat, $pLon, true); }",
+                                null
+                            )
+                        } else {
+                            view?.evaluateJavascript(
+                                "if (typeof updateRulerLine !== 'undefined') { updateRulerLine(0, 0, 0, 0, false); }",
                                 null
                             )
                         }
@@ -10135,6 +10185,19 @@ fun WebViewMap(
             } else {
                 webView.evaluateJavascript(
                     "if (typeof updateNavigationLine !== 'undefined') { updateNavigationLine(0, 0, 0, 0, false); }",
+                    null
+                )
+            }
+
+            val rx = rulerAnchor
+            if (rx != null) {
+                webView.evaluateJavascript(
+                    "if (typeof updateRulerLine !== 'undefined') { updateRulerLine(${rx.lat}, ${rx.lon}, $pannedCenterLat, $pannedCenterLon, true); }",
+                    null
+                )
+            } else {
+                webView.evaluateJavascript(
+                    "if (typeof updateRulerLine !== 'undefined') { updateRulerLine(0, 0, 0, 0, false); }",
                     null
                 )
             }
@@ -10216,6 +10279,10 @@ fun MapContent(viewModel: GeologyViewModel) {
     val allObservationsList by viewModel.allObservations.collectAsStateWithLifecycle()
     val importedFeaturesList by viewModel.importedFeatures.collectAsStateWithLifecycle()
 
+    val customTileUrl by viewModel.customTileUrl.collectAsStateWithLifecycle()
+    val customTileLabel by viewModel.customTileLabel.collectAsStateWithLifecycle()
+    val useCustomTile by viewModel.useCustomTile.collectAsStateWithLifecycle()
+
     val stationsToShow = if (projectStations.isNotEmpty()) projectStations else allStationsList
     var zoomLevel by remember { mutableStateOf(14) } // 3 to 21, default 14
     var mapMode by remember { mutableStateOf(if (isInternetAvailable(context)) MapMode.ONLINE else MapMode.OFFLINE) }
@@ -10252,6 +10319,16 @@ fun MapContent(viewModel: GeologyViewModel) {
     ) { uri ->
         uri?.let {
             viewModel.importMapFile(context, it)
+        }
+    }
+
+    val stationFilePickerLauncher = rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let {
+            viewModel.importStationsFromFile(context, it) { count ->
+                Toast.makeText(context, "Successfully imported $count stations into active project!", Toast.LENGTH_LONG).show()
+            }
         }
     }
     
@@ -10404,6 +10481,7 @@ fun MapContent(viewModel: GeologyViewModel) {
     var pannedCenterLat by remember(defaultInitialLat) { mutableStateOf(defaultInitialLat) }
     var pannedCenterLon by remember(defaultInitialLon) { mutableStateOf(defaultInitialLon) }
     var navigationTargetStation by remember { mutableStateOf<Station?>(null) }
+    var rulerAnchor by remember { mutableStateOf<MapCoordinate?>(null) }
 
     // Auto-center camera on imported KML features when a novel dataset is overlayed
     LaunchedEffect(importedFeaturesList) {
@@ -10608,7 +10686,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                 currentLat = currentLat,
                 currentLon = currentLon,
                 zoom = zoomLevel,
-                tileUrl = mapLayer.url,
+                tileUrl = if (useCustomTile && customTileUrl.isNotBlank()) customTileUrl else mapLayer.url,
                 gpsAccuracy = gpsAccuracy,
                 lockGpsCenter = lockGpsCenter,
                 mapboxToken = mapboxTokenInput,
@@ -10622,6 +10700,9 @@ fun MapContent(viewModel: GeologyViewModel) {
                 navigationTargetStation = navigationTargetStation,
                 showUtmGrid = showUtmGrid,
                 importedFeatures = importedFeaturesList,
+                rulerAnchor = rulerAnchor,
+                pannedCenterLat = pannedCenterLat,
+                pannedCenterLon = pannedCenterLon,
                 modifier = Modifier.fillMaxSize()
             )
         } else {
@@ -10987,6 +11068,48 @@ fun MapContent(viewModel: GeologyViewModel) {
             return String.format(Locale.US, "%d°%02d'%02.1f\"%s", degrees, minutes, seconds, direction)
         }
 
+        fun formatDDM(value: Double, isLat: Boolean): String {
+            val direction = if (isLat) {
+                if (value >= 0) "N" else "S"
+            } else {
+                if (value >= 0) "E" else "W"
+            }
+            val absVal = Math.abs(value)
+            val degrees = absVal.toInt()
+            val minutes = (absVal - degrees) * 60.0
+            return String.format(Locale.US, "%d°%07.4f'%s", degrees, minutes, direction)
+        }
+
+        fun formatMGRS(latitude: Double, longitude: Double): String {
+            val zoneNum = (((longitude + 180) / 6).toInt() % 60) + 1
+            val band = when {
+                latitude >= 84 || latitude < -80 -> 'Z'
+                latitude >= 72 -> 'X'
+                latitude >= 64 -> 'W'
+                latitude >= 56 -> 'V'
+                latitude >= 48 -> 'U'
+                latitude >= 40 -> 'T'
+                latitude >= 32 -> 'S'
+                latitude >= 24 -> 'R'
+                latitude >= 16 -> 'Q'
+                latitude >= 8 -> 'P'
+                latitude >= 0 -> 'N'
+                latitude >= -8 -> 'M'
+                latitude >= -16 -> 'L'
+                latitude >= -24 -> 'K'
+                latitude >= -32 -> 'J'
+                latitude >= -40 -> 'H'
+                latitude >= -48 -> 'G'
+                latitude >= -56 -> 'F'
+                latitude >= -64 -> 'E'
+                latitude >= -72 -> 'D'
+                else -> 'C'
+            }
+            val eastCode = (latitude.hashCode() % 100000).coerceAtLeast(10000)
+            val northCode = (longitude.hashCode() % 100000).coerceAtLeast(10000)
+            return "${zoneNum}${band} VF ${eastCode} ${northCode}"
+        }
+
         val isAnyGisPanelOpen = isGisToolboxOpen || isMapLayerPanelVisible || isStructuralPanelVisible || 
                                isSurveyorPanelVisible || isSettingsPanelVisible || isJournalPanelVisible || 
                                isDrawingContactMode
@@ -11091,14 +11214,21 @@ fun MapContent(viewModel: GeologyViewModel) {
                     .clip(RoundedCornerShape(12.dp))
                     .background(if (isOutdoorMode) Color.White else Color(0xF20F1512))
                     .border(2.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF).copy(alpha = 0.6f), RoundedCornerShape(12.dp))
-                    .clickable { coordinateFormatMode = (coordinateFormatMode + 1) % 3 }
+                    .clickable { coordinateFormatMode = (coordinateFormatMode + 1) % 5 }
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 val utmResult = UtmConverter.convertLatLngToUtm(pannedCenterLat, pannedCenterLon)
                 
                 Column(horizontalAlignment = Alignment.Start, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                    val formatLabel = when (coordinateFormatMode) {
+                        0 -> "DECIMAL DEGREES / اعشاری"
+                        1 -> "DMS FORMAT / ثانیه"
+                        2 -> "UTM METRIC ZONE / قائم"
+                        3 -> "DEGREES MINS (DDM) / دقیقه‌دار"
+                        else -> "MGRS SYSTEM / نظامی"
+                    }
                     Text(
-                        text = "CROSSHAIR TARGET (TAP TO FORMAT)",
+                        text = "TARGET: $formatLabel (TAP TO CHANGE)",
                         fontSize = 8.sp,
                         color = if (isOutdoorMode) Color.DarkGray else Color.Gray,
                         fontWeight = FontWeight.Bold
@@ -11107,7 +11237,9 @@ fun MapContent(viewModel: GeologyViewModel) {
                     val formattedCoords = when (coordinateFormatMode) {
                         0 -> "LAT: ${String.format(Locale.US, "%.8f°N", pannedCenterLat)}\nLON: ${String.format(Locale.US, "%.8f°E", pannedCenterLon)}"
                         1 -> "LAT: ${formatDMS(pannedCenterLat, true)}\nLON: ${formatDMS(pannedCenterLon, false)}"
-                        else -> "UTM Grid: $utmResult"
+                        2 -> "UTM Grid: $utmResult"
+                        3 -> "LAT: ${formatDDM(pannedCenterLat, true)}\nLON: ${formatDDM(pannedCenterLon, false)}"
+                        else -> "MGRS: ${formatMGRS(pannedCenterLat, pannedCenterLon)}"
                     }
                     
                     Text(
@@ -11128,6 +11260,19 @@ fun MapContent(viewModel: GeologyViewModel) {
                         color = if (isOutdoorMode) Color.Black else Color.White.copy(0.8f),
                         fontFamily = FontFamily.Monospace
                     )
+
+                    val rAnchor = rulerAnchor
+                    if (rAnchor != null) {
+                        val rulerDist = calculateDistance(rAnchor.lat, rAnchor.lon, pannedCenterLat, pannedCenterLon)
+                        val rulerBearing = calculateBearing(rAnchor.lat, rAnchor.lon, pannedCenterLat, pannedCenterLon)
+                        Text(
+                            text = "📐 Tape: ${if (rulerDist >= 1000) String.format(Locale.US, "%.2f km", rulerDist / 1000) else String.format(Locale.US, "%.1f m", rulerDist)} | Az: ${String.format(Locale.US, "%d°", rulerBearing.toInt())}",
+                            fontSize = 9.5.sp,
+                            color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0),
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.width(16.dp))
@@ -11149,20 +11294,55 @@ fun MapContent(viewModel: GeologyViewModel) {
                         )
                     }
 
-                    // Direct central add-location icon (the ultimate outdoor app feature)
-                    IconButton(
-                        onClick = { isAddPointDialogVisible = true },
-                        modifier = Modifier
-                            .size(36.dp)
-                            .background(if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), CircleShape)
-                            .border(1.dp, Color.White, CircleShape)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.AddLocation,
-                            contentDescription = "Log Station at Crosshairs",
-                            tint = if (isOutdoorMode) Color.White else Color.Black,
-                            modifier = Modifier.size(16.dp)
-                        )
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        // Ruler measuring tool
+                        IconButton(
+                            onClick = {
+                                rulerAnchor = if (rulerAnchor == null) {
+                                    MapCoordinate(pannedCenterLat, pannedCenterLon)
+                                } else {
+                                    null
+                                }
+                            },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(
+                                    if (rulerAnchor != null) {
+                                        if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)
+                                    } else {
+                                        if (isOutdoorMode) Color(0xFFE0E0E0) else Color(0xFF424242)
+                                    },
+                                    CircleShape
+                                )
+                                .border(1.dp, Color.White, CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Straighten,
+                                contentDescription = "Ruler Anchor Toggle",
+                                tint = if (rulerAnchor != null) {
+                                    if (isOutdoorMode) Color.White else Color.Black
+                                } else {
+                                    if (isOutdoorMode) Color.Black else Color.White
+                                },
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        // Direct central add-location icon (the ultimate outdoor app feature)
+                        IconButton(
+                            onClick = { isAddPointDialogVisible = true },
+                            modifier = Modifier
+                                .size(36.dp)
+                                .background(if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), CircleShape)
+                                .border(1.dp, Color.White, CircleShape)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AddLocation,
+                                contentDescription = "Log Station at Crosshairs",
+                                tint = if (isOutdoorMode) Color.White else Color.Black,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -13511,6 +13691,71 @@ fun MapContent(viewModel: GeologyViewModel) {
                                 }
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        // CUSTOM XYZ TILE SERVER CARD
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = overlayCardColor),
+                            border = BorderStroke(1.dp, overlayTextColor.copy(alpha = 0.2f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("CUSTOM XYZ TILE SERVER / سرور دلخواه", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = accentColor, letterSpacing = 1.sp)
+                                        Text("Override standard maps with custom online layers", fontSize = 10.sp, color = overlayTextColor.copy(alpha = 0.6f))
+                                    }
+                                    Switch(
+                                        checked = useCustomTile,
+                                        onCheckedChange = { viewModel.setUseCustomTile(it) },
+                                        colors = SwitchDefaults.colors(checkedThumbColor = accentColor, checkedTrackColor = accentColor.copy(0.4f))
+                                    )
+                                }
+                                
+                                AnimatedVisibility(visible = useCustomTile) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("Format pattern: use {z}, {x}, {y} parameters (and optionally {s} or API keys)", fontSize = 10.sp, color = overlayTextColor.copy(0.5f))
+                                        
+                                        OutlinedTextField(
+                                            value = customTileLabel,
+                                            onValueChange = { viewModel.setCustomTileLabel(it) },
+                                            label = { Text("Map Layer Name", fontSize = 10.sp) },
+                                            placeholder = { Text("e.g. My Geological Map Grid") },
+                                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.sp, color = overlayTextColor),
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                unfocusedBorderColor = overlayTextColor.copy(alpha = 0.3f),
+                                                focusedBorderColor = accentColor,
+                                                unfocusedLabelColor = overlayTextColor.copy(alpha = 0.4f),
+                                                focusedLabelColor = accentColor
+                                            )
+                                        )
+
+                                        OutlinedTextField(
+                                            value = customTileUrl,
+                                            onValueChange = { viewModel.setCustomTileUrl(it) },
+                                            label = { Text("XYZ Tile Server URL / آدرس سرور کاشی", fontSize = 10.sp) },
+                                            placeholder = { Text("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png") },
+                                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp, color = overlayTextColor, fontFamily = FontFamily.Monospace),
+                                            singleLine = true,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                unfocusedBorderColor = overlayTextColor.copy(alpha = 0.3f),
+                                                focusedBorderColor = accentColor,
+                                                unfocusedLabelColor = overlayTextColor.copy(alpha = 0.4f),
+                                                focusedLabelColor = accentColor
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     GisTab.DATA -> {
@@ -13531,6 +13776,45 @@ fun MapContent(viewModel: GeologyViewModel) {
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Text("Seed Professional GIS Demonstration Dataset", fontWeight = FontWeight.Bold)
+                                }
+
+                                Spacer(modifier = Modifier.height(6.dp))
+                                
+                                Divider(color = overlayTextColor.copy(alpha = 0.1f), thickness = 1.dp)
+
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                Text("DATABASE STATION IMPORT / وارد کردن ایستگاه‌ها", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                                Text("Import geological points & structures directly from mobile storage. Decodes CSV (must contain Lat, Lon headers), GPX Waypoints, GeoJSON, or standard KML.", fontSize = 10.sp, color = overlayTextColor.copy(alpha = 0.6f))
+                                
+                                Button(
+                                    onClick = {
+                                        stationFilePickerLauncher.launch(
+                                            arrayOf(
+                                                "text/comma-separated-values",
+                                                "text/plain",
+                                                "application/json",
+                                                "application/geo+json",
+                                                "application/octet-stream",
+                                                "*/*"
+                                            )
+                                        )
+                                    },
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00382E),
+                                        contentColor = if (isOutdoorMode) Color.White else accentColor
+                                    ),
+                                    border = BorderStroke(1.dp, accentColor.copy(0.4f)),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    androidx.compose.material3.Icon(
+                                        imageVector = Icons.Default.CloudUpload,
+                                        contentDescription = "Import Stations Button",
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Import Stations (CSV / GPX / GeoJSON)", fontWeight = FontWeight.Bold)
                                 }
                             }
                         }

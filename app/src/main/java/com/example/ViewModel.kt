@@ -452,6 +452,23 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
     val fontSizeSetting = MutableStateFlow(prefs.getString("font_size", "Standard") ?: "Standard")
     val coordSystemSetting = MutableStateFlow(prefs.getString("coord_system", "UTM") ?: "UTM")
 
+    val customTileUrl = MutableStateFlow(prefs.getString("custom_tile_url", "") ?: "")
+    val customTileLabel = MutableStateFlow(prefs.getString("custom_tile_label", "") ?: "")
+    val useCustomTile = MutableStateFlow(prefs.getBoolean("use_custom_tile", false))
+
+    fun setCustomTileUrl(url: String) {
+        customTileUrl.value = url
+        prefs.edit().putString("custom_tile_url", url).apply()
+    }
+    fun setCustomTileLabel(label: String) {
+        customTileLabel.value = label
+        prefs.edit().putString("custom_tile_label", label).apply()
+    }
+    fun setUseCustomTile(use: Boolean) {
+        useCustomTile.value = use
+        prefs.edit().putBoolean("use_custom_tile", use).apply()
+    }
+
     fun setThemeSetting(theme: String) { 
         themeSetting.value = theme 
         prefs.edit().putString("theme", theme).apply()
@@ -551,12 +568,233 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
         return list
     }
 
+    fun parseGpx(gpxText: String): List<ImportedFeature> {
+        val features = mutableListOf<ImportedFeature>()
+        
+        // 1. Waypoints (<wpt>)
+        val wptRegex = Regex("<wpt\\s+lat=\"([^\"]+)\"\\s+lon=\"([^\"]+)\">(.*?)</wpt>", RegexOption.DOT_MATCHES_ALL)
+        for (match in wptRegex.findAll(gpxText)) {
+            val lat = match.groupValues[1].toDoubleOrNull() ?: continue
+            val lon = match.groupValues[2].toDoubleOrNull() ?: continue
+            val innerContent = match.groupValues[3]
+            val name = Regex("<name>(.*?)</name>").find(innerContent)?.groupValues?.get(1)?.trim() ?: "GPX Waypoint"
+            val desc = Regex("<desc>(.*?)</desc>").find(innerContent)?.groupValues?.get(1)?.trim() ?: ""
+            features.add(
+                ImportedFeature(
+                    name = name,
+                    description = desc,
+                    type = "Point",
+                    coordinates = listOf(MapCoordinate(lat, lon)),
+                    colorHex = "#FF5722"
+                )
+            )
+        }
+        
+        // 2. Track segments (<trk>)
+        val trkRegex = Regex("<trk>(.*?)</trk>", RegexOption.DOT_MATCHES_ALL)
+        for (match in trkRegex.findAll(gpxText)) {
+            val innerContent = match.groupValues[1]
+            val name = Regex("<name>(.*?)</name>").find(innerContent)?.groupValues?.get(1)?.trim() ?: "GPX Track"
+            val desc = Regex("<desc>(.*?)</desc>").find(innerContent)?.groupValues?.get(1)?.trim() ?: ""
+            
+            val pts = mutableListOf<MapCoordinate>()
+            val trkptRegex = Regex("<trkpt\\s+lat=\"([^\"]+)\"\\s+lon=\"([^\"]+)\"")
+            for (ptMatch in trkptRegex.findAll(innerContent)) {
+                val lat = ptMatch.groupValues[1].toDoubleOrNull() ?: continue
+                val lon = ptMatch.groupValues[2].toDoubleOrNull() ?: continue
+                pts.add(MapCoordinate(lat, lon))
+            }
+            if (pts.isNotEmpty()) {
+                features.add(
+                    ImportedFeature(
+                        name = name,
+                        description = desc,
+                        type = "LineString",
+                        coordinates = pts,
+                        colorHex = "#00FFE0"
+                    )
+                )
+            }
+        }
+        return features
+    }
+
+    fun parseGeoJson(jsonText: String): List<ImportedFeature> {
+        val features = mutableListOf<ImportedFeature>()
+        try {
+            val root = org.json.JSONObject(jsonText)
+            val type = root.optString("type")
+            if (type == "FeatureCollection") {
+                val featuresArray = root.optJSONArray("features") ?: return emptyList()
+                for (i in 0 until featuresArray.length()) {
+                    val featObj = featuresArray.optJSONObject(i) ?: continue
+                    parseGeoJsonFeature(featObj, features)
+                }
+            } else if (type == "Feature") {
+                parseGeoJsonFeature(root, features)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return features
+    }
+
+    private fun parseGeoJsonFeature(featObj: org.json.JSONObject, list: MutableList<ImportedFeature>) {
+        val props = featObj.optJSONObject("properties")
+        val name = props?.optString("name")?.takeIf { it.isNotBlank() }
+            ?: props?.optString("label")?.takeIf { it.isNotBlank() }
+            ?: "GeoJSON Feature"
+        val desc = props?.optString("description") ?: props?.optString("desc") ?: ""
+        val geom = featObj.optJSONObject("geometry") ?: return
+        val geomType = geom.optString("type")
+        
+        when (geomType) {
+            "Point" -> {
+                val coords = geom.optJSONArray("coordinates") ?: return
+                if (coords.length() >= 2) {
+                    val lon = coords.optDouble(0)
+                    val lat = coords.optDouble(1)
+                    list.add(
+                        ImportedFeature(
+                            name = name,
+                            description = desc,
+                            type = "Point",
+                            coordinates = listOf(MapCoordinate(lat, lon)),
+                            colorHex = "#3F51B5"
+                        )
+                    )
+                }
+            }
+            "LineString" -> {
+                val coords = geom.optJSONArray("coordinates") ?: return
+                val pts = mutableListOf<MapCoordinate>()
+                for (j in 0 until coords.length()) {
+                    val pt = coords.optJSONArray(j) ?: continue
+                    if (pt.length() >= 2) {
+                        pts.add(MapCoordinate(pt.optDouble(1), pt.optDouble(0)))
+                    }
+                }
+                if (pts.isNotEmpty()) {
+                    list.add(
+                        ImportedFeature(
+                            name = name,
+                            description = desc,
+                            type = "LineString",
+                            coordinates = pts,
+                            colorHex = "#E91E63"
+                        )
+                    )
+                }
+            }
+            "Polygon" -> {
+                val coords = geom.optJSONArray("coordinates") ?: return
+                if (coords.length() > 0) {
+                    val exteriorRing = coords.optJSONArray(0) ?: return
+                    val pts = mutableListOf<MapCoordinate>()
+                    for (j in 0 until exteriorRing.length()) {
+                        val pt = exteriorRing.optJSONArray(j) ?: continue
+                        if (pt.length() >= 2) {
+                            pts.add(MapCoordinate(pt.optDouble(1), pt.optDouble(0)))
+                        }
+                    }
+                    if (pts.isNotEmpty()) {
+                        list.add(
+                            ImportedFeature(
+                                name = name,
+                                description = desc,
+                                type = "Polygon",
+                                coordinates = pts,
+                                colorHex = "#4CAF50"
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun parseCsvTxt(csvText: String): List<ImportedFeature> {
+        val features = mutableListOf<ImportedFeature>()
+        val lines = csvText.lines()
+        var latIndex = -1
+        var lonIndex = -1
+        var nameIndex = -1
+        var descIndex = -1
+        
+        if (lines.isNotEmpty()) {
+            val header = lines.first().split(",")
+            for (i in header.indices) {
+                val colName = header[i].trim().lowercase()
+                if (colName.contains("lat")) latIndex = i
+                if (colName.contains("lon") || colName.contains("lng")) lonIndex = i
+                if (colName.contains("name") || colName.contains("label") || colName.contains("id")) nameIndex = i
+                if (colName.contains("desc") || colName.contains("note") || colName.contains("remark")) descIndex = i
+            }
+        }
+        
+        val hasHeaders = latIndex != -1 && lonIndex != -1
+        val startLine = if (hasHeaders) 1 else 0
+        
+        for (i in startLine until lines.size) {
+            val line = lines[i].trim()
+            if (line.isBlank()) continue
+            val parts = line.split(",")
+            if (parts.size >= 2) {
+                var lat: Double? = null
+                var lon: Double? = null
+                var name = "CSV Point ${i + 1}"
+                var desc = ""
+                
+                if (hasHeaders) {
+                    lat = parts.getOrNull(latIndex)?.trim()?.toDoubleOrNull()
+                    lon = parts.getOrNull(lonIndex)?.trim()?.toDoubleOrNull()
+                    if (nameIndex != -1) name = parts.getOrNull(nameIndex)?.trim() ?: name
+                    if (descIndex != -1) desc = parts.getOrNull(descIndex)?.trim() ?: ""
+                } else {
+                    if (parts.size == 2) {
+                        lat = parts[0].trim().toDoubleOrNull()
+                        lon = parts[1].trim().toDoubleOrNull()
+                    } else if (parts.size >= 3) {
+                        val p0Double = parts[0].trim().toDoubleOrNull()
+                        val p1Double = parts[1].trim().toDoubleOrNull()
+                        val p2Double = parts[2].trim().toDoubleOrNull()
+                        
+                        if (p0Double != null && p1Double != null) {
+                            lat = p0Double
+                            lon = p1Double
+                            name = parts.getOrNull(2)?.trim() ?: name
+                            desc = parts.getOrNull(3)?.trim() ?: ""
+                        } else if (p1Double != null && p2Double != null) {
+                            name = parts[0].trim()
+                            lat = p1Double
+                            lon = p2Double
+                            desc = parts.getOrNull(3)?.trim() ?: ""
+                        }
+                    }
+                }
+                
+                if (lat != null && lon != null) {
+                    features.add(
+                        ImportedFeature(
+                            name = name,
+                            description = desc,
+                            type = "Point",
+                            coordinates = listOf(MapCoordinate(lat, lon)),
+                            colorHex = "#FF9800"
+                        )
+                    )
+                }
+            }
+        }
+        return features
+    }
+
     fun importMapFile(context: Context, uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val resolver = context.contentResolver
                 val fileName = getFileName(resolver, uri)?.lowercase(Locale.ROOT) ?: ""
-                var kmlContent = ""
+                var fileContent = ""
                 
                 if (fileName.endsWith(".kmz") || isKmzStream(context, uri)) {
                     resolver.openInputStream(uri)?.use { stream ->
@@ -564,7 +802,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                             var entry = zipStream.nextEntry
                             while (entry != null) {
                                 if (entry.name.lowercase(Locale.ROOT).endsWith(".kml")) {
-                                    kmlContent = zipStream.bufferedReader(Charsets.UTF_8).readText()
+                                    fileContent = zipStream.bufferedReader(Charsets.UTF_8).readText()
                                     zipStream.closeEntry()
                                     break
                                 }
@@ -575,28 +813,252 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                     }
                 } else {
                     resolver.openInputStream(uri)?.use { stream ->
-                        kmlContent = stream.bufferedReader(Charsets.UTF_8).readText()
+                        fileContent = stream.bufferedReader(Charsets.UTF_8).readText()
                     }
                 }
                 
-                if (kmlContent.isNotBlank()) {
-                    val features = parseKml(kmlContent)
+                if (fileContent.isNotBlank()) {
+                    val features = when {
+                        fileName.endsWith(".gpx") || fileContent.contains("<gpx", ignoreCase = true) -> {
+                            parseGpx(fileContent)
+                        }
+                        fileName.endsWith(".geojson") || fileName.endsWith(".json") || fileContent.trim().startsWith("{") -> {
+                            parseGeoJson(fileContent)
+                        }
+                        fileName.endsWith(".csv") || fileName.endsWith(".txt") -> {
+                            parseCsvTxt(fileContent)
+                        }
+                        else -> {
+                            parseKml(fileContent)
+                        }
+                    }
+                    
                     withContext(Dispatchers.Main) {
                         if (features.isNotEmpty()) {
                             _importedFeatures.value = _importedFeatures.value + features
-                            Toast.makeText(context, "${features.size} KML/KMZ features successfully overlayed on map!", Toast.LENGTH_LONG).show()
+                            val formatLabel = when {
+                                fileName.endsWith(".gpx") || fileContent.contains("<gpx", ignoreCase = true) -> "GPX"
+                                fileName.endsWith(".geojson") || fileName.endsWith(".json") || fileContent.trim().startsWith("{") -> "GeoJSON"
+                                fileName.endsWith(".csv") || fileName.endsWith(".txt") -> "CSV/TXT"
+                                else -> "KML/KMZ"
+                            }
+                            Toast.makeText(context, "${features.size} $formatLabel features successfully overlayed on map!", Toast.LENGTH_LONG).show()
                         } else {
-                            Toast.makeText(context, "No valid Placemarks found in map file.", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, "No valid locations or geometries found in map file.", Toast.LENGTH_LONG).show()
                         }
                     }
                 } else {
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Could not extract KML map data.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Could not extract map data (file is empty).", Toast.LENGTH_SHORT).show()
                     }
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, "Import failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    fun importStationsFromFile(context: Context, uri: Uri, onSuccess: (Int) -> Unit) {
+        val projId = activeProjectId.value
+        if (projId == null) {
+            Toast.makeText(context, "No active project selected. Please open or create a project first.", Toast.LENGTH_LONG).show()
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val resolver = context.contentResolver
+                val fileName = getFileName(resolver, uri)?.lowercase(Locale.ROOT) ?: ""
+                val fileContent = resolver.openInputStream(uri)?.use { stream ->
+                    stream.bufferedReader(Charsets.UTF_8).readText()
+                } ?: ""
+                
+                if (fileContent.isBlank()) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "The file is empty.", Toast.LENGTH_SHORT).show()
+                    }
+                    return@launch
+                }
+                
+                val importedStations = mutableListOf<Station>()
+                
+                if (fileName.endsWith(".csv") || fileName.endsWith(".txt")) {
+                    val lines = fileContent.lines()
+                    var latIndex = -1
+                    var lonIndex = -1
+                    var codeIndex = -1
+                    var prefixIndex = -1
+                    var elevIndex = -1
+                    
+                    if (lines.isNotEmpty()) {
+                        val header = lines.first().split(",")
+                        for (i in header.indices) {
+                            val col = header[i].trim().lowercase()
+                            if (col.contains("lat")) latIndex = i
+                            if (col.contains("lon") || col.contains("lng")) lonIndex = i
+                            if (col.contains("code") || col.contains("station")) codeIndex = i
+                            if (col.contains("prefix")) prefixIndex = i
+                            if (col.contains("elev") || col.contains("alt")) elevIndex = i
+                        }
+                    }
+                    
+                    val hasHeaders = latIndex != -1 && lonIndex != -1
+                    val startLine = if (hasHeaders) 1 else 0
+                    
+                    for (i in startLine until lines.size) {
+                        val line = lines[i].trim()
+                        if (line.isBlank()) continue
+                        val parts = line.split(",")
+                        
+                        var lat: Double? = null
+                        var lon: Double? = null
+                        var code = "ST-${100 + i}"
+                        var prefix = "ST"
+                        var elev = 0.0
+                        
+                        if (hasHeaders) {
+                            lat = parts.getOrNull(latIndex)?.trim()?.toDoubleOrNull()
+                            lon = parts.getOrNull(lonIndex)?.trim()?.toDoubleOrNull()
+                            if (codeIndex != -1) code = parts.getOrNull(codeIndex)?.trim() ?: code
+                            if (prefixIndex != -1) prefix = parts.getOrNull(prefixIndex)?.trim() ?: prefix
+                            if (elevIndex != -1) elev = parts.getOrNull(elevIndex)?.trim()?.toDoubleOrNull() ?: 0.0
+                        } else {
+                            if (parts.size >= 2) {
+                                lat = parts[0].trim().toDoubleOrNull()
+                                lon = parts[1].trim().toDoubleOrNull()
+                                if (parts.size >= 3) {
+                                    code = parts[2].trim()
+                                }
+                            }
+                        }
+                        
+                        if (lat != null && lon != null) {
+                            val utm = UtmConverter.convertLatLngToUtm(lat, lon)
+                            val easting = utm.easting
+                            val northing = utm.northing
+                            val zone = utm.zoneString
+                            
+                            importedStations.add(
+                                Station(
+                                    projectId = projId,
+                                    stationCode = code,
+                                    prefix = prefix,
+                                    latitude = lat,
+                                    longitude = lon,
+                                    elevation = elev,
+                                    accuracy = 1.0,
+                                    elevationAccuracy = 1.0,
+                                    utmEasting = easting,
+                                    utmNorthing = northing,
+                                    utmZone = zone
+                                )
+                            )
+                        }
+                    }
+                } else if (fileName.endsWith(".gpx")) {
+                    val wptRegex = Regex("<wpt\\s+lat=\"([^\"]+)\"\\s+lon=\"([^\"]+)\">(.*?)</wpt>", RegexOption.DOT_MATCHES_ALL)
+                    var index = 1
+                    for (match in wptRegex.findAll(fileContent)) {
+                        val lat = match.groupValues[1].toDoubleOrNull() ?: continue
+                        val lon = match.groupValues[2].toDoubleOrNull() ?: continue
+                        val innerContent = match.groupValues[3]
+                        val name = Regex("<name>(.*?)</name>").find(innerContent)?.groupValues?.get(1)?.trim() ?: "GPX-$index"
+                        val elev = Regex("<ele>(.*?)</ele>").find(innerContent)?.groupValues?.get(1)?.trim()?.toDoubleOrNull() ?: 0.0
+                        
+                        val utm = UtmConverter.convertLatLngToUtm(lat, lon)
+                        val easting = utm.easting
+                        val northing = utm.northing
+                        val zone = utm.zoneString
+                        
+                        importedStations.add(
+                            Station(
+                                projectId = projId,
+                                stationCode = name,
+                                prefix = "GPX",
+                                latitude = lat,
+                                longitude = lon,
+                                elevation = elev,
+                                accuracy = 2.0,
+                                elevationAccuracy = 2.0,
+                                utmEasting = easting,
+                                utmNorthing = northing,
+                                utmZone = zone
+                            )
+                        )
+                        index++
+                    }
+                } else {
+                    if (fileName.endsWith(".geojson") || fileName.endsWith(".json")) {
+                        val geojsonFeatures = parseGeoJson(fileContent)
+                        for (f in geojsonFeatures) {
+                            if (f.coordinates.isNotEmpty()) {
+                                val coord = f.coordinates.first()
+                                val utm = UtmConverter.convertLatLngToUtm(coord.lat, coord.lon)
+                                val easting = utm.easting
+                                val northing = utm.northing
+                                val zone = utm.zoneString
+                                
+                                importedStations.add(
+                                    Station(
+                                        projectId = projId,
+                                        stationCode = f.name,
+                                        prefix = "GIS",
+                                        latitude = coord.lat,
+                                        longitude = coord.lon,
+                                        elevation = 0.0,
+                                        accuracy = 1.0,
+                                        utmEasting = easting,
+                                        utmNorthing = northing,
+                                        utmZone = zone
+                                    )
+                                )
+                            }
+                        }
+                    } else {
+                        val features = parseKml(fileContent)
+                        for (f in features) {
+                            if (f.coordinates.isNotEmpty()) {
+                                val coord = f.coordinates.first()
+                                val utm = UtmConverter.convertLatLngToUtm(coord.lat, coord.lon)
+                                val easting = utm.easting
+                                val northing = utm.northing
+                                val zone = utm.zoneString
+                                
+                                importedStations.add(
+                                    Station(
+                                        projectId = projId,
+                                        stationCode = f.name,
+                                        prefix = "KML",
+                                        latitude = coord.lat,
+                                        longitude = coord.lon,
+                                        elevation = 0.0,
+                                        accuracy = 1.0,
+                                        utmEasting = easting,
+                                        utmNorthing = northing,
+                                        utmZone = zone
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+                
+                if (importedStations.isNotEmpty()) {
+                    for (st in importedStations) {
+                        dao.insertStation(st)
+                    }
+                    withContext(Dispatchers.Main) {
+                        onSuccess(importedStations.size)
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Could not extract any valid point locations/stations from the file.", Toast.LENGTH_LONG).show()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Station Import failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
                 }
             }
         }
