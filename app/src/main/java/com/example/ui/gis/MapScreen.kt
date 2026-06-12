@@ -28,6 +28,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.launch
 import com.example.*
 import java.util.Locale
 
@@ -65,12 +66,26 @@ fun MapScreen(
     val showSymbols by gisViewModel.showSymbols.collectAsStateWithLifecycle()
     val showFaultLines by gisViewModel.showFaultLines.collectAsStateWithLifecycle()
 
+    val activeBaseMapOpacity by gisViewModel.activeBaseMapOpacity.collectAsStateWithLifecycle()
+    val offlineModeForce by gisViewModel.offlineModeForce.collectAsStateWithLifecycle()
+    val showOfflineBoundaries by gisViewModel.showOfflineBoundaries.collectAsStateWithLifecycle()
+    val downloadedRegionsList by gisViewModel.downloadedRegionsList.collectAsStateWithLifecycle()
+    val isDownloading by gisViewModel.isDownloading.collectAsStateWithLifecycle()
+    val downloadProgress by gisViewModel.downloadProgress.collectAsStateWithLifecycle()
+    val downloadStatusText by gisViewModel.downloadStatusText.collectAsStateWithLifecycle()
+
+    val scope = rememberCoroutineScope()
+
     // GPS tracking local telemetry parameter overrides
     var isRealPositionEnabled by remember { mutableStateOf(false) }
     var lockGpsCenter by remember { mutableStateOf(true) }
 
     // Manual navigation target
     var navigationTargetStation by remember { mutableStateOf<Station?>(null) }
+
+    // Simplify/De-clutter view states
+    var isSimpleMode by remember { mutableStateOf(true) }
+    var showMoveSimulator by remember { mutableStateOf(false) }
 
     // Base coordinate anchor defaults
     val defaultInitialLat = remember(activeProjectStations) {
@@ -173,43 +188,114 @@ fun MapScreen(
                 navigationTargetStation = navigationTargetStation,
                 showUtmGrid = showGrids,
                 isOutdoorMode = isOutdoorMode,
+                
+                // Opacities & Offline
+                baseMapOpacity = activeBaseMapOpacity,
+                offlineModeForce = offlineModeForce,
+                showOfflineBoundaries = showOfflineBoundaries,
+                downloadedRegions = downloadedRegionsList,
+
                 modifier = Modifier.fillMaxSize()
             )
         }
 
-        // --- LAYER 1: HEADS-UP COORDINATES TELEMETRY BANNER ---
+        // --- LAYER 1: HEADS-UP COORDINATES TELEMETRY BANNER & MODE SELECTOR ---
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .align(Alignment.TopCenter)
                 .padding(top = 16.dp, start = 12.dp, end = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            CoordinateBanner(
-                latitude = currentLat,
-                longitude = currentLon,
-                elevation = currentEle,
-                accuracy = currentAccuracy,
-                isOutdoorMode = isOutdoorMode,
+            // Elegant bilingual mode switcher at the top to quickly toggle Simple/Advanced views to avoid confusion
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = (if (isOutdoorMode) Color.White else Color(0xFF161E1B)).copy(alpha = 0.9f)
+                ),
+                border = BorderStroke(1.dp, accentColor.copy(alpha = 0.25f)),
+                shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
             ) {
-                GPSIndicator(
-                    satelliteCount = 16,
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (isSimpleMode) "رویت ساده نقشه (بدون شلوغی)" else "نمای پیشرفته مهندسی (GIS Telemetry)",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = fontColor
+                        )
+                        Text(
+                            text = if (isSimpleMode) "Simple View • Clear Screen" else "Advanced HUD • Satellites, Grids, Telemetry",
+                            fontSize = 9.sp,
+                            color = fontColor.copy(alpha = 0.5f),
+                            fontWeight = FontWeight.Normal
+                        )
+                    }
+
+                    // A modern beautiful toggle button to immediately de-clutter/re-clutter the app
+                    Button(
+                        onClick = { isSimpleMode = !isSimpleMode },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isSimpleMode) accentColor else fontColor.copy(alpha = 0.1f),
+                            contentColor = if (isSimpleMode) Color.Black else fontColor
+                        ),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.height(32.dp)
+                    ) {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = if (isSimpleMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = if (isSimpleMode) "تغییر نمای نقشه" else "حالت ساده",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Display dense coordinates telemetry banner ONLY when NOT in Simple Mode
+            if (!isSimpleMode) {
+                CoordinateBanner(
+                    latitude = currentLat,
+                    longitude = currentLon,
+                    elevation = currentEle,
                     accuracy = currentAccuracy,
-                    isRealPosition = isRealPositionEnabled,
-                    isOutdoorMode = isOutdoorMode
+                    isOutdoorMode = isOutdoorMode,
+                    modifier = Modifier.fillMaxWidth()
                 )
 
-                ScaleBar(
-                    zoomLevel = zoomLevel,
-                    isOutdoorMode = isOutdoorMode
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    GPSIndicator(
+                        satelliteCount = 16,
+                        accuracy = currentAccuracy,
+                        isRealPosition = isRealPositionEnabled,
+                        isOutdoorMode = isOutdoorMode
+                    )
+
+                    ScaleBar(
+                        zoomLevel = zoomLevel,
+                        isOutdoorMode = isOutdoorMode
+                    )
+                }
             }
         }
 
@@ -219,21 +305,24 @@ fun MapScreen(
                 .fillMaxSize()
                 .padding(bottom = 80.dp, start = 12.dp, end = 12.dp)
         ) {
-            // Left column: Zoom triggers + Compass Widget
+            // Left column: Zoom triggers + Compass Widget + Move Simulator Toggle
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                CompassWidget(
-                    heading = currentHeading,
-                    bearing = navigationTargetStation?.let {
-                        gisViewModel.calculateGeodesicDistance(currentLat, currentLon, it.latitude, it.longitude)
-                        currentHeading // target heading offset
-                    },
-                    isOutdoorMode = isOutdoorMode
-                )
+                // Compass belongs to advanced suite to reduce cognitive load in simple view
+                if (!isSimpleMode) {
+                    CompassWidget(
+                        heading = currentHeading,
+                        bearing = navigationTargetStation?.let {
+                            gisViewModel.calculateGeodesicDistance(currentLat, currentLon, it.latitude, it.longitude)
+                            currentHeading // target heading offset
+                        },
+                        isOutdoorMode = isOutdoorMode
+                    )
+                }
 
                 ZoomControls(
                     zoomLevel = zoomLevel,
@@ -241,71 +330,102 @@ fun MapScreen(
                     onZoomOut = { gisViewModel.setZoomLevel(zoomLevel - 1) },
                     isOutdoorMode = isOutdoorMode
                 )
-            }
 
-            // Right side: Manual Walk Walk D-Pad controller (Saves steps elegantly)
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isOutdoorMode) Color.White.copy(alpha = 0.95f) else Color(0xDD000000)
-                ),
-                border = BorderStroke(0.5.dp, fontColor.copy(alpha = 0.2f)),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .width(130.dp)
-                    .height(115.dp)
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
+                // Micro Controller Toggle for the interactive walk-path move simulator (Instantly de-clutters the central view!)
+                ElevatedButton(
+                    onClick = { showMoveSimulator = !showMoveSimulator },
+                    colors = ButtonDefaults.elevatedButtonColors(
+                        containerColor = if (showMoveSimulator) accentColor else (if (isOutdoorMode) Color.White else Color(0xFF1B2321)),
+                        contentColor = if (showMoveSimulator) Color.Black else fontColor
+                    ),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                    modifier = Modifier.height(36.dp)
                 ) {
-                    Text(
-                        text = "MOVE SIMULATOR",
-                        fontSize = 8.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = accentColor,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Spacer(modifier = Modifier.height(3.dp))
-                    IconButton(
-                        onClick = { simulateWalk("NORTH") },
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(imageVector = Icons.Default.ArrowDropUp, contentDescription = "Sim step North", tint = fontColor)
-                    }
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(
-                            onClick = { simulateWalk("WEST") },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(imageVector = Icons.Default.ArrowLeft, contentDescription = "Sim step West", tint = fontColor)
-                        }
-                        IconButton(
-                            onClick = { lockGpsCenter = !lockGpsCenter },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (lockGpsCenter) Icons.Default.GpsFixed else Icons.Default.GpsNotFixed,
-                                contentDescription = "Lock walk pointer to center",
-                                tint = accentColor
-                            )
-                        }
-                        IconButton(
-                            onClick = { simulateWalk("EAST") },
-                            modifier = Modifier.size(32.dp)
-                        ) {
-                            Icon(imageVector = Icons.Default.ArrowRight, contentDescription = "Sim step East", tint = fontColor)
-                        }
+                        Icon(
+                            imageVector = Icons.Default.DirectionsWalk,
+                            contentDescription = "Simulate Walk",
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = if (showMoveSimulator) "بستن شبیه‌ساز" else "شبیه‌ساز حرکت",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
-                    IconButton(
-                        onClick = { simulateWalk("SOUTH") },
-                        modifier = Modifier.size(32.dp)
+                }
+            }
+
+            // Sliced center overlay: Manual Walk D-Pad controller (Saves steps instantly)
+            // Displays cleanly and ONLY when showMoveSimulator is true - freeing map view space!
+            if (showMoveSimulator) {
+                Card(
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isOutdoorMode) Color.White.copy(alpha = 0.95f) else Color(0xDD000000)
+                    ),
+                    border = BorderStroke(0.5.dp, fontColor.copy(alpha = 0.2f)),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .width(135.dp)
+                        .height(115.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Icon(imageVector = Icons.Default.ArrowDropDown, contentDescription = "Sim step South", tint = fontColor)
+                        Text(
+                            text = "MOVE SIMULATOR | شبیه‌ساز",
+                            fontSize = 8.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = accentColor,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Spacer(modifier = Modifier.height(3.dp))
+                        IconButton(
+                            onClick = { simulateWalk("NORTH") },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.ArrowDropUp, contentDescription = "Sim step North", tint = fontColor)
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(
+                                onClick = { simulateWalk("WEST") },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(imageVector = Icons.Default.ArrowLeft, contentDescription = "Sim step West", tint = fontColor)
+                            }
+                            IconButton(
+                                onClick = { lockGpsCenter = !lockGpsCenter },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (lockGpsCenter) Icons.Default.GpsFixed else Icons.Default.GpsNotFixed,
+                                    contentDescription = "Lock walk pointer to center",
+                                    tint = accentColor
+                                )
+                            }
+                            IconButton(
+                                onClick = { simulateWalk("EAST") },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(imageVector = Icons.Default.ArrowRight, contentDescription = "Sim step East", tint = fontColor)
+                            }
+                        }
+                        IconButton(
+                            onClick = { simulateWalk("SOUTH") },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.ArrowDropDown, contentDescription = "Sim step South", tint = fontColor)
+                        }
                     }
                 }
             }
@@ -450,6 +570,27 @@ fun MapScreen(
                             gisViewModel.updateUiState(MapUiState.Idle)
                         },
                         onDismiss = { gisViewModel.updateUiState(MapUiState.Idle) },
+                        
+                        // Advanced Offline & Opacity
+                        activeBaseMapOpacity = activeBaseMapOpacity,
+                        onBaseMapOpacityChange = { gisViewModel.setBaseMapOpacity(it) },
+                        offlineModeForce = offlineModeForce,
+                        onToggleOfflineModeForce = { gisViewModel.setOfflineModeForce(it) },
+                        showOfflineBoundaries = showOfflineBoundaries,
+                        onToggleOfflineBoundaries = { gisViewModel.setShowOfflineBoundaries(it) },
+                        downloadedRegionsList = downloadedRegionsList,
+                        onDownloadRegion = { name ->
+                            scope.launch {
+                                gisViewModel.downloadRegionForLocation(currentLat, currentLon, name)
+                            }
+                        },
+                        onDeleteRegion = { id -> gisViewModel.deleteDownloadedRegion(id) },
+                        isDownloading = isDownloading,
+                        downloadProgress = downloadProgress,
+                        downloadStatusText = downloadStatusText,
+                        currentLat = currentLat,
+                        currentLon = currentLon,
+
                         isOutdoorMode = isOutdoorMode
                     )
                 }

@@ -334,6 +334,9 @@ fun BoreholeWorkspace(
     var showEditBoreholeDialog by remember { mutableStateOf(false) }
     var editingBorehole by remember { mutableStateOf<Borehole?>(null) }
     
+    // Core Simple/Advanced mode to de-clutter inputs & keep UI extremely simple
+    var isSimpleMode by remember { mutableStateOf(true) }
+    
     // Form Inputs
     var code by remember { mutableStateOf("") }
     var lat by remember { mutableStateOf("") }
@@ -354,12 +357,21 @@ fun BoreholeWorkspace(
 
     fun validateInputs(): Boolean {
         codeErr = code.isBlank()
-        latErr = lat.toDoubleOrNull() == null
-        lonErr = lon.toDoubleOrNull() == null
-        elevErr = elev.toDoubleOrNull() == null
-        azErr = azimuth.toDoubleOrNull() == null || (azimuth.toDoubleOrNull() ?: -1.0) !in 0.0..360.0
-        dipErr = dip.toDoubleOrNull() == null || (dip.toDoubleOrNull() ?: -99.0) !in -90.0..90.0
-        plannedErr = planned.toDoubleOrNull() == null || (planned.toDoubleOrNull() ?: 0.0) <= 0.0
+        if (isSimpleMode) {
+            latErr = false
+            lonErr = false
+            elevErr = false
+            azErr = false
+            dipErr = false
+            plannedErr = planned.toDoubleOrNull() == null || (planned.toDoubleOrNull() ?: 0.0) <= 0.0
+        } else {
+            latErr = lat.toDoubleOrNull() == null
+            lonErr = lon.toDoubleOrNull() == null
+            elevErr = elev.toDoubleOrNull() == null
+            azErr = azimuth.toDoubleOrNull() == null || (azimuth.toDoubleOrNull() ?: -1.0) !in 0.0..360.0
+            dipErr = dip.toDoubleOrNull() == null || (dip.toDoubleOrNull() ?: -99.0) !in -90.0..90.0
+            plannedErr = planned.toDoubleOrNull() == null || (planned.toDoubleOrNull() ?: 0.0) <= 0.0
+        }
 
         return !(codeErr || latErr || lonErr || elevErr || azErr || dipErr || plannedErr)
     }
@@ -371,44 +383,79 @@ fun BoreholeWorkspace(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // Screen Header Card
+            // Screen Header Card with simple switcher built of clean Material 3 design and bilingual labels
             Card(
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp)
                 ),
                 shape = RoundedCornerShape(12.dp)
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = projectName,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
-                            maxLines = 1
-                        )
-                        Text(
-                            text = "Geological Boreholes Directory",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.size(40.dp)
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            Icons.Default.ArrowBack,
-                            contentDescription = "Exit project",
-                            tint = MaterialTheme.colorScheme.error
-                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = projectName,
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1
+                            )
+                            Text(
+                                text = "Geological Boreholes Directory",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        
+                        IconButton(
+                            onClick = onBack,
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.ArrowBack,
+                                contentDescription = "Exit project",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (isSimpleMode) "ثبت سریع و ساده گمانه" else "نمای کامل مهندسی و محاسبات زوایا (HUD)",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.secondary
+                            )
+                            Text(
+                                text = if (isSimpleMode) "پنهان‌سازی فیلدهای پیچیده و زوایای انحراف" else "نمایش تمام مشخصات و پارامترهای مختصاتی",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Button(
+                            onClick = { isSimpleMode = !isSimpleMode },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isSimpleMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = if (isSimpleMode) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Text(text = if (isSimpleMode) "نمای کامل" else "ساده‌سازی", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
@@ -680,96 +727,160 @@ fun BoreholeWorkspace(
         if (showCreateBoreholeDialog) {
             AlertDialog(
                 onDismissRequest = { showCreateBoreholeDialog = false },
-                title = { Text("Log New Drilling Borehole", fontWeight = FontWeight.Bold) },
+                title = { Text(if (isSimpleMode) "ثبت سریع گمانه اکتشافی" else "Log New Drilling Borehole", fontWeight = FontWeight.Bold) },
                 text = {
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         item {
                             OutlinedTextField(
                                 value = code,
                                 onValueChange = { code = it },
-                                label = { Text("Borehole ID") },
+                                label = { Text("Borehole ID / شناسه گمانه") },
                                 placeholder = { Text("e.g. BH-01") },
                                 isError = codeErr,
-                                supportingText = { if (codeErr) Text("Required identifier", color = MaterialTheme.colorScheme.error) },
+                                supportingText = { if (codeErr) Text("Required identifier / شناسه گمانه الزامی است", color = MaterialTheme.colorScheme.error) },
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
-                        item {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedTextField(
-                                    value = lat,
-                                    onValueChange = { lat = it },
-                                    label = { Text("Latitude") },
-                                    isError = latErr,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.weight(1f)
-                                )
-                                OutlinedTextField(
-                                    value = lon,
-                                    onValueChange = { lon = it },
-                                    label = { Text("Longitude") },
-                                    isError = lonErr,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                        }
-                        item {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedTextField(
-                                    value = elev,
-                                    onValueChange = { elev = it },
-                                    label = { Text("Elevation (m)") },
-                                    isError = elevErr,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.weight(1f)
-                                )
+
+                        if (isSimpleMode) {
+                            item {
                                 OutlinedTextField(
                                     value = planned,
                                     onValueChange = { planned = it },
-                                    label = { Text("Target Depth (m)") },
+                                    label = { Text("Target Depth (m) / عمق نهایی (متر)") },
                                     isError = plannedErr,
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.weight(1f)
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                             }
-                        }
-                        item {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedTextField(
-                                    value = azimuth,
-                                    onValueChange = { azimuth = it },
-                                    label = { Text("Azimuth (0-360°)") },
-                                    isError = azErr,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.weight(1f)
-                                )
-                                OutlinedTextField(
-                                    value = dip,
-                                    onValueChange = { dip = it },
-                                    label = { Text("Dip Angle (-90 to +90°)") },
-                                    isError = dipErr,
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                    modifier = Modifier.weight(1f)
-                                )
+                            item {
+                                var showCoordsByToggle by remember { mutableStateOf(false) }
+                                Card(
+                                    modifier = Modifier.fillMaxWidth().clickable { showCoordsByToggle = !showCoordsByToggle },
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                                ) {
+                                    Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "تنظیمات موقعیت و زاویه پیش‌فرض",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Icon(
+                                                imageVector = if (showCoordsByToggle) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+
+                                        if (showCoordsByToggle) {
+                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                OutlinedTextField(
+                                                    value = lat.ifEmpty { "35.6892" },
+                                                    onValueChange = { lat = it },
+                                                    label = { Text("Latitude", fontSize = 10.sp) },
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                OutlinedTextField(
+                                                    value = lon.ifEmpty { "51.3890" },
+                                                    onValueChange = { lon = it },
+                                                    label = { Text("Longitude", fontSize = 10.sp) },
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                            }
+                                        } else {
+                                            Text(
+                                                text = "حفاری عمودی (شیب: -۹۰ درجه) • آزیموت مایل: ۰ درجه • موقعیت پیش‌فرض تهران",
+                                                fontSize = 10.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
                             }
-                        }
-                        item {
-                            Button(
-                                onClick = {
-                                    lat = "35.6892"
-                                    lon = "51.3890"
-                                    elev = "1180.0"
-                                    azimuth = "180.0"
-                                    dip = "-90.0"
-                                    planned = "120"
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
-                            ) {
-                                Icon(Icons.Default.MyLocation, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(Modifier.width(6.dp))
-                                Text("Auto GPS Coords (Tehran)")
+                        } else {
+                            item {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedTextField(
+                                        value = lat,
+                                        onValueChange = { lat = it },
+                                        label = { Text("Latitude") },
+                                        isError = latErr,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    OutlinedTextField(
+                                        value = lon,
+                                        onValueChange = { lon = it },
+                                        label = { Text("Longitude") },
+                                        isError = lonErr,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+                            item {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedTextField(
+                                        value = elev,
+                                        onValueChange = { elev = it },
+                                        label = { Text("Elevation (m)") },
+                                        isError = elevErr,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    OutlinedTextField(
+                                        value = planned,
+                                        onValueChange = { planned = it },
+                                        label = { Text("Target Depth (m)") },
+                                        isError = plannedErr,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+                            item {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedTextField(
+                                        value = azimuth,
+                                        onValueChange = { azimuth = it },
+                                        label = { Text("Azimuth (0-360°)") },
+                                        isError = azErr,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    OutlinedTextField(
+                                        value = dip,
+                                        onValueChange = { dip = it },
+                                        label = { Text("Dip Angle (-90 to +90°)") },
+                                        isError = dipErr,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                            }
+                            item {
+                                Button(
+                                    onClick = {
+                                        lat = "35.6892"
+                                        lon = "51.3890"
+                                        elev = "1180.0"
+                                        azimuth = "180.0"
+                                        dip = "-90.0"
+                                        planned = "120"
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
+                                ) {
+                                    Icon(Icons.Default.MyLocation, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text("Auto GPS Coords (Tehran)")
+                                }
                             }
                         }
                     }
@@ -782,12 +893,12 @@ fun BoreholeWorkspace(
                                     Borehole(
                                         projectId = projectId,
                                         boreholeCode = code,
-                                        latitude = lat.toDouble(),
-                                        longitude = lon.toDouble(),
-                                        elevation = elev.toDouble(),
-                                        azimuth = azimuth.toDouble(),
-                                        dip = dip.toDouble(),
-                                        plannedDepth = planned.toDouble()
+                                        latitude = if (isSimpleMode && lat.isBlank()) 35.6892 else (lat.toDoubleOrNull() ?: 35.6892),
+                                        longitude = if (isSimpleMode && lon.isBlank()) 51.3890 else (lon.toDoubleOrNull() ?: 51.3890),
+                                        elevation = if (isSimpleMode && elev.isBlank()) 1180.0 else (elev.toDoubleOrNull() ?: 1180.0),
+                                        azimuth = if (isSimpleMode && azimuth.isBlank()) 0.0 else (azimuth.toDoubleOrNull() ?: 0.0),
+                                        dip = if (isSimpleMode && dip.isBlank()) -90.0 else (dip.toDoubleOrNull() ?: -90.0),
+                                        plannedDepth = planned.toDoubleOrNull() ?: 100.0
                                     )
                                 ) {
                                     showCreateBoreholeDialog = false
@@ -795,12 +906,12 @@ fun BoreholeWorkspace(
                             }
                         }
                     ) {
-                        Text("Add Record")
+                        Text(if (isSimpleMode) "ثبت گمانه" else "Add Record")
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { showCreateBoreholeDialog = false }) {
-                        Text("Cancel")
+                        Text(if (isSimpleMode) "انصراف" else "Cancel")
                     }
                 }
             )

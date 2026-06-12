@@ -212,8 +212,32 @@ fun GeotechnicalWorkspace(
 ) {
     val evaluationsFlow = remember(projectId) { viewModel.getRockMechanicsEvaluationsForProject(projectId) }
     val evaluations by evaluationsFlow.collectAsStateWithLifecycle()
-    var selectedTab by remember { mutableStateOf(0) } // 0 = Saved Logs, 1 = RMR Calculator, 2 = Hoek-Brown Solver, 3 = MRMR & RMi
+    var selectedTab by remember { mutableStateOf(0) }
     
+    // Toggle state to switch between Simple and Advanced Geotechnical Views
+    var isSimpleMode by remember { mutableStateOf(true) }
+    
+    // Dynamic tab filter mapping to prevent index out of bounds while decluttering
+    val activeTabsList = remember(isSimpleMode) {
+        if (isSimpleMode) {
+            listOf(
+                Triple(0, "ثبت لاگ / Logs", Icons.Default.Book),
+                Triple(1, "رده‌بندی RMR", Icons.Default.Star),
+                Triple(4, "سیستم Q بارتون", Icons.Default.Build)
+            )
+        } else {
+            listOf(
+                Triple(0, "Log Journal", Icons.Default.Book),
+                Triple(1, "Bieniawski RMR", Icons.Default.Star),
+                Triple(2, "Hoek-Brown", Icons.Default.TrendingUp),
+                Triple(3, "MRMR & RMi", Icons.Default.Layers),
+                Triple(4, "Barton Q-System", Icons.Default.Build),
+                Triple(5, "Kinematic Stereonet", Icons.Default.Info),
+                Triple(6, "Dynamic Support", Icons.Default.Shield)
+            )
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -227,7 +251,7 @@ fun GeotechnicalWorkspace(
         ) {
             Column {
                 Text(projectName, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                Text("Geotechnical Evaluator HUD", fontSize = 12.sp, color = Color.Gray)
+                Text("Geotechnical Evaluator HUD", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             TextButton(
                 onClick = onBack,
@@ -237,15 +261,81 @@ fun GeotechnicalWorkspace(
             }
         }
 
-        // Module selectors
-        ScrollableTabRow(selectedTabIndex = selectedTab, edgePadding = 0.dp) {
-            Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Log Journal", fontSize = 11.sp) })
-            Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("Bieniawski RMR", fontSize = 11.sp) })
-            Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("Hoek-Brown", fontSize = 11.sp) })
-            Tab(selected = selectedTab == 3, onClick = { selectedTab = 3 }, text = { Text("MRMR & RMi", fontSize = 11.sp) })
-            Tab(selected = selectedTab == 4, onClick = { selectedTab = 4 }, text = { Text("Barton Q-System", fontSize = 11.sp) })
-            Tab(selected = selectedTab == 5, onClick = { selectedTab = 5 }, text = { Text("Kinematic Stereonet", fontSize = 11.sp) })
-            Tab(selected = selectedTab == 6, onClick = { selectedTab = 6 }, text = { Text("Dynamic Support", fontSize = 11.sp) })
+        // Modern Bilingual Mode Switcher Card to de-clutter the geotechnical suite
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)
+            ),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = if (isSimpleMode) "نمای ساده جئوتکنیک فعال است" else "نمای کامل تخصصی مکانیک سنگ active",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                    Text(
+                        text = if (isSimpleMode) "فقط نمایش دو تحلیل اصلی RMR و Q جهت جلوگیری از شلوغی" else "دسترسی به تمام ابزارها مثل تحلیل شکست هوک-براون و پایداری استریونت",
+                        fontSize = 9.5.sp,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                    )
+                }
+
+                Button(
+                    onClick = {
+                        isSimpleMode = !isSimpleMode
+                        // Auto snap active selection to prevent view loss
+                        if (isSimpleMode && selectedTab != 0 && selectedTab != 1 && selectedTab != 4) {
+                            selectedTab = 0
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isSimpleMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = if (isSimpleMode) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                    ),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.height(30.dp)
+                ) {
+                    Text(
+                        text = if (isSimpleMode) "نمای پیشرفته" else "ساده‌سازی",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+
+        // Module selectors with dynamic active index
+        ScrollableTabRow(
+            selectedTabIndex = activeTabsList.indexOfFirst { it.first == selectedTab }.coerceAtLeast(0),
+            edgePadding = 0.dp
+        ) {
+            activeTabsList.forEach { (tabIndex, label, icon) ->
+                Tab(
+                    selected = selectedTab == tabIndex,
+                    onClick = { selectedTab = tabIndex },
+                    text = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Text(label, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                )
+            }
         }
 
         when (selectedTab) {

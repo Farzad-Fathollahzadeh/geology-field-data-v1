@@ -5,6 +5,8 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -36,6 +38,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.GeologyViewModel
+import com.example.QAPFClassifierPanel
 import java.text.DecimalFormat
 import java.util.Locale
 
@@ -44,7 +47,7 @@ fun ToolsContent(
     viewModel: GeologyViewModel,
     modifier: Modifier = Modifier
 ) {
-    var selectedToolTab by remember { mutableStateOf(0) } // 0 = Mineral ID, 1 = Lithology, 2 = Converter, 3 = Developer Profile
+    var selectedToolTab by remember { mutableStateOf(0) } // 0 = Mineral ID, 1 = Lithology, 2 = QAPF Plotter, 3 = Converter, 4 = Developer Profile
 
     Column(
         modifier = modifier
@@ -66,7 +69,7 @@ fun ToolsContent(
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Build,
+                     imageVector = Icons.Default.Build,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(36.dp)
@@ -109,12 +112,18 @@ fun ToolsContent(
             Tab(
                 selected = selectedToolTab == 2,
                 onClick = { selectedToolTab = 2 },
-                text = { Text("Unit Converter", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
-                icon = { Icon(Icons.Default.SyncAlt, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                text = { Text("QAPF Plotter", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                icon = { Icon(Icons.Default.Category, contentDescription = null, modifier = Modifier.size(18.dp)) }
             )
             Tab(
                 selected = selectedToolTab == 3,
                 onClick = { selectedToolTab = 3 },
+                text = { Text("Unit Converter", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                icon = { Icon(Icons.Default.SyncAlt, contentDescription = null, modifier = Modifier.size(18.dp)) }
+            )
+            Tab(
+                selected = selectedToolTab == 4,
+                onClick = { selectedToolTab = 4 },
                 text = { Text("Developer", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
                 icon = { Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(18.dp)) }
             )
@@ -127,8 +136,9 @@ fun ToolsContent(
             when (selectedToolTab) {
                 0 -> MineralIdHelper()
                 1 -> LithologyHelper()
-                2 -> GeotechConverter()
-                3 -> DeveloperProfilePage()
+                2 -> Box(modifier = Modifier.verticalScroll(rememberScrollState())) { QAPFClassifierPanel() }
+                3 -> GeotechConverter()
+                4 -> DeveloperProfilePage()
             }
         }
     }

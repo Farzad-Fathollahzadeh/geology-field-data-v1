@@ -408,23 +408,19 @@ fun MainScreenContent(
                         label = { Text("Home", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                         icon = { Icon(Icons.Default.Home, contentDescription = "Home dashboard") }
                     )
+                    // Consolidated Field Campaigns Tab (Mapping, Borehole, Rock Mechanics)
+                    val isCampSelected = activeTab == MainTab.GeologicalMapping || 
+                                         activeTab == MainTab.BoreholeLogging || 
+                                         activeTab == MainTab.RockMechanics
                     NavigationBarItem(
-                        selected = activeTab == MainTab.GeologicalMapping,
-                        onClick = { activeTab = MainTab.GeologicalMapping },
-                        label = { Text("Mapping", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                        icon = { Icon(Icons.Default.Terrain, contentDescription = "Geology mapping") }
-                    )
-                    NavigationBarItem(
-                        selected = activeTab == MainTab.BoreholeLogging,
-                        onClick = { activeTab = MainTab.BoreholeLogging },
-                        label = { Text("Borehole", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                        icon = { Icon(Icons.Default.Layers, contentDescription = "Borehole core log") }
-                    )
-                    NavigationBarItem(
-                        selected = activeTab == MainTab.RockMechanics,
-                        onClick = { activeTab = MainTab.RockMechanics },
-                        label = { Text("Rock Mech", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                        icon = { Icon(Icons.Default.Assessment, contentDescription = "Rock mechanics analysis") }
+                        selected = isCampSelected,
+                        onClick = { 
+                            if (!isCampSelected) {
+                                activeTab = MainTab.GeologicalMapping // Default to mapping log
+                            }
+                        },
+                        label = { Text("Campaigns", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                        icon = { Icon(Icons.Default.Assignment, contentDescription = "Field logging campaigns") }
                     )
                     NavigationBarItem(
                         selected = activeTab == MainTab.Map,
@@ -442,12 +438,65 @@ fun MainScreenContent(
             },
             contentWindowInsets = WindowInsets.safeDrawing
         ) { innerPadding ->
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-                when (activeTab) {
+                // Workspace Switcher Row: Only show at high-level (not in deep detail/creation forms)
+                val isCampaign = activeTab == MainTab.GeologicalMapping || 
+                                  activeTab == MainTab.BoreholeLogging || 
+                                  activeTab == MainTab.RockMechanics
+                val isTopLevel = if (activeTab == MainTab.GeologicalMapping) {
+                    currentScreen is Screen.ProjectList || currentScreen is Screen.ProjectDashboard
+                } else {
+                    true
+                }
+
+                if (isCampaign && isTopLevel) {
+                    Surface(
+                        tonalElevation = 4.dp,
+                        shadowElevation = 2.dp,
+                        color = MaterialTheme.colorScheme.surface,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f), RoundedCornerShape(24.dp))
+                                .padding(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            listOf(
+                                MainTab.GeologicalMapping to "Joint Mapping",
+                                MainTab.BoreholeLogging to "Borehole Core",
+                                MainTab.RockMechanics to "Rock Mass"
+                            ).forEach { (tab, label) ->
+                                val isSelected = activeTab == tab
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                        .clickable { activeTab = tab }
+                                        .padding(vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Box(modifier = Modifier.weight(1f)) {
+                    when (activeTab) {
                     MainTab.Home -> {
                         HomeDashboardContent(
                             projectsCount = projectList.size,
@@ -621,6 +670,7 @@ fun MainScreenContent(
                 }
             }
         }
+    }
 
         if (showSettingsDialog) {
             AlertDialog(
@@ -6514,12 +6564,6 @@ fun HomeDashboardContent(
         // Recent Field Journal Timeline
         RecentObservationsTimeline(allObservations, onNavigateToTab)
 
-        // Geotechnical Unit Converter Module
-        GeotechnicalUnitConverter()
-
-        // Interactive QAPF Ternary Rock Classifier & Plotter Module
-        QAPFClassifierPanel()
-
         // Expandable Guidelines Accordion Panel (Keeps screen perfectly clean, professional and decluttered)
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -9027,8 +9071,16 @@ fun generateLeafletHtml(
     tileUrl: String,
     gpsAccuracy: Double,
     lockGpsCenter: Boolean,
-    isOutdoorMode: Boolean
+    isOutdoorMode: Boolean,
+    baseMapOpacity: Float = 0.95f,
+    offlineModeForce: Boolean = false,
+    showOfflineBoundaries: Boolean = true,
+    downloadedRegions: List<com.example.ui.gis.OfflineRegion> = emptyList()
 ): String {
+    val downloadedRegionsJson = downloadedRegions.joinToString(prefix = "[", postfix = "]") { reg ->
+        """{"id": "${reg.id}", "name": "${reg.name.replace("\"", "\\\"")}", "minLat": ${reg.minLat}, "minLon": ${reg.minLon}, "maxLat": ${reg.maxLat}, "maxLon": ${reg.maxLon}, "sizeMb": ${reg.sizeMb}}"""
+    }
+
     val stationsJson = stations.joinToString(prefix = "[", postfix = "]") { st ->
         val obs = observations.firstOrNull { it.stationId == st.id && (it.strike != null || it.dip != null) }
         val strikeVal = obs?.strike ?: -1
@@ -9267,6 +9319,47 @@ fun generateLeafletHtml(
                         ctx.moveTo(canvas.width/2, canvas.height/2 - 20);
                         ctx.lineTo(canvas.width/2, canvas.height/2 + 20);
                         ctx.stroke();
+
+                        if ($showOfflineBoundaries) {
+                            var regions = $downloadedRegionsJson;
+                            regions.forEach(function(reg) {
+                                var pMin = toPixels(reg.minLat, reg.minLon);
+                                var pMax = toPixels(reg.maxLat, reg.maxLon);
+                                
+                                var x = Math.min(pMin.x, pMax.x);
+                                var y = Math.min(pMin.y, pMax.y);
+                                var w = Math.abs(pMin.x - pMax.x);
+                                var h = Math.abs(pMin.y - pMax.y);
+                                
+                                ctx.save();
+                                ctx.strokeStyle = '#4CAF50';
+                                ctx.lineWidth = 1.5;
+                                ctx.setLineDash([4, 4]);
+                                ctx.strokeRect(x, y, w, h);
+                                
+                                ctx.fillStyle = 'rgba(76, 175, 80, 0.05)';
+                                ctx.fillRect(x, y, w, h);
+                                
+                                ctx.fillStyle = '#4CAF50';
+                                ctx.font = 'bold 8px monospace';
+                                ctx.fillText(reg.name + ' [OFFLINE SECTOR]', x + 6, y + 12);
+                                ctx.restore();
+                            });
+                        }
+
+                        if ($offlineModeForce) {
+                            ctx.fillStyle = 'rgba(255, 167, 38, 0.95)';
+                            ctx.fillRect(canvas.width / 2 - 120, 10, 240, 20);
+                            ctx.strokeStyle = '#FF9100';
+                            ctx.lineWidth = 1;
+                            ctx.strokeRect(canvas.width / 2 - 120, 10, 240, 20);
+                            
+                            ctx.fillStyle = '#000000';
+                            ctx.font = 'bold 8px monospace';
+                            ctx.textAlign = 'center';
+                            ctx.fillText('⚠️ OFFLINE CONTINUITY WORKSPACE ENFORCED', canvas.width / 2, 22);
+                            ctx.textAlign = 'start';
+                        }
                         
                         var contacts = $contactsJson;
                         contacts.forEach(function(c) {
@@ -9383,8 +9476,43 @@ fun generateLeafletHtml(
 
                 L.tileLayer('$tileUrl', {
                     maxZoom: 21,
-                    subdomains: ['mt0', 'mt1', 'mt2', 'mt3', 'a', 'b', 'c']
+                    subdomains: ['mt0', 'mt1', 'mt2', 'mt3', 'a', 'b', 'c'],
+                    opacity: $baseMapOpacity
                 }).addTo(map);
+
+                if ($offlineModeForce) {
+                    var banner = document.createElement('div');
+                    banner.style.position = 'absolute';
+                    banner.style.top = '10px';
+                    banner.style.left = '50%';
+                    banner.style.transform = 'translateX(-50%)';
+                    banner.style.background = 'rgba(255, 167, 38, 0.95)';
+                    banner.style.color = '#000000';
+                    banner.style.padding = '4px 10px';
+                    banner.style.borderRadius = '20px';
+                    banner.style.fontSize = '9px';
+                    banner.style.fontWeight = 'bold';
+                    banner.style.fontFamily = 'monospace';
+                    banner.style.zIndex = '1000';
+                    banner.style.border = '1px solid #ff9100';
+                    banner.innerText = '⚠️ OFFLINE COGNIZANCE SAFE WORKSPACE ACTIVE';
+                    document.body.appendChild(banner);
+                }
+
+                if ($showOfflineBoundaries) {
+                    var boundsList = $downloadedRegionsJson;
+                    boundsList.forEach(function(reg) {
+                        var bounds = [[reg.minLat, reg.minLon], [reg.maxLat, reg.maxLon]];
+                        L.rectangle(bounds, {
+                            color: "#4CAF50",
+                            weight: 1.5,
+                            dashArray: "4, 4",
+                            fillColor: "rgba(76,175,80,0.05)",
+                            fill: true,
+                            interactive: false
+                        }).addTo(map);
+                    });
+                }
 
                 var stations = $stationsJson;
                 stations.forEach(function(st) {
@@ -9771,6 +9899,10 @@ fun WebViewMap(
     navigationTargetStation: Station?,
     showUtmGrid: Boolean = true,
     isOutdoorMode: Boolean = false,
+    baseMapOpacity: Float = 0.95f,
+    offlineModeForce: Boolean = false,
+    showOfflineBoundaries: Boolean = true,
+    downloadedRegions: List<com.example.ui.gis.OfflineRegion> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     val resolvedTileUrl = if (tileUrl.contains("{token}")) {
@@ -9786,7 +9918,7 @@ fun WebViewMap(
         if (stations.isNotEmpty()) stations.map { it.longitude }.average() else currentLon
     }
     
-    val htmlContent = remember(stations, observations, trackPoints, contactsList, resolvedTileUrl, isOutdoorMode) {
+    val htmlContent = remember(stations, observations, trackPoints, contactsList, resolvedTileUrl, isOutdoorMode, baseMapOpacity, offlineModeForce, showOfflineBoundaries, downloadedRegions) {
         generateLeafletHtml(
             stations = stations,
             observations = observations,
@@ -9799,7 +9931,11 @@ fun WebViewMap(
             tileUrl = resolvedTileUrl,
             gpsAccuracy = gpsAccuracy,
             lockGpsCenter = lockGpsCenter,
-            isOutdoorMode = isOutdoorMode
+            isOutdoorMode = isOutdoorMode,
+            baseMapOpacity = baseMapOpacity,
+            offlineModeForce = offlineModeForce,
+            showOfflineBoundaries = showOfflineBoundaries,
+            downloadedRegions = downloadedRegions
         )
     }
 
@@ -10687,13 +10823,22 @@ fun MapContent(viewModel: GeologyViewModel) {
             return String.format(Locale.US, "%d°%02d'%02.1f\"%s", degrees, minutes, seconds, direction)
         }
 
-        Column(
+        val isAnyGisPanelOpen = isGisToolboxOpen || isMapLayerPanelVisible || isStructuralPanelVisible || 
+                               isSurveyorPanelVisible || isSettingsPanelVisible || isJournalPanelVisible || 
+                               isDrawingContactMode
+
+        AnimatedVisibility(
+            visible = !isAnyGisPanelOpen,
+            enter = fadeIn() + slideInVertically { it / 2 },
+            exit = fadeOut() + slideOutVertically { it / 2 },
             modifier = Modifier
                 .padding(bottom = 12.dp)
-                .align(Alignment.BottomCenter),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .align(Alignment.BottomCenter)
         ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
             // Live Go-To Navigation Arrow Card (AlpineQuest Navigation HUD)
             navigationTargetStation?.let { target ->
                 val dist = calculateDistance(currentLat, currentLon, target.latitude, target.longitude)
@@ -10858,11 +11003,12 @@ fun MapContent(viewModel: GeologyViewModel) {
                 }
             }
         }
+    }
 
         // -------------------------------------------------------------
         // LAYER 4: GNSS TELEMETRY HEADS-UP DISPLAY (TOP-LEFT FLOATING CARD)
         // -------------------------------------------------------------
-        if (positioningStatus && isRealPositionEnabled) {
+        if (positioningStatus && isRealPositionEnabled && !isAnyGisPanelOpen) {
             val isAccuracyGood = gpsAccuracy <= 2.5
             val accuracyColor = if (isAccuracyGood) {
                 if (isOutdoorMode) Color(0xFF2E7D32) else Color(0xFF00FF00)
@@ -10973,102 +11119,161 @@ fun MapContent(viewModel: GeologyViewModel) {
         // -------------------------------------------------------------
         // LAYER 5: MAIN FLOATING GIS VERTICAL BAR (TOP-RIGHT)
         // -------------------------------------------------------------
+        // -------------------------------------------------------------
+        // LAYER 5: MAIN FLOATING GIS VERTICAL BAR (TOP-RIGHT)
+        // Consolidated into a single highly responsive glassmorphic tactical map card dock
+        // -------------------------------------------------------------
         val toolbarBgColor = if (isOutdoorMode) Color.White else Color(0xCC1E2522)
         val toolbarBorderColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF).copy(0.4f)
         val toolbarIconColorOpen = if (isOutdoorMode) Color.White else Color.Black
         val toolbarBgOpen = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)
         val toolbarIconColorClosed = if (isOutdoorMode) Color.Black else Color.White
 
-        Column(
+        Card(
             modifier = Modifier
                 .padding(top = 12.dp, end = 12.dp)
-                .align(Alignment.TopEnd),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .align(Alignment.TopEnd)
+                .width(46.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (isOutdoorMode) Color.White else Color(0xEE111513)
+            ),
+            border = BorderStroke(1.5.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF).copy(alpha = 0.4f)),
+            shape = RoundedCornerShape(16.dp)
         ) {
-            // Quick Add Point / Save Station (Large touch target button)
-            IconButton(
-                onClick = { isAddPointDialogVisible = true },
-                modifier = Modifier
-                    .size(44.dp)
-                    .background(if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), RoundedCornerShape(10.dp))
-                    .border(1.5.dp, if (isOutdoorMode) Color.Black else Color.White, RoundedCornerShape(10.dp))
+            Column(
+                modifier = Modifier.padding(vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Icon(
-                    imageVector = Icons.Default.AddLocation,
-                    contentDescription = "Quick Add Geological Station Point",
-                    tint = if (isOutdoorMode) Color.White else Color.Black,
-                    modifier = Modifier.size(24.dp)
+                // Quick Add Point / Save Station (Large touch target button)
+                IconButton(
+                    onClick = { isAddPointDialogVisible = true },
+                    modifier = Modifier.size(38.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AddLocation,
+                        contentDescription = "Quick Add Geological Station Point",
+                        tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                // Divider
+                Divider(
+                    color = (if (isOutdoorMode) Color.LightGray else Color(0xFF00E5FF)).copy(alpha = 0.15f),
+                    modifier = Modifier.width(30.dp),
+                    thickness = 0.8.dp
                 )
-            }
 
-            // GPS Lock re-center button
-            IconButton(
-                onClick = { 
-                    if (!isRealPositionEnabled) {
-                        onRealPositionChanged(true)
-                        lockGpsCenter = true
-                    } else {
-                        lockGpsCenter = !lockGpsCenter 
-                    }
-                },
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(if (lockGpsCenter && isRealPositionEnabled) (if (isOutdoorMode) Color(0xFF0288D1) else Color(0xFF00B0FF)) else toolbarBgColor, CircleShape)
-                    .border(1.dp, if (lockGpsCenter && isRealPositionEnabled) Color.White else toolbarBorderColor, CircleShape)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.GpsFixed,
-                    contentDescription = "Lock Camera to GNSS Center",
-                    tint = if (lockGpsCenter && isRealPositionEnabled) Color.White else Color.Gray,
-                    modifier = Modifier.size(18.dp)
+                // GPS Lock re-center button
+                IconButton(
+                    onClick = { 
+                        if (!isRealPositionEnabled) {
+                            onRealPositionChanged(true)
+                            lockGpsCenter = true
+                        } else {
+                            lockGpsCenter = !lockGpsCenter 
+                        }
+                    },
+                    modifier = Modifier
+                        .size(38.dp)
+                        .background(
+                            if (lockGpsCenter && isRealPositionEnabled) {
+                                (if (isOutdoorMode) Color(0xFF0288D1).copy(alpha = 0.15f) else Color(0xFF00B0FF).copy(alpha = 0.15f))
+                            } else Color.Transparent, 
+                            CircleShape
+                        )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.GpsFixed,
+                        contentDescription = "Lock Camera to GNSS Center",
+                        tint = if (lockGpsCenter && isRealPositionEnabled) {
+                            if (isOutdoorMode) Color(0xFF0288D1) else Color(0xFF00B0FF)
+                        } else Color.Gray,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                // Divider
+                Divider(
+                    color = (if (isOutdoorMode) Color.LightGray else Color(0xFF00E5FF)).copy(alpha = 0.15f),
+                    modifier = Modifier.width(30.dp),
+                    thickness = 0.8.dp
                 )
-            }
 
-            // GIS COLLAPSIBLE TOOLBOX TRIGGER
-            IconButton(
-                onClick = { isGisToolboxOpen = !isGisToolboxOpen },
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(if (isGisToolboxOpen) toolbarBgOpen else toolbarBgColor, CircleShape)
-                    .border(1.dp, if (isGisToolboxOpen) Color.White else toolbarBorderColor, CircleShape)
-                    .testTag("gis_toolbox_toggle")
-            ) {
-                Icon(
-                    imageVector = if (isGisToolboxOpen) Icons.Default.Close else Icons.Default.Apps,
-                    contentDescription = "GIS Instrument Toolbox",
-                    tint = if (isGisToolboxOpen) toolbarIconColorOpen else toolbarIconColorClosed,
-                    modifier = Modifier.size(20.dp)
+                // GIS COLLAPSIBLE TOOLBOX TRIGGER
+                IconButton(
+                    onClick = { 
+                        isGisToolboxOpen = !isGisToolboxOpen 
+                        if (isGisToolboxOpen) {
+                            isMapLayerPanelVisible = false
+                            isStructuralPanelVisible = false
+                            isSurveyorPanelVisible = false
+                            isSettingsPanelVisible = false
+                            isJournalPanelVisible = false
+                            isDrawingContactMode = false
+                        }
+                    },
+                    modifier = Modifier
+                        .size(38.dp)
+                        .background(
+                            if (isGisToolboxOpen) {
+                                (if (isOutdoorMode) Color(0xFF00796B).copy(alpha = 0.15f) else Color(0xFF00E5FF).copy(alpha = 0.15f))
+                            } else Color.Transparent, 
+                            CircleShape
+                        )
+                        .testTag("gis_toolbox_toggle")
+                ) {
+                    Icon(
+                        imageVector = if (isGisToolboxOpen) Icons.Default.Close else Icons.Default.Apps,
+                        contentDescription = "GIS Instrument Toolbox",
+                        tint = if (isGisToolboxOpen) {
+                            if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)
+                        } else toolbarIconColorClosed,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                // Divider
+                Divider(
+                    color = (if (isOutdoorMode) Color.LightGray else Color(0xFF00E5FF)).copy(alpha = 0.15f),
+                    modifier = Modifier.width(30.dp),
+                    thickness = 0.8.dp
                 )
-            }
 
-            Spacer(modifier = Modifier.height(4.dp))
+                // Compact Zoom In/Out separate buttons
+                IconButton(
+                    onClick = { if (zoomLevel < 8) zoomLevel++ },
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Add, 
+                        contentDescription = "Zoom In", 
+                        tint = toolbarIconColorClosed, 
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
 
-            // Compact Zoom In/Out separate buttons
-            IconButton(
-                onClick = { if (zoomLevel < 8) zoomLevel++ },
-                modifier = Modifier
-                    .size(36.dp)
-                    .background(toolbarBgColor, RoundedCornerShape(4.dp))
-                    .border(0.5.dp, toolbarBorderColor, RoundedCornerShape(4.dp))
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Zoom In", tint = toolbarIconColorClosed, modifier = Modifier.size(16.dp))
-            }
-            Text(
-                text = "x$zoomLevel", 
-                color = if (isOutdoorMode) Color.Black else Color(0xFF00FFE0), 
-                fontSize = 8.sp, 
-                fontWeight = FontWeight.Bold, 
-                fontFamily = FontFamily.Monospace
-            )
-            IconButton(
-                onClick = { if (zoomLevel > 1) zoomLevel-- },
-                modifier = Modifier
-                    .size(36.dp)
-                    .background(toolbarBgColor, RoundedCornerShape(4.dp))
-                    .border(0.5.dp, toolbarBorderColor, RoundedCornerShape(4.dp))
-            ) {
-                Icon(Icons.Default.Remove, contentDescription = "Zoom Out", tint = toolbarIconColorClosed, modifier = Modifier.size(16.dp))
+                Text(
+                    text = "x$zoomLevel", 
+                    color = if (isOutdoorMode) Color.Black else Color(0xFF00FFE0), 
+                    fontSize = 9.sp, 
+                    fontWeight = FontWeight.Bold, 
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.padding(vertical = 1.dp)
+                )
+
+                IconButton(
+                    onClick = { if (zoomLevel > 1) zoomLevel-- },
+                    modifier = Modifier.size(34.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Remove, 
+                        contentDescription = "Zoom Out", 
+                        tint = toolbarIconColorClosed, 
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
 
@@ -11275,15 +11480,16 @@ fun MapContent(viewModel: GeologyViewModel) {
         }
 
         // -------------------------------------------------------------
-        // LAYER 6: FLOATING SIMULATED WALK D-PAD CONTROLLER (BOTTOM-RIGHT)
+        // LAYER 6: FLOATING SIMULATED WALK D-PAD CONTROLLER (CENTER-LEFT)
+        // Re-positioned to CenterStart to completely eliminate any collisions with bottom HUDs
         // -------------------------------------------------------------
         AnimatedVisibility(
             visible = showSimulator,
             enter = fadeIn() + expandIn(),
             exit = fadeOut() + shrinkOut(),
             modifier = Modifier
-                .padding(12.dp)
-                .align(Alignment.BottomEnd)
+                .padding(start = 12.dp)
+                .align(Alignment.CenterStart)
         ) {
             Card(
                 modifier = Modifier.width(135.dp),
@@ -11370,13 +11576,14 @@ fun MapContent(viewModel: GeologyViewModel) {
 
         // -------------------------------------------------------------
         // DYNAMIC OVERLAY 1: FLOATING MAP LAYER SWITCHER PANEL
+        // Standardized top/end paddings to prevent central and bottom screen collisions
         // -------------------------------------------------------------
         AnimatedVisibility(
             visible = isMapLayerPanelVisible,
             enter = fadeIn() + slideInVertically { it / 2 },
             exit = fadeOut() + slideOutVertically { it / 2 },
             modifier = Modifier
-                .padding(top = 80.dp, end = 75.dp)
+                .padding(top = 72.dp, end = 70.dp)
                 .align(Alignment.TopEnd)
         ) {
             Card(
@@ -11527,13 +11734,14 @@ fun MapContent(viewModel: GeologyViewModel) {
 
         // -------------------------------------------------------------
         // DYNAMIC OVERLAY 1.5: GEOLOGICAL FILTERS & LEGEND PANEL
+        // Standardized top/end paddings to prevent central and bottom screen collisions
         // -------------------------------------------------------------
         AnimatedVisibility(
             visible = isStructuralPanelVisible,
             enter = fadeIn() + slideInVertically { it / 2 },
             exit = fadeOut() + slideOutVertically { it / 2 },
             modifier = Modifier
-                .padding(top = 170.dp, end = 75.dp)
+                .padding(top = 72.dp, end = 70.dp)
                 .align(Alignment.TopEnd)
         ) {
             Card(
@@ -11895,13 +12103,14 @@ fun MapContent(viewModel: GeologyViewModel) {
 
         // -------------------------------------------------------------
         // DYNAMIC OVERLAY 2: SURVEYOR COORDINATE SYSTEM & AZIMUTH TOOL
+        // Standardized top/end paddings to prevent central and bottom screen collisions
         // -------------------------------------------------------------
         AnimatedVisibility(
             visible = isSurveyorPanelVisible,
             enter = fadeIn() + slideInVertically { it / 2 },
             exit = fadeOut() + slideOutVertically { it / 2 },
             modifier = Modifier
-                .padding(top = 170.dp, end = 75.dp)
+                .padding(top = 72.dp, end = 70.dp)
                 .align(Alignment.TopEnd)
         ) {
             var targetLatStr by remember { mutableStateOf("35.7000") }
@@ -12057,13 +12266,14 @@ fun MapContent(viewModel: GeologyViewModel) {
 
         // -------------------------------------------------------------
         // DYNAMIC OVERLAY 3: FLOATING SENSOR & MAPBOX CONFIG SETTINGS PANEL
+        // Standardized top/end paddings to prevent central and bottom screen collisions
         // -------------------------------------------------------------
         AnimatedVisibility(
             visible = isSettingsPanelVisible,
             enter = fadeIn() + slideInVertically { it / 2 },
             exit = fadeOut() + slideOutVertically { it / 2 },
             modifier = Modifier
-                .padding(top = 110.dp, end = 75.dp)
+                .padding(top = 72.dp, end = 70.dp)
                 .align(Alignment.TopEnd)
         ) {
             Card(
@@ -12205,13 +12415,14 @@ fun MapContent(viewModel: GeologyViewModel) {
 
         // -------------------------------------------------------------
         // DYNAMIC OVERLAY 4: FLOATING MAPPED TRACK JOURNAL JOURNAL PANEL
+        // Standardized top/end paddings to prevent central and bottom screen collisions
         // -------------------------------------------------------------
         AnimatedVisibility(
             visible = isJournalPanelVisible,
             enter = fadeIn() + slideInVertically { it / 2 },
             exit = fadeOut() + slideOutVertically { it / 2 },
             modifier = Modifier
-                .padding(top = 180.dp, end = 75.dp)
+                .padding(top = 72.dp, end = 70.dp)
                 .align(Alignment.TopEnd)
         ) {
             Card(
