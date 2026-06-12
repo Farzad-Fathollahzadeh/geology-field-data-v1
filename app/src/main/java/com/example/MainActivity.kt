@@ -2162,7 +2162,7 @@ fun ProjectDashboardScreen(
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
                                     text = if (coordSystemSetting == "WGS84_DECIMAL") {
-                                        String.format(Locale.US, "%.6f°, %.6f°", station.latitude, station.longitude)
+                                        String.format(Locale.US, "%.8f°, %.8f°", station.latitude, station.longitude)
                                     } else {
                                         "Zone ${station.utmZone} | ${String.format(Locale.US, "%.0f E, %.0f N", station.utmEasting, station.utmNorthing)}"
                                     },
@@ -2715,7 +2715,7 @@ fun CreateStationScreen(
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Text("Latitude | Longitude (Primary)", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 13.sp)
                                     Text(
-                                        text = String.format(Locale.US, "%.6f°, %.6f°", gps.latitude, gps.longitude),
+                                        text = String.format(Locale.US, "%.8f°, %.8f°", gps.latitude, gps.longitude),
                                         fontFamily = FontFamily.Monospace,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.primary,
@@ -2726,7 +2726,7 @@ fun CreateStationScreen(
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                     Text("Latitude | Longitude", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                                     Text(
-                                        text = String.format(Locale.US, "%.6f°, %.6f°", gps.latitude, gps.longitude),
+                                        text = String.format(Locale.US, "%.8f°, %.8f°", gps.latitude, gps.longitude),
                                         fontFamily = FontFamily.Monospace,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.onSurface,
@@ -3981,7 +3981,7 @@ fun StationDetailScreen(
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = if (coordSystemSetting == "WGS84_DECIMAL") {
-                                String.format(Locale.US, "%.6f° N\n%.6f° E", station.latitude, station.longitude)
+                                String.format(Locale.US, "%.8f° N\n%.8f° E", station.latitude, station.longitude)
                             } else {
                                 String.format(Locale.US, "%.1f E\n%.1f N\nZone %s", station.utmEasting, station.utmNorthing, station.utmZone)
                             },
@@ -4020,7 +4020,7 @@ fun StationDetailScreen(
                     text = if (coordSystemSetting == "WGS84_DECIMAL") {
                         "UTM Grid Zone: ${station.utmZone} • Easting: ${String.format(Locale.US, "%.1f m", station.utmEasting)} • Northing: ${String.format(Locale.US, "%.1f m", station.utmNorthing)}"
                     } else {
-                        "WGS84 Lat/Lon: ${String.format(Locale.US, "%.6f, %.6f", station.latitude, station.longitude)}"
+                        "WGS84 Lat/Lon: ${String.format(Locale.US, "%.8f, %.8f", station.latitude, station.longitude)}"
                     },
                     fontFamily = FontFamily.Monospace,
                     fontSize = 12.sp,
@@ -6263,7 +6263,7 @@ fun AddObservationScreen(
                             Column {
                                 Text("WGS84 COORDINATES", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(
-                                    "${String.format(Locale.US, "%.6f°", station?.latitude ?: 0.0)}, ${String.format(Locale.US, "%.6f°", station?.longitude ?: 0.0)}",
+                                    "${String.format(Locale.US, "%.8f°", station?.latitude ?: 0.0)}, ${String.format(Locale.US, "%.8f°", station?.longitude ?: 0.0)}",
                                     fontSize = 13.sp,
                                     fontWeight = if (coordSystemSetting == "WGS84_DECIMAL") FontWeight.Bold else FontWeight.Medium,
                                     color = if (coordSystemSetting == "WGS84_DECIMAL") Color(0xFF00A86B) else MaterialTheme.colorScheme.onSurface,
@@ -9075,7 +9075,8 @@ fun generateLeafletHtml(
     baseMapOpacity: Float = 0.95f,
     offlineModeForce: Boolean = false,
     showOfflineBoundaries: Boolean = true,
-    downloadedRegions: List<com.example.ui.gis.OfflineRegion> = emptyList()
+    downloadedRegions: List<com.example.ui.gis.OfflineRegion> = emptyList(),
+    importedFeatures: List<ImportedFeature> = emptyList()
 ): String {
     val downloadedRegionsJson = downloadedRegions.joinToString(prefix = "[", postfix = "]") { reg ->
         """{"id": "${reg.id}", "name": "${reg.name.replace("\"", "\\\"")}", "minLat": ${reg.minLat}, "minLon": ${reg.minLon}, "maxLat": ${reg.maxLat}, "maxLon": ${reg.maxLon}, "sizeMb": ${reg.sizeMb}}"""
@@ -9101,23 +9102,40 @@ fun generateLeafletHtml(
         """{"id": "${contact.id}", "name": "${contact.name.replace("\"", "\\\"")}", "type": "${contact.type}", "latlngs": $pointsJsonStr, "color": "${contact.colorHex}"}"""
     }
 
+    val importedJson = importedFeatures.joinToString(prefix = "[", postfix = "]") { feat ->
+        val coordsStr = feat.coordinates.joinToString(prefix = "[", postfix = "]") { c ->
+            "[${c.lat}, ${c.lon}]"
+        }
+        """{"id": "${feat.id}", "name": "${feat.name.replace("\"", "\\\"")}", "desc": "${feat.description.replace("\"", "\\\"").replace("\n", " ")}", "type": "${feat.type}", "coords": $coordsStr, "color": "${feat.colorHex}"}"""
+    }
+
     val defaultLat = if (lockGpsCenter) currentLat else (if (stations.isNotEmpty()) stations.map { it.latitude }.average() else currentLat)
     val defaultLon = if (lockGpsCenter) currentLon else (if (stations.isNotEmpty()) stations.map { it.longitude }.average() else currentLon)
 
-    val leafZoom = when (zoom) {
-        1 -> 8
-        2 -> 10
-        3 -> 12
-        4 -> 14
-        5 -> 15
-        6 -> 16
-        7 -> 17
-        8 -> 18
-        else -> 14
-    }
+    val leafZoom = zoom.coerceIn(3, 21)
 
     val bgColor = if (isOutdoorMode) "#F4F6F4" else "#0C100D"
     val gridColor = if (isOutdoorMode) "rgba(0,121,107,0.12)" else "rgba(0,229,255,0.12)"
+
+    val isSatellite = tileUrl.contains("lyrs=s", ignoreCase = true) || 
+                      tileUrl.contains("lyrs=y", ignoreCase = true) || 
+                      tileUrl.contains("satellite", ignoreCase = true)
+    val tileFilterStyle = if (!isOutdoorMode) {
+        val tileFilter = if (!isSatellite) ".leaflet-tile { filter: invert(100%) hue-rotate(180deg) brightness(85%) contrast(85%) !important; }" else ""
+        """
+        $tileFilter
+        .leaflet-container { background-color: #0c100d !important; }
+        .leaflet-bar { border: 1.5px solid rgba(0, 229, 255, 0.45) !important; background-color: #141a17 !important; }
+        .leaflet-bar a { background-color: #141a17 !important; color: #00ffe0 !important; border-bottom: 1.5px solid rgba(0, 229, 255, 0.25) !important; }
+        .leaflet-bar a:hover { background-color: #00ffe0 !important; color: #141a17 !important; }
+        .leaflet-popup-content-wrapper, .leaflet-popup-tip { background-color: #141a17 !important; color: #ffffff !important; border: 1.5px solid #00e5ff !important; box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important; }
+        .leaflet-popup-content { font-family: monospace !important; font-size: 11px !important; }
+        .leaflet-control-attribution, .leaflet-control-scale { background: rgba(20, 26, 23, 0.85) !important; color: #88faec !important; font-size: 9px !important; text-shadow: none !important; }
+        .leaflet-control-zoom-in, .leaflet-control-zoom-out { font-weight: bold; }
+        """.trimIndent()
+    } else {
+        ""
+    }
 
     return """
         <!DOCTYPE html>
@@ -9141,6 +9159,7 @@ fun generateLeafletHtml(
                     width: 12px;
                     height: 12px;
                 }
+                $tileFilterStyle
             </style>
         </head>
         <body>
@@ -9272,7 +9291,8 @@ fun generateLeafletHtml(
                         ctx.font = '10px monospace';
                         
                         var spacing = 0.01;
-                        if (zoomLevel > 17) spacing = 0.0005;
+                        if (zoomLevel > 19) spacing = 0.0001;
+                        else if (zoomLevel > 17) spacing = 0.0005;
                         else if (zoomLevel > 15) spacing = 0.001;
                         else if (zoomLevel > 12) spacing = 0.005;
                         else if (zoomLevel > 9) spacing = 0.02;
@@ -9292,7 +9312,7 @@ fun generateLeafletHtml(
                                 ctx.lineTo(canvas.width, pt.y);
                                 ctx.stroke();
                                 ctx.fillStyle = textColor;
-                                ctx.fillText(lat.toFixed(4) + '°N', 8, pt.y - 4);
+                                ctx.fillText(lat.toFixed(7) + '°N', 8, pt.y - 4);
                             }
                         }
                         
@@ -9304,7 +9324,7 @@ fun generateLeafletHtml(
                                 ctx.lineTo(pt.x, canvas.height);
                                 ctx.stroke();
                                 ctx.fillStyle = textColor;
-                                ctx.fillText(lon.toFixed(4) + '°E', pt.x + 4, canvas.height - 8);
+                                ctx.fillText(lon.toFixed(7) + '°E', pt.x + 4, canvas.height - 8);
                             }
                         }
                         
@@ -9374,6 +9394,43 @@ fun generateLeafletHtml(
                                     ctx.lineTo(pt.x, pt.y);
                                 }
                                 ctx.stroke();
+                            }
+                        });
+
+                        var imported = $importedJson;
+                        imported.forEach(function(feat) {
+                            if (feat.coords && feat.coords.length > 0) {
+                                if (feat.type === 'Point') {
+                                    var pt = toPixels(feat.coords[0][0], feat.coords[0][1]);
+                                    ctx.beginPath();
+                                    ctx.arc(pt.x, pt.y, 5, 0, 2 * Math.PI);
+                                    ctx.fillStyle = feat.color;
+                                    ctx.fill();
+                                    ctx.strokeStyle = '#FFFFFF';
+                                    ctx.lineWidth = 1;
+                                    ctx.stroke();
+                                    ctx.fillStyle = isOutdoorMode ? '#000000' : '#FFFFFF';
+                                    ctx.font = '8px monospace';
+                                    ctx.fillText('📌 ' + feat.name, pt.x + 8, pt.y + 3);
+                                } else {
+                                    ctx.beginPath();
+                                    ctx.strokeStyle = feat.color;
+                                    ctx.lineWidth = 2.5;
+                                    var first = toPixels(feat.coords[0][0], feat.coords[0][1]);
+                                    ctx.moveTo(first.x, first.y);
+                                    for (var i = 1; i < feat.coords.length; i++) {
+                                        var pt = toPixels(feat.coords[i][0], feat.coords[i][1]);
+                                        ctx.lineTo(pt.x, pt.y);
+                                    }
+                                    if (feat.type === 'Polygon') {
+                                        ctx.closePath();
+                                        ctx.globalAlpha = 0.15;
+                                        ctx.fillStyle = feat.color;
+                                        ctx.fill();
+                                        ctx.globalAlpha = 1.0;
+                                    }
+                                    ctx.stroke();
+                                }
                             }
                         });
                         
@@ -9473,6 +9530,8 @@ fun generateLeafletHtml(
                         zoomControl: false,
                         attributionControl: false
                     }).setView([$defaultLat, $defaultLon], $leafZoom);
+
+                    L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
 
                 L.tileLayer('$tileUrl', {
                     maxZoom: 21,
@@ -9601,6 +9660,38 @@ fun generateLeafletHtml(
                     }
                 });
 
+                // Display imported KML/KMZ features
+                var importedFeatures = $importedJson;
+                importedFeatures.forEach(function(feat) {
+                    if (feat.coords && feat.coords.length > 0) {
+                        if (feat.type === 'Point') {
+                            var pt = feat.coords[0];
+                            var pinIcon = L.divIcon({
+                                className: 'custom-kml-icon',
+                                html: '<div style="position: absolute; left: 16px; top: -6px; color: #ffeb3b; font-weight: bold; font-size: 11px; text-shadow: 1px 1px 2px black; white-space: nowrap;">📌 ' + feat.name + '</div>',
+                                iconSize: [12, 12]
+                            });
+                            L.marker([pt[0], pt[1]], { icon: pinIcon }).addTo(map)
+                             .bindPopup("<b>📌 " + feat.name + "</b><br>" + feat.desc);
+                        } else {
+                            var polyOpts = {
+                                color: feat.color,
+                                weight: 3.5,
+                                opacity: 0.85
+                            };
+                            if (feat.type === 'Polygon') {
+                                polyOpts.fillColor = feat.color;
+                                polyOpts.fillOpacity = 0.25;
+                                L.polygon(feat.coords, polyOpts).addTo(map)
+                                 .bindPopup("<b>Polygon: " + feat.name + "</b><br>" + feat.desc);
+                            } else {
+                                L.polyline(feat.coords, polyOpts).addTo(map)
+                                 .bindPopup("<b>Path: " + feat.name + "</b><br>" + feat.desc);
+                            }
+                        }
+                    }
+                });
+
                 // GPS pulse accuracy and location dot
                 var liveAccuracyCircle = null;
                 var liveMarkerPoint = null;
@@ -9670,6 +9761,17 @@ fun generateLeafletHtml(
                     var center = map.getCenter();
                     if (window.AndroidInterface && window.AndroidInterface.onCenterChanged) {
                         window.AndroidInterface.onCenterChanged(center.lat, center.lng);
+                    }
+                    var currentZoom = map.getZoom();
+                    if (window.AndroidInterface && window.AndroidInterface.onZoomChanged) {
+                        window.AndroidInterface.onZoomChanged(currentZoom);
+                    }
+                });
+
+                map.on('zoomend', function() {
+                    var currentZoom = map.getZoom();
+                    if (window.AndroidInterface && window.AndroidInterface.onZoomChanged) {
+                        window.AndroidInterface.onZoomChanged(currentZoom);
                     }
                 });
 
@@ -9896,6 +9998,7 @@ fun WebViewMap(
     lockGpsCenter: Boolean,
     mapboxToken: String,
     onCenterChanged: (Double, Double) -> Unit,
+    onZoomChanged: (Int) -> Unit = {},
     navigationTargetStation: Station?,
     showUtmGrid: Boolean = true,
     isOutdoorMode: Boolean = false,
@@ -9903,6 +10006,7 @@ fun WebViewMap(
     offlineModeForce: Boolean = false,
     showOfflineBoundaries: Boolean = true,
     downloadedRegions: List<com.example.ui.gis.OfflineRegion> = emptyList(),
+    importedFeatures: List<ImportedFeature> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     val resolvedTileUrl = if (tileUrl.contains("{token}")) {
@@ -9918,7 +10022,7 @@ fun WebViewMap(
         if (stations.isNotEmpty()) stations.map { it.longitude }.average() else currentLon
     }
     
-    val htmlContent = remember(stations, observations, trackPoints, contactsList, resolvedTileUrl, isOutdoorMode, baseMapOpacity, offlineModeForce, showOfflineBoundaries, downloadedRegions) {
+    val htmlContent = remember(stations, observations, trackPoints, contactsList, resolvedTileUrl, isOutdoorMode, baseMapOpacity, offlineModeForce, showOfflineBoundaries, downloadedRegions, importedFeatures) {
         generateLeafletHtml(
             stations = stations,
             observations = observations,
@@ -9935,21 +10039,12 @@ fun WebViewMap(
             baseMapOpacity = baseMapOpacity,
             offlineModeForce = offlineModeForce,
             showOfflineBoundaries = showOfflineBoundaries,
-            downloadedRegions = downloadedRegions
+            downloadedRegions = downloadedRegions,
+            importedFeatures = importedFeatures
         )
     }
 
-    val leafZoom = when (zoom) {
-        1 -> 8
-        2 -> 10
-        3 -> 12
-        4 -> 14
-        5 -> 15
-        6 -> 16
-        7 -> 17
-        8 -> 18
-        else -> 14
-    }
+    val leafZoom = zoom.coerceIn(3, 21)
 
     // Wrap in rememberUpdatedState to avoid stale variable captures in long-lived WebView callbacks
     val currentLatState = androidx.compose.runtime.rememberUpdatedState(currentLat)
@@ -9969,6 +10064,13 @@ fun WebViewMap(
                     fun onCenterChanged(lat: Double, lon: Double) {
                         android.os.Handler(android.os.Looper.getMainLooper()).post {
                             onCenterChanged(lat, lon)
+                        }
+                    }
+
+                    @android.webkit.JavascriptInterface
+                    fun onZoomChanged(lvl: Int) {
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            onZoomChanged(lvl)
                         }
                     }
                 }, "AndroidInterface")
@@ -10112,9 +10214,10 @@ fun MapContent(viewModel: GeologyViewModel) {
     val activeProject by viewModel.activeProject.collectAsStateWithLifecycle()
     val coordSystemSetting by viewModel.coordSystemSetting.collectAsStateWithLifecycle()
     val allObservationsList by viewModel.allObservations.collectAsStateWithLifecycle()
+    val importedFeaturesList by viewModel.importedFeatures.collectAsStateWithLifecycle()
 
     val stationsToShow = if (projectStations.isNotEmpty()) projectStations else allStationsList
-    var zoomLevel by remember { mutableStateOf(4) } // 1 to 8, default 4
+    var zoomLevel by remember { mutableStateOf(14) } // 3 to 21, default 14
     var mapMode by remember { mutableStateOf(if (isInternetAvailable(context)) MapMode.ONLINE else MapMode.OFFLINE) }
     var mapLayer by remember { mutableStateOf(MapLayerProvider.GOOGLE_SATELLITE) }
     var mapboxTokenInput by remember { mutableStateOf("pk.eyJ1IjoiZmFyemFkZiIsImEiOiJjbHpiaXdwZ3cwMTF5MndzYzhvdzBoMHp1In0.6R0R9z84Vd-M208r_6oY7g") }
@@ -10127,7 +10230,9 @@ fun MapContent(viewModel: GeologyViewModel) {
     var isStructuralPanelVisible by remember { mutableStateOf(false) }
     var isGisToolboxOpen by remember { mutableStateOf(false) }
     var isAddPointDialogVisible by remember { mutableStateOf(false) }
-    var isOutdoorMode by remember { mutableStateOf(false) }
+    val themeSetting by viewModel.themeSetting.collectAsStateWithLifecycle()
+    val isSystemDark = themeSetting == "Dark" || themeSetting == "HighContrast"
+    var isOutdoorMode by remember(isSystemDark) { mutableStateOf(!isSystemDark) }
     var showSimulator by remember { mutableStateOf(false) }
     var showStationsOverlay by remember { mutableStateOf(true) }
     var showSymbolsOverlay by remember { mutableStateOf(true) }
@@ -10141,18 +10246,37 @@ fun MapContent(viewModel: GeologyViewModel) {
     var satelliteCount by remember { mutableStateOf(16) }
     var gpsAccuracy by remember { mutableStateOf(1.8) }
     var lockGpsCenter by remember { mutableStateOf(true) }
+
+    val kmlPickerLauncher = rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri?.let {
+            viewModel.importMapFile(context, it)
+        }
+    }
     
     val scale = remember(zoomLevel) {
         when (zoomLevel) {
-            1 -> 40000.0
-            2 -> 120000.0
-            3 -> 350000.0
-            4 -> 800000.0
-            5 -> 1800000.0
-            6 -> 4000000.0
-            7 -> 9000000.0
-            8 -> 20000000.0
-            else -> 800000.0
+            3 -> 2000.0
+            4 -> 5000.0
+            5 -> 12000.0
+            6 -> 25000.0
+            7 -> 50000.0
+            8 -> 100000.0
+            9 -> 220000.0
+            10 -> 450000.0
+            11 -> 900000.0
+            12 -> 2000000.0
+            13 -> 4200000.0
+            14 -> 9000000.0
+            15 -> 20000000.0
+            16 -> 45000000.0
+            17 -> 100000000.0
+            18 -> 220000000.0
+            19 -> 500000000.0
+            20 -> 1100000000.0
+            21 -> 2500000000.0
+            else -> 9000000.0
         }
     }
 
@@ -10260,13 +10384,39 @@ fun MapContent(viewModel: GeologyViewModel) {
     var simulatorLon by remember(defaultInitialLon) { mutableStateOf(defaultInitialLon) }
     var simulatorHeading by remember { mutableStateOf(45.0) }
 
-    val currentLat = if (isRealPositionEnabled && liveLocation != null) liveLocation!!.latitude else simulatorLat
-    val currentLon = if (isRealPositionEnabled && liveLocation != null) liveLocation!!.longitude else simulatorLon
-    val currentHeading = if (isRealPositionEnabled && liveLocation != null) liveLocation!!.bearing.toDouble() else simulatorHeading
+    val gpsState by viewModel.gpsState.collectAsStateWithLifecycle()
+    val currentLat = if (isRealPositionEnabled) {
+        if (liveLocation != null) liveLocation!!.latitude else if (gpsState.isCaptured) gpsState.latitude else simulatorLat
+    } else {
+        simulatorLat
+    }
+    val currentLon = if (isRealPositionEnabled) {
+        if (liveLocation != null) liveLocation!!.longitude else if (gpsState.isCaptured) gpsState.longitude else simulatorLon
+    } else {
+        simulatorLon
+    }
+    val currentHeading = if (isRealPositionEnabled) {
+        if (liveLocation != null) liveLocation!!.bearing.toDouble() else simulatorHeading
+    } else {
+        simulatorHeading
+    }
 
     var pannedCenterLat by remember(defaultInitialLat) { mutableStateOf(defaultInitialLat) }
     var pannedCenterLon by remember(defaultInitialLon) { mutableStateOf(defaultInitialLon) }
     var navigationTargetStation by remember { mutableStateOf<Station?>(null) }
+
+    // Auto-center camera on imported KML features when a novel dataset is overlayed
+    LaunchedEffect(importedFeaturesList) {
+        if (importedFeaturesList.isNotEmpty()) {
+            val allCoords = importedFeaturesList.flatMap { it.coordinates }
+            if (allCoords.isNotEmpty()) {
+                pannedCenterLat = allCoords.map { it.lat }.average()
+                pannedCenterLon = allCoords.map { it.lon }.average()
+                zoomLevel = 16
+                lockGpsCenter = false
+            }
+        }
+    }
 
     // Sync simulator coordinate parameters with real locations as soon as a real GPS fix is captured
     LaunchedEffect(liveLocation) {
@@ -10466,8 +10616,12 @@ fun MapContent(viewModel: GeologyViewModel) {
                     pannedCenterLat = lat
                     pannedCenterLon = lon
                 },
+                onZoomChanged = { lv ->
+                    zoomLevel = lv
+                },
                 navigationTargetStation = navigationTargetStation,
                 showUtmGrid = showUtmGrid,
+                importedFeatures = importedFeaturesList,
                 modifier = Modifier.fillMaxSize()
             )
         } else {
@@ -10484,12 +10638,22 @@ fun MapContent(viewModel: GeologyViewModel) {
                 val pixelsPerMeter = (scale / 111319.9).toFloat()
 
                 val spacing = when {
-                    scale >= 9000000.0 -> 50.0
-                    scale >= 4000000.0 -> 100.0
-                    scale >= 1800000.0 -> 500.0
-                    scale >= 800000.0  -> 1000.0
-                    scale >= 350000.0  -> 5000.0
-                    else               -> 10000.0
+                    scale >= 2500000000.0 -> 0.1
+                    scale >= 1100000000.0 -> 0.5
+                    scale >= 500000000.0 -> 1.0
+                    scale >= 220000000.0 -> 2.5
+                    scale >= 100000000.0 -> 5.0
+                    scale >= 45000000.0  -> 10.0
+                    scale >= 20000000.0  -> 25.0
+                    scale >= 9000000.0   -> 50.0
+                    scale >= 4200000.0   -> 100.0
+                    scale >= 2000000.0   -> 250.0
+                    scale >= 900000.0    -> 500.0
+                    scale >= 450000.0    -> 1000.0
+                    scale >= 220000.0    -> 2500.0
+                    scale >= 100000.0    -> 5000.0
+                    scale >= 50000.0     -> 10000.0
+                    else                 -> 25000.0
                 }
 
                 if (showUtmGrid) {
@@ -10941,7 +11105,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                     )
                     
                     val formattedCoords = when (coordinateFormatMode) {
-                        0 -> "LAT: ${String.format(Locale.US, "%.6f°N", pannedCenterLat)}\nLON: ${String.format(Locale.US, "%.6f°E", pannedCenterLon)}"
+                        0 -> "LAT: ${String.format(Locale.US, "%.8f°N", pannedCenterLat)}\nLON: ${String.format(Locale.US, "%.8f°E", pannedCenterLon)}"
                         1 -> "LAT: ${formatDMS(pannedCenterLat, true)}\nLON: ${formatDMS(pannedCenterLon, false)}"
                         else -> "UTM Grid: $utmResult"
                     }
@@ -11009,11 +11173,11 @@ fun MapContent(viewModel: GeologyViewModel) {
         // LAYER 4: GNSS TELEMETRY HEADS-UP DISPLAY (TOP-LEFT FLOATING CARD)
         // -------------------------------------------------------------
         if (positioningStatus && isRealPositionEnabled && !isAnyGisPanelOpen) {
-            val isAccuracyGood = gpsAccuracy <= 2.5
-            val accuracyColor = if (isAccuracyGood) {
-                if (isOutdoorMode) Color(0xFF2E7D32) else Color(0xFF00FF00)
-            } else {
-                Color(0xFFFF5252)
+            val accuracyColor = when {
+                gpsAccuracy <= 0.15 -> if (isOutdoorMode) Color(0xFF1B5E20) else Color(0xFF00FF00) // RTK FIXED solid green
+                gpsAccuracy <= 1.0 -> if (isOutdoorMode) Color(0xFFE65100) else Color(0xFFFFD600) // RTK FLOAT warm amber
+                gpsAccuracy <= 3.0 -> if (isOutdoorMode) Color(0xFF0D47A1) else Color(0xFF00E5FF) // 3D DGPS tech cyan/blue
+                else -> Color(0xFFFF5252) // poor accuracy red
             }
             var isTelemetryExpanded by remember { mutableStateOf(true) }
             
@@ -11054,10 +11218,20 @@ fun MapContent(viewModel: GeologyViewModel) {
                                     .border(1.dp, if (isOutdoorMode) Color.Black else Color.White, CircleShape)
                             )
                             
+                            val gnssStatus = when {
+                                gpsAccuracy <= 0.15 -> "GNSS LOCK: RTK FIXED"
+                                gpsAccuracy <= 1.0 -> "GNSS LOCK: RTK FLOAT"
+                                gpsAccuracy <= 3.0 -> "GNSS LOCK: 3D DGPS"
+                                else -> "GNSS POOR ACCY"
+                            }
+                            val gnssStatusShort = when {
+                                gpsAccuracy <= 0.15 -> "RTK FIXED"
+                                gpsAccuracy <= 1.0 -> "RTK FLOAT"
+                                gpsAccuracy <= 3.0 -> "3D DGPS"
+                                else -> "GNSS POOR"
+                            }
                             Text(
-                                text = if (isTelemetryExpanded) {
-                                    if (isAccuracyGood) "GNSS LOCK: 3D RTK" else "GNSS POOR ACCY"
-                                } else "GNSS RTK",
+                                text = if (isTelemetryExpanded) gnssStatus else gnssStatusShort,
                                 fontSize = 8.5.sp,
                                 color = accuracyColor,
                                 fontWeight = FontWeight.Bold
@@ -11084,10 +11258,16 @@ fun MapContent(viewModel: GeologyViewModel) {
                         Spacer(modifier = Modifier.height(2.dp))
                         val labelTextCol = if (isOutdoorMode) Color.Black else Color.White
                         
-                        Text("LAT: ${String.format(Locale.US, "%.5f°N", currentLat)}", fontSize = 9.sp, color = labelTextCol, fontFamily = FontFamily.Monospace)
-                        Text("LON: ${String.format(Locale.US, "%.5f°E", currentLon)}", fontSize = 9.sp, color = labelTextCol, fontFamily = FontFamily.Monospace)
+                        Text("LAT: ${String.format(Locale.US, "%.8f°N", currentLat)}", fontSize = 9.sp, color = labelTextCol, fontFamily = FontFamily.Monospace)
+                        Text("LON: ${String.format(Locale.US, "%.8f°E", currentLon)}", fontSize = 9.sp, color = labelTextCol, fontFamily = FontFamily.Monospace)
                         Text("ALTITUDE: 1210m MSL", fontSize = 9.sp, color = labelTextCol, fontFamily = FontFamily.Monospace)
-                        Text("PRECISION: ±${String.format(Locale.US, "%.1f", gpsAccuracy)} meters", fontSize = 8.5.sp, color = accuracyColor)
+                        
+                        val precisionStr = if (gpsAccuracy < 1.0) {
+                            String.format(Locale.US, "±%.2f m (%.0f cm)", gpsAccuracy, gpsAccuracy * 100.0)
+                        } else {
+                            String.format(Locale.US, "±%.1f m", gpsAccuracy)
+                        }
+                        Text("PRECISION: $precisionStr", fontSize = 8.5.sp, color = accuracyColor)
                         
                         if (isTrackRecordingEnabled) {
                             val minutes = recordingDurationSec / 60
@@ -11243,7 +11423,7 @@ fun MapContent(viewModel: GeologyViewModel) {
 
                 // Compact Zoom In/Out separate buttons
                 IconButton(
-                    onClick = { if (zoomLevel < 8) zoomLevel++ },
+                    onClick = { if (zoomLevel < 21) zoomLevel++ },
                     modifier = Modifier.size(34.dp)
                 ) {
                     Icon(
@@ -11255,7 +11435,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                 }
 
                 Text(
-                    text = "x$zoomLevel", 
+                    text = "z$zoomLevel", 
                     color = if (isOutdoorMode) Color.Black else Color(0xFF00FFE0), 
                     fontSize = 9.sp, 
                     fontWeight = FontWeight.Bold, 
@@ -11264,7 +11444,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                 )
 
                 IconButton(
-                    onClick = { if (zoomLevel > 1) zoomLevel-- },
+                    onClick = { if (zoomLevel > 3) zoomLevel-- },
                     modifier = Modifier.size(34.dp)
                 ) {
                     Icon(
@@ -11472,6 +11652,80 @@ fun MapContent(viewModel: GeologyViewModel) {
                                         isOutdoorMode = !isOutdoorMode
                                     }
                                 )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+                        androidx.compose.material3.HorizontalDivider(
+                            color = if (isOutdoorMode) Color.LightGray.copy(alpha = 0.5f) else Color.DarkGray.copy(alpha = 0.5f),
+                            thickness = 1.dp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        androidx.compose.material3.Text(
+                            text = "GEOSPATIAL OVERLAYS (KML/KMZ)",
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isOutdoorMode) Color.DarkGray else Color.LightGray,
+                            modifier = Modifier.padding(horizontal = 4.dp)
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            androidx.compose.material3.Button(
+                                onClick = {
+                                    kmlPickerLauncher.launch(
+                                        arrayOf(
+                                            "application/vnd.google-earth.kml+xml",
+                                            "application/vnd.google-earth.kmz",
+                                            "application/octet-stream",
+                                            "*/*"
+                                        )
+                                    )
+                                },
+                                modifier = Modifier.weight(1f).height(38.dp).testTag("import_kml_button"),
+                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                    containerColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
+                                    contentColor = if (isOutdoorMode) Color.White else Color(0xFF0C100D)
+                                ),
+                                shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp)
+                            ) {
+                                androidx.compose.material3.Icon(
+                                    imageVector = Icons.Default.CloudUpload,
+                                    contentDescription = "Import KML",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                androidx.compose.material3.Text("Import File", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+
+                            if (importedFeaturesList.isNotEmpty()) {
+                                androidx.compose.material3.OutlinedButton(
+                                    onClick = {
+                                        viewModel.clearImportedFeatures()
+                                        Toast.makeText(context, "KML Overlay cleared.", Toast.LENGTH_SHORT).show()
+                                    },
+                                    modifier = Modifier.weight(1f).height(38.dp).testTag("clear_kml_button"),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp,
+                                        if (isOutdoorMode) Color(0xFFC62828) else Color(0xFFFF5252)
+                                    ),
+                                    colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
+                                        contentColor = if (isOutdoorMode) Color(0xFFC62828) else Color(0xFFFF5252)
+                                    ),
+                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp)
+                                ) {
+                                    androidx.compose.material3.Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Clear Overlay",
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    androidx.compose.material3.Text("Clear Overlay (${importedFeaturesList.size})", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -12399,14 +12653,64 @@ fun MapContent(viewModel: GeologyViewModel) {
                             )
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                            Text("GPS error radius: ±${String.format(Locale.US, "%.1f", gpsAccuracy)}m", fontSize = 10.sp, color = if (isOutdoorMode) Color.Black else Color.White, modifier = Modifier.weight(1f))
+                            val errorRadiusStr = if (gpsAccuracy < 1.0) {
+                                String.format(Locale.US, "%.0f cm", gpsAccuracy * 100.0)
+                            } else {
+                                String.format(Locale.US, "%.1f m", gpsAccuracy)
+                            }
+                            Text("GPS error radius: ±$errorRadiusStr", fontSize = 10.sp, color = if (isOutdoorMode) Color.Black else Color.White, modifier = Modifier.weight(1f))
                             Slider(
                                 value = gpsAccuracy.toFloat(),
                                 onValueChange = { gpsAccuracy = it.toDouble() },
-                                valueRange = 0.5f..12.0f,
+                                valueRange = 0.02f..12.0f,
                                 modifier = Modifier.width(130.dp),
                                 colors = SliderDefaults.colors(activeTrackColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), thumbColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF))
                             )
+                        }
+                        
+                        // RTK/GNSS Level Quick Presets
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                        ) {
+                            val presets = listOf(
+                                Triple("RTK FIXED", 0.02, 22),
+                                Triple("RTK FLOAT", 0.35, 18),
+                                Triple("3D DGPS", 1.8, 14),
+                                Triple("POOR GPS", 6.5, 6)
+                            )
+                            presets.forEach { (name, acc, sats) ->
+                                val isSelected = Math.abs(gpsAccuracy - acc) < 0.1
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(
+                                            if (isSelected) {
+                                                if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)
+                                            } else {
+                                                if (isOutdoorMode) Color(0xFFEEEEEE) else Color(0xFF222522)
+                                            }
+                                        )
+                                        .clickable {
+                                            gpsAccuracy = acc
+                                            satelliteCount = sats
+                                        }
+                                        .padding(vertical = 6.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = name,
+                                        fontSize = 7.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected) {
+                                            if (isOutdoorMode) Color.White else Color.Black
+                                        } else {
+                                            if (isOutdoorMode) Color.DarkGray else Color.LightGray
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -12773,7 +13077,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                             ) {
                                 Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     val utmResultCoord = UtmConverter.convertLatLngToUtm(pannedCenterLat, pannedCenterLon)
-                                    Text("Sight target: ${String.format(Locale.US, "%.5f", pannedCenterLat)}°N , ${String.format(Locale.US, "%.5f", pannedCenterLon)}°E", fontSize = 10.5.sp, color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0), fontFamily = FontFamily.Monospace)
+                                    Text("Sight target: ${String.format(Locale.US, "%.8f", pannedCenterLat)}°N , ${String.format(Locale.US, "%.8f", pannedCenterLon)}°E", fontSize = 10.5.sp, color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0), fontFamily = FontFamily.Monospace)
                                     Text("UTM Zone: $utmResultCoord", fontSize = 9.5.sp, color = if (isOutdoorMode) Color.DarkGray else Color.LightGray, fontFamily = FontFamily.Monospace)
                                 }
                             }
@@ -13313,7 +13617,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                                         ) {
                                             Column {
                                                 Text("Station ${station.stationCode}", color = overlayTextColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-                                                Text("LAT: ${String.format(Locale.US, "%.5f", station.latitude)} | LON: ${String.format(Locale.US, "%.5f", station.longitude)}", fontSize = 10.sp, color = overlayTextColor.copy(alpha = 0.5f))
+                                                Text("LAT: ${String.format(Locale.US, "%.8f", station.latitude)} | LON: ${String.format(Locale.US, "%.8f", station.longitude)}", fontSize = 10.sp, color = overlayTextColor.copy(alpha = 0.5f))
                                             }
                                             Button(
                                                 onClick = {

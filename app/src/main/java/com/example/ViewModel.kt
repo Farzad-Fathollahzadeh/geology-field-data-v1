@@ -39,6 +39,10 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.zip.ZipInputStream
+import java.io.InputStream
+import java.io.BufferedReader
+import java.io.InputStreamReader
 
 // Represents the screen backstack/routes for state-based navigation
 sealed interface Screen {
@@ -63,6 +67,17 @@ data class GpsData(
     val isLocating: Boolean = false,
     val source: String = "None", // GPS, Manual, Simulated
     val message: String = ""
+)
+
+data class MapCoordinate(val lat: Double, val lon: Double)
+
+data class ImportedFeature(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val name: String,
+    val description: String = "",
+    val type: String, // "Point", "LineString", "Polygon"
+    val coordinates: List<MapCoordinate>,
+    val colorHex: String = "#FF9100"
 )
 
 class GeologyViewModel(application: Application) : AndroidViewModel(application) {
@@ -104,6 +119,12 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
     private var locationCallback: LocationCallback? = null
     private val fusedLocationClient by lazy { LocationServices.getFusedLocationProviderClient(application) }
 
+    private var systemLocationManager: LocationManager? = null
+    private var systemLocationListener: android.location.LocationListener? = null
+
+    private val _importedFeatures = MutableStateFlow<List<ImportedFeature>>(emptyList())
+    val importedFeatures: StateFlow<List<ImportedFeature>> = _importedFeatures
+
     init {
         // Recover draft/unsaved track path on start (crash protection!)
         recoverActiveTrackDraft()
@@ -120,16 +141,77 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    private fun processIncomingLocation(location: android.location.Location, sourceText: String) {
+        if (location.accuracy > 150.0) return
+
+        val currentLive = _liveLocation.value
+        if (currentLive != null) {
+            val timeDelta = location.time - currentLive.time
+            if (timeDelta < -4000 && location.accuracy >= currentLive.accuracy) {
+                return // skip if it's older and less accurate
+            }
+        }
+
+        _liveLocation.value = location
+        
+        val activeProj = activeProject.value
+        val forcedZone = if (activeProj?.utmZoneMode == "MANUAL") activeProj.utmZoneManual else null
+        val utm = convertLatLngToUtm(location.latitude, location.longitude, forcedZone)
+        val elevAcc = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O && location.hasVerticalAccuracy()) {
+            location.verticalAccuracyMeters.toDouble()
+        } else {
+            location.accuracy.toDouble() * 1.5
+        }
+
+        _gpsState.update {
+            it.copy(
+                latitude = location.latitude,
+                longitude = location.longitude,
+                elevation = location.altitude,
+                accuracy = location.accuracy.toDouble(),
+                elevationAccuracy = elevAcc,
+                utmEasting = utm.easting,
+                utmNorthing = utm.northing,
+                utmZone = utm.zoneString,
+                isCaptured = true,
+                isLocating = false,
+                source = sourceText
+            )
+        }
+
+        if (_isTrackRecordingEnabled.value) {
+            val newPoint = TrackPoint(
+                lat = location.latitude,
+                lon = location.longitude,
+                ele = location.altitude,
+                time = System.currentTimeMillis(),
+                accuracy = location.accuracy.toDouble(),
+                heading = location.bearing.toDouble()
+            )
+            appendTrackPoint(newPoint)
+        }
+    }
+
     fun startLocationTracking(context: Context) {
         if (ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED &&
             ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             return
         }
         
-        // Stop any existing callback to avoid double listeners
         stopLocationTracking()
 
-        // Also register GnssStatus callback for real satellite counts if API >= 24
+        // 1. Seed initial position from last known location immediately
+        try {
+            fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+                if (location != null && _liveLocation.value == null) {
+                    processIncomingLocation(location, "GPS (Last Known)")
+                }
+            }
+        } catch (e: Exception) {
+            // ignore initial seeding errors
+        }
+
+        // 2. Register GnssStatus callback for real satellite counts if API >= 24
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             try {
                 val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
@@ -139,7 +221,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                         for (i in 0 until status.satelliteCount) {
                             if (status.usedInFix(i)) {
                                 usedInFixCount++
-                            }
+                             }
                         }
                         _liveSatelliteCount.value = usedInFixCount
                     }
@@ -153,59 +235,15 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
             }
         }
 
-        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 2000L).apply {
+        // 3. Fused Location updates (Google Play Services)
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1500L).apply {
             setMinUpdateIntervalMillis(1000L)
-            setMinUpdateDistanceMeters(1.0f) // Only update when moved, saves battery and filters minor noise
         }.build()
 
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
                 val location = locationResult.lastLocation ?: return
-                
-                // --- GPS Noise Smoothing/Filtering ---
-                // Discard extremely poor accuracy positions (noise filter)
-                if (location.accuracy > 150.0) return
-
-                _liveLocation.value = location
-                
-                // Update standard _gpsState so other screens (CreateStation) see live details!
-                val activeProj = activeProject.value
-                val forcedZone = if (activeProj?.utmZoneMode == "MANUAL") activeProj.utmZoneManual else null
-                val utm = convertLatLngToUtm(location.latitude, location.longitude, forcedZone)
-                val elevAcc = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O && location.hasVerticalAccuracy()) {
-                    location.verticalAccuracyMeters.toDouble()
-                } else {
-                    location.accuracy.toDouble() * 1.5
-                }
-
-                _gpsState.update {
-                    it.copy(
-                        latitude = location.latitude,
-                        longitude = location.longitude,
-                        elevation = location.altitude,
-                        accuracy = location.accuracy.toDouble(),
-                        elevationAccuracy = elevAcc,
-                        utmEasting = utm.easting,
-                        utmNorthing = utm.northing,
-                        utmZone = utm.zoneString,
-                        isCaptured = true,
-                        isLocating = false,
-                        source = "GPS (Continuous)"
-                    )
-                }
-
-                // If currently recording track, add to our list
-                if (_isTrackRecordingEnabled.value) {
-                    val newPoint = TrackPoint(
-                        lat = location.latitude,
-                        lon = location.longitude,
-                        ele = location.altitude,
-                        time = System.currentTimeMillis(),
-                        accuracy = location.accuracy.toDouble(),
-                        heading = location.bearing.toDouble()
-                    )
-                    appendTrackPoint(newPoint)
-                }
+                processIncomingLocation(location, "GPS (Continuous)")
             }
         }
 
@@ -218,12 +256,53 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
         } catch (e: Exception) {
             // failed to request location
         }
+
+        // 4. Hardware Direct GPS Fallback (Resilient LocationManager fallback for remote zones)
+        try {
+            val locManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+            systemLocationManager = locManager
+            val sysListener = object : android.location.LocationListener {
+                override fun onLocationChanged(location: android.location.Location) {
+                    processIncomingLocation(location, "GPS (Direct Hardware)")
+                }
+                override fun onStatusChanged(p: String?, s: Int, e: android.os.Bundle?) {}
+                override fun onProviderEnabled(p: String) {}
+                override fun onProviderDisabled(p: String) {}
+            }
+            systemLocationListener = sysListener
+            locManager.requestLocationUpdates(
+                LocationManager.GPS_PROVIDER,
+                1000L,
+                0.0f,
+                sysListener,
+                android.os.Looper.getMainLooper()
+            )
+            locManager.requestLocationUpdates(
+                LocationManager.NETWORK_PROVIDER,
+                2000L,
+                0.0f,
+                sysListener,
+                android.os.Looper.getMainLooper()
+            )
+        } catch (e: SecurityException) {
+            // ignore
+        } catch (e: Exception) {
+            // ignore
+        }
     }
 
     fun stopLocationTracking() {
         locationCallback?.let {
-            fusedLocationClient.removeLocationUpdates(it)
+            try {
+                fusedLocationClient.removeLocationUpdates(it)
+            } catch (e: Exception) {}
             locationCallback = null
+        }
+        systemLocationListener?.let {
+            try {
+                systemLocationManager?.removeUpdates(it)
+            } catch (e: Exception) {}
+            systemLocationListener = null
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             gnssStatusCallback?.let { callback ->
@@ -384,6 +463,174 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
     fun setCoordSystemSetting(coord: String) { 
         coordSystemSetting.value = coord 
         prefs.edit().putString("coord_system", coord).apply()
+    }
+
+    // --- KML & KMZ GEOSPATIAL FILE IMPORT ENGINE ---
+
+    fun parseKml(kmlText: String): List<ImportedFeature> {
+        val features = mutableListOf<ImportedFeature>()
+        val placemarkRegex = Regex("<Placemark>(.*?)</Placemark>", RegexOption.DOT_MATCHES_ALL)
+        val matches = placemarkRegex.findAll(kmlText)
+        
+        for (match in matches) {
+            val content = match.groupValues[1]
+            val nameMatch = Regex("<name>(.*?)</name>").find(content)
+            val name = nameMatch?.groupValues?.get(1)?.trim() ?: "Imported Feature"
+            val descMatch = Regex("<description>(.*?)</description>").find(content)
+            val description = descMatch?.groupValues?.get(1)?.trim() ?: ""
+            
+            if (content.contains("<Point>")) {
+                val coordMatch = Regex("<coordinates>(.*?)</coordinates>", RegexOption.DOT_MATCHES_ALL).find(content)
+                if (coordMatch != null) {
+                    val coordsText = coordMatch.groupValues[1].trim()
+                    val coords = parseCoordinatesString(coordsText)
+                    if (coords.isNotEmpty()) {
+                        features.add(
+                            ImportedFeature(
+                                name = name,
+                                description = description,
+                                type = "Point",
+                                coordinates = coords,
+                                colorHex = "#FF5722"
+                            )
+                        )
+                    }
+                }
+            } else if (content.contains("<LineString>")) {
+                val coordMatch = Regex("<coordinates>(.*?)</coordinates>", RegexOption.DOT_MATCHES_ALL).find(content)
+                if (coordMatch != null) {
+                    val coordsText = coordMatch.groupValues[1].trim()
+                    val coords = parseCoordinatesString(coordsText)
+                    if (coords.isNotEmpty()) {
+                        features.add(
+                            ImportedFeature(
+                                name = name,
+                                description = description,
+                                type = "LineString",
+                                coordinates = coords,
+                                colorHex = "#00FFE0" // Cyan map path high visibility
+                            )
+                        )
+                    }
+                }
+            } else if (content.contains("<Polygon>")) {
+                val coordMatch = Regex("<coordinates>(.*?)</coordinates>", RegexOption.DOT_MATCHES_ALL).find(content)
+                if (coordMatch != null) {
+                    val coordsText = coordMatch.groupValues[1].trim()
+                    val coords = parseCoordinatesString(coordsText)
+                    if (coords.isNotEmpty()) {
+                        features.add(
+                            ImportedFeature(
+                                name = name,
+                                description = description,
+                                type = "Polygon",
+                                coordinates = coords,
+                                colorHex = "#4CAF50"
+                            )
+                        )
+                    }
+                }
+            }
+        }
+        return features
+    }
+
+    private fun parseCoordinatesString(coordsStr: String): List<MapCoordinate> {
+        val list = mutableListOf<MapCoordinate>()
+        val tokens = coordsStr.split(Regex("\\s+"))
+        for (token in tokens) {
+            val parts = token.trim().split(",")
+            if (parts.size >= 2) {
+                val lon = parts[0].toDoubleOrNull()
+                val lat = parts[1].toDoubleOrNull()
+                if (lat != null && lon != null) {
+                    list.add(MapCoordinate(lat, lon))
+                }
+            }
+        }
+        return list
+    }
+
+    fun importMapFile(context: Context, uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val resolver = context.contentResolver
+                val fileName = getFileName(resolver, uri)?.lowercase(Locale.ROOT) ?: ""
+                var kmlContent = ""
+                
+                if (fileName.endsWith(".kmz") || isKmzStream(context, uri)) {
+                    resolver.openInputStream(uri)?.use { stream ->
+                        ZipInputStream(stream).use { zipStream ->
+                            var entry = zipStream.nextEntry
+                            while (entry != null) {
+                                if (entry.name.lowercase(Locale.ROOT).endsWith(".kml")) {
+                                    kmlContent = zipStream.bufferedReader(Charsets.UTF_8).readText()
+                                    zipStream.closeEntry()
+                                    break
+                                }
+                                zipStream.closeEntry()
+                                entry = zipStream.nextEntry
+                            }
+                        }
+                    }
+                } else {
+                    resolver.openInputStream(uri)?.use { stream ->
+                        kmlContent = stream.bufferedReader(Charsets.UTF_8).readText()
+                    }
+                }
+                
+                if (kmlContent.isNotBlank()) {
+                    val features = parseKml(kmlContent)
+                    withContext(Dispatchers.Main) {
+                        if (features.isNotEmpty()) {
+                            _importedFeatures.value = _importedFeatures.value + features
+                            Toast.makeText(context, "${features.size} KML/KMZ features successfully overlayed on map!", Toast.LENGTH_LONG).show()
+                        } else {
+                            Toast.makeText(context, "No valid Placemarks found in map file.", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Could not extract KML map data.", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Import failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    private fun isKmzStream(context: Context, uri: Uri): Boolean {
+        val type = context.contentResolver.getType(uri) ?: ""
+        return type.contains("kmz") || type.contains("zip") || uri.path?.lowercase(Locale.ROOT)?.endsWith(".kmz") == true
+    }
+
+    private fun getFileName(resolver: android.content.ContentResolver, uri: Uri): String? {
+        var name: String? = null
+        if (uri.scheme == "content") {
+            resolver.query(uri, null, null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (index != -1) {
+                        name = cursor.getString(index)
+                    }
+                }
+            }
+        }
+        if (name == null) {
+            name = uri.path
+            val cut = name?.lastIndexOf('/')
+            if (cut != null && cut != -1) {
+                name = name?.substring(cut + 1)
+            }
+        }
+        return name
+    }
+
+    fun clearImportedFeatures() {
+        _importedFeatures.value = emptyList()
     }
 
 

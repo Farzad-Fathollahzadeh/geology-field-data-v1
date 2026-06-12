@@ -10,7 +10,7 @@ object UtmConverter {
         val zoneString: String get() = "$zoneNumber$zoneChar"
         
         override fun toString(): String {
-            return "${String.format("%.1f", easting)} E, ${String.format("%.1f", northing)} N, Zone $zoneNumber$zoneChar"
+            return "${String.format("%.3f", easting)} E, ${String.format("%.3f", northing)} N, Zone $zoneNumber$zoneChar"
         }
     }
 
