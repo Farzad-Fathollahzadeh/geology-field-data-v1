@@ -123,36 +123,5 @@ dependencies {
   "ksp"(libs.moshi.kotlin.codegen)
 }
 
-tasks.register("copyLauncherIcons") {
-    val src = layout.projectDirectory.file("src/main/res/drawable/img_app_icon_1781003926200.png").asFile
-    val resDir = layout.projectDirectory.dir("src/main/res").asFile
 
-    inputs.file(src)
-    outputs.dirs(densitiesList(resDir))
-
-    doLast {
-        if (src.exists()) {
-            val densities = listOf("mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi")
-            for (density in densities) {
-                val destDir = File(resDir, "mipmap-$density")
-                destDir.mkdirs()
-                val destFileNormal = File(destDir, "ic_launcher.png")
-                val destFileRound = File(destDir, "ic_launcher_round.png")
-                src.copyTo(destFileNormal, overwrite = true)
-                src.copyTo(destFileRound, overwrite = true)
-            }
-            println("Launcher icons copied to mipmap density folders successfully.")
-        } else {
-            println("Source icon file not found at ${src.absolutePath}")
-        }
-    }
-}
-
-fun densitiesList(resDir: File): List<File> {
-    return listOf("mdpi", "hdpi", "xhdpi", "xxhdpi", "xxxhdpi").map { File(resDir, "mipmap-$it") }
-}
-
-tasks.named("preBuild") {
-    dependsOn("copyLauncherIcons")
-}
 
