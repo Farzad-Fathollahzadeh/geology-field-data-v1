@@ -12,6 +12,15 @@ GeoField Pro is a professional, high-precision, offline-first mobile field data 
 
 ---
 
+## 📲 دانلود و نصب مستقیم (Install Direct APK)
+
+به منظور دانلود و نصب سریع برنامه روی دمو و تلفن همراه اندروید، می‌توانید فایل نصبی آماده زیر را مستقیماً از داخل مخزن گیت‌هاب دانلود فرمایید:
+
+*   **📥 [دانلود مستقیم فایل GeoFieldPro.apk (کلیک نمایید)](./GeoFieldPro.apk?raw=true)** — دانلود آخرین نسخه آماده و پایدار برنامه.
+*   **⚙️ [دانلود از بخش GitHub Releases](https://github.com/farzad-f/geofieldpro/releases)** — به صورت خودکار توسط سیستم CI/CD پس از هر بروزرسانی ساخته می‌شود.
+
+---
+
 ## 🚀 Key Achievements & Features
 
 *   **🌐 Comprehensive Map Providers**: Toggle seamlessly between multiple high-resolution online web-maps:
