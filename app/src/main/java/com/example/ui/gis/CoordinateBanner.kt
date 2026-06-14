@@ -47,40 +47,41 @@ fun CoordinateBanner(
     }
 
     // Dynamic convert to MGRS (simulated mathematically for robust GIS standard presentation)
-    val mgrsString = remember(latitude, longitude) {
-        val zoneNum = ((longitude + 180) / 6).toInt() + 1
-        val band = when {
-            latitude >= 72.0 -> "X"
-            latitude >= 64.0 -> "W"
-            latitude >= 56.0 -> "V"
-            latitude >= 48.0 -> "U"
-            latitude >= 40.0 -> "T"
-            latitude >= 32.0 -> "S"
-            latitude >= 24.0 -> "R"
-            latitude >= 16.0 -> "Q"
-            latitude >= 8.0 -> "P"
-            latitude >= 0.0 -> "N"
-            latitude >= -8.0 -> "M"
-            latitude >= -16.0 -> "L"
-            latitude >= -24.0 -> "K"
-            latitude >= -32.0 -> "J"
-            latitude >= -40.0 -> "H"
-            latitude >= -48.0 -> "G"
-            latitude >= -56.0 -> "F"
-            latitude >= -64.0 -> "E"
-            latitude >= -72.0 -> "D"
-            else -> "C"
+    // Dynamic convert to MGRS (standard military-grade grid calculations with 1-meter precision)
+    val mgrsString = remember(latitude, longitude, utmCoord) {
+        if (utmCoord == null) {
+            "GZD Converting..."
+        } else {
+            val z = utmCoord.zoneNumber
+            val band = utmCoord.zoneChar
+            
+            // 100km column letters (excluding I and O)
+            val colLetters = "ABCDEFGHJKLMNPQRSTUVXYZ"
+            val colIndex = (utmCoord.easting / 100000).toInt()
+            val colOffset = ((z - 1) % 3) * 8
+            val colLetter = colLetters[(colIndex - 1 + colOffset) % colLetters.length]
+            
+            // 100km row letters (excluding I and O)
+            val rowLetters = "ABCDEFGHJKLMNPQRSTUV"
+            val rowIndex = (utmCoord.northing / 100000).toInt() % 20
+            val rowOffset = if (z % 2 != 0) 0 else 5
+            val rowLetter = rowLetters[(rowIndex + rowOffset) % rowLetters.length]
+            
+            val eastMeters = (utmCoord.easting % 100000).toInt().coerceIn(0, 99999)
+            val northMeters = (utmCoord.northing % 100000).toInt().coerceIn(0, 99999)
+            
+            val eStr = String.format(Locale.US, "%05d", eastMeters)
+            val nStr = String.format(Locale.US, "%05d", northMeters)
+            
+            "$z$band $colLetter$rowLetter $eStr $nStr"
         }
-        val eastCode = (latitude.hashCode() % 100000).coerceAtLeast(10000)
-        val northCode = (longitude.hashCode() % 100000).coerceAtLeast(10000)
-        "${zoneNum}${band} VF ${eastCode} ${northCode}"
     }
 
     val readoutText = when (selectedFormatIndex) {
-        0 -> "WGS84: ${String.format(Locale.US, "%.5f", latitude)}°, ${String.format(Locale.US, "%.5f", longitude)}°"
+        0 -> "WGS84: ${String.format(Locale.US, "%.8f", latitude)}° Lat, ${String.format(Locale.US, "%.8f", longitude)}° Lon"
         1 -> {
             if (utmCoord != null) {
-                "UTM: ${utmCoord.zoneString} ${String.format(Locale.US, "%.0f", utmCoord.easting)}m E, ${String.format(Locale.US, "%.0f", utmCoord.northing)}m N"
+                "UTM: ${utmCoord.zoneString} ${String.format(Locale.US, "%.2f", utmCoord.easting)}m E, ${String.format(Locale.US, "%.2f", utmCoord.northing)}m N"
             } else {
                 "UTM: Converting..."
             }

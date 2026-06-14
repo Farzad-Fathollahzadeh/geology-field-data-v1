@@ -63,7 +63,7 @@ fun LayerManagerSheet(
     val cardColor = if (isOutdoorMode) Color.White else Color(0xFF161E1B)
     val textColor = if (isOutdoorMode) Color.Black else Color.White
 
-    val mapProviders = listOf("Google Satellite", "OpenTopoMap", "OpenStreetMap", "Offline Topo-Raster")
+    val mapProviders = listOf("Esri Satellite (No-Key)", "Google Satellite", "OpenTopoMap", "OpenStreetMap", "Offline Topo-Raster")
     var selectedTab by remember { mutableStateOf(0) } // 0: Layers & Opacity, 1: Offline Caching
     val scrollState = rememberScrollState()
 

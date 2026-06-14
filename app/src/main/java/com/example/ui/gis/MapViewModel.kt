@@ -23,10 +23,10 @@ class MapViewModel : ViewModel() {
     val uiState: StateFlow<MapUiState> = _uiState.asStateFlow()
 
     // Interactive Map telemetry parameters
-    private val _zoomLevel = MutableStateFlow(4)
+    private val _zoomLevel = MutableStateFlow(15)
     val zoomLevel: StateFlow<Int> = _zoomLevel.asStateFlow()
 
-    private val _activeBaseMap = MutableStateFlow("Google Satellite")
+    private val _activeBaseMap = MutableStateFlow("OpenStreetMap")
     val activeBaseMap: StateFlow<String> = _activeBaseMap.asStateFlow()
 
     private val _isOutdoorMode = MutableStateFlow(false)
@@ -108,7 +108,7 @@ class MapViewModel : ViewModel() {
     }
 
     fun setZoomLevel(zoom: Int) {
-        _zoomLevel.value = zoom.coerceIn(1, 8)
+        _zoomLevel.value = zoom.coerceIn(1, 21)
     }
 
     fun setActiveBaseMap(baseMap: String) {

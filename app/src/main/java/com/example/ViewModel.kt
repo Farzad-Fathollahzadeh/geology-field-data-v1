@@ -13,7 +13,6 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.Room
-import com.example.UtmConverter.convertLatLngToUtm
 import android.location.GnssStatus
 import android.location.LocationManager
 import android.os.Build
@@ -82,13 +81,15 @@ data class ImportedFeature(
 
 class GeologyViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val db = Room.databaseBuilder(
-        application,
-        GeologyDatabase::class.java,
-        "geology_field_logger.db"
-    ).fallbackToDestructiveMigration().build()
+    private val db by lazy {
+        Room.databaseBuilder(
+            application,
+            GeologyDatabase::class.java,
+            "geology_field_logger.db"
+        ).fallbackToDestructiveMigration().build()
+    }
     
-    val dao = db.dao()
+    val dao by lazy { db.dao() }
 
     private val prefs = application.getSharedPreferences("geofield_prefs", Context.MODE_PRIVATE)
 
@@ -142,7 +143,8 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun processIncomingLocation(location: android.location.Location, sourceText: String) {
-        if (location.accuracy > 150.0) return
+        // Allow user position mapping up to 3000m limit for visual awareness, preventing complete failures to locate
+        if (location.accuracy > 3000.0) return
 
         val currentLive = _liveLocation.value
         if (currentLive != null) {
@@ -156,7 +158,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
         
         val activeProj = activeProject.value
         val forcedZone = if (activeProj?.utmZoneMode == "MANUAL") activeProj.utmZoneManual else null
-        val utm = convertLatLngToUtm(location.latitude, location.longitude, forcedZone)
+        val utm = UtmConverter.convertLatLngToUtm(location.latitude, location.longitude, forcedZone)
         val elevAcc = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O && location.hasVerticalAccuracy()) {
             location.verticalAccuracyMeters.toDouble()
         } else {
@@ -180,15 +182,18 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
         }
 
         if (_isTrackRecordingEnabled.value) {
-            val newPoint = TrackPoint(
-                lat = location.latitude,
-                lon = location.longitude,
-                ele = location.altitude,
-                time = System.currentTimeMillis(),
-                accuracy = location.accuracy.toDouble(),
-                heading = location.bearing.toDouble()
-            )
-            appendTrackPoint(newPoint)
+            // Only record track points if precision is under the 150m quality threshold
+            if (location.accuracy <= 150.0) {
+                val newPoint = TrackPoint(
+                    lat = location.latitude,
+                    lon = location.longitude,
+                    ele = location.altitude,
+                    time = System.currentTimeMillis(),
+                    accuracy = location.accuracy.toDouble(),
+                    heading = location.bearing.toDouble()
+                )
+                appendTrackPoint(newPoint)
+            }
         }
     }
 
@@ -1328,7 +1333,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
             
             val activeProj = activeProject.value
             val forcedZone = if (activeProj?.utmZoneMode == "MANUAL") activeProj.utmZoneManual else null
-            val utm = convertLatLngToUtm(simLat, simLon, forcedZone)
+            val utm = UtmConverter.convertLatLngToUtm(simLat, simLon, forcedZone)
 
             _gpsState.update {
                 it.copy(
@@ -1379,7 +1384,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
             if (location != null) {
                 val activeProj = activeProject.value
                 val forcedZone = if (activeProj?.utmZoneMode == "MANUAL") activeProj.utmZoneManual else null
-                val utm = convertLatLngToUtm(location.latitude, location.longitude, forcedZone)
+                val utm = UtmConverter.convertLatLngToUtm(location.latitude, location.longitude, forcedZone)
                 val elevAcc = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O && location.hasVerticalAccuracy()) {
                     location.verticalAccuracyMeters.toDouble()
                 } else {
@@ -1421,7 +1426,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                     if (bestLocation != null) {
                         val activeProj = activeProject.value
                         val forcedZone = if (activeProj?.utmZoneMode == "MANUAL") activeProj.utmZoneManual else null
-                        val utm = convertLatLngToUtm(bestLocation.latitude, bestLocation.longitude, forcedZone)
+                        val utm = UtmConverter.convertLatLngToUtm(bestLocation.latitude, bestLocation.longitude, forcedZone)
                         val elevAcc = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O && bestLocation.hasVerticalAccuracy()) {
                             bestLocation.verticalAccuracyMeters.toDouble()
                         } else {
@@ -1475,7 +1480,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
                 if (bestLocation != null) {
                     val activeProj = activeProject.value
                     val forcedZone = if (activeProj?.utmZoneMode == "MANUAL") activeProj.utmZoneManual else null
-                    val utm = convertLatLngToUtm(bestLocation.latitude, bestLocation.longitude, forcedZone)
+                    val utm = UtmConverter.convertLatLngToUtm(bestLocation.latitude, bestLocation.longitude, forcedZone)
                     _gpsState.update {
                         it.copy(
                             latitude = bestLocation.latitude,
@@ -1513,7 +1518,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
     fun setManualCoordinates(lat: Double, lng: Double, elev: Double, acc: Double) {
         val activeProj = activeProject.value
         val forcedZone = if (activeProj?.utmZoneMode == "MANUAL") activeProj.utmZoneManual else null
-        val utm = convertLatLngToUtm(lat, lng, forcedZone)
+        val utm = UtmConverter.convertLatLngToUtm(lat, lng, forcedZone)
         _gpsState.value = GpsData(
             latitude = lat,
             longitude = lng,

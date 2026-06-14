@@ -1,6 +1,7 @@
 package com.example.ui.gis
 
 import android.widget.Toast
+import com.google.accompanist.permissions.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -32,7 +33,7 @@ import kotlinx.coroutines.launch
 import com.example.*
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, com.google.accompanist.permissions.ExperimentalPermissionsApi::class)
 @Composable
 fun MapScreen(
     geologyViewModel: GeologyViewModel,
@@ -76,9 +77,34 @@ fun MapScreen(
 
     val scope = rememberCoroutineScope()
 
+    val locationPermissionsState = com.google.accompanist.permissions.rememberMultiplePermissionsState(
+        permissions = listOf(
+            android.Manifest.permission.ACCESS_FINE_LOCATION,
+            android.Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+    )
+    val isAnyLocationPermissionGranted = locationPermissionsState.permissions.any { it.status.isGranted }
+
     // GPS tracking local telemetry parameter overrides
-    var isRealPositionEnabled by remember { mutableStateOf(false) }
+    var isRealPositionEnabled by remember { mutableStateOf(true) }
     var lockGpsCenter by remember { mutableStateOf(true) }
+
+    // Automatically trigger live GPS tracking on screen launch and auto-request permission if not granted
+    LaunchedEffect(Unit) {
+        if (!isAnyLocationPermissionGranted) {
+            locationPermissionsState.launchMultiplePermissionRequest()
+        } else {
+            isRealPositionEnabled = true
+            geologyViewModel.startLocationTracking(context)
+        }
+    }
+
+    LaunchedEffect(isAnyLocationPermissionGranted) {
+        if (isAnyLocationPermissionGranted) {
+            isRealPositionEnabled = true
+            geologyViewModel.startLocationTracking(context)
+        }
+    }
 
     // Manual navigation target
     var navigationTargetStation by remember { mutableStateOf<Station?>(null) }
@@ -151,7 +177,9 @@ fun MapScreen(
             "OpenTopoMap" -> "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png"
             "OpenStreetMap" -> "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             "Offline Topo-Raster" -> "https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png" // simulated offline raster tiles
-            else -> "https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v11/tiles/{z}/{x}/{y}?access_token={token}"
+            "Esri Satellite (No-Key)" -> "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+            "Google Satellite" -> "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"
+            else -> "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
         }
     }
 
@@ -200,13 +228,14 @@ fun MapScreen(
         }
 
         // --- LAYER 1: HEADS-UP COORDINATES TELEMETRY BANNER & MODE SELECTOR ---
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.TopCenter)
-                .padding(top = 16.dp, start = 12.dp, end = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+        if (uiState is MapUiState.Idle) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter)
+                    .padding(top = 16.dp, start = 12.dp, end = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
             // Elegant bilingual mode switcher at the top to quickly toggle Simple/Advanced views to avoid confusion
             Card(
                 colors = CardDefaults.cardColors(
@@ -298,13 +327,15 @@ fun MapScreen(
                 }
             }
         }
+    }
 
         // --- LAYER 2: INTERACTIVE D-PAD COMPASS & FLYOUT SHORTCUTS ---
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(bottom = 80.dp, start = 12.dp, end = 12.dp)
-        ) {
+        if (uiState is MapUiState.Idle) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 80.dp, start = 12.dp, end = 12.dp)
+            ) {
             // Left column: Zoom triggers + Compass Widget + Move Simulator Toggle
             Column(
                 modifier = Modifier
@@ -481,6 +512,7 @@ fun MapScreen(
                 modifier = Modifier.align(Alignment.BottomEnd)
             )
         }
+    }
 
         // --- LAYER 3: COMPACT BOTTOM BAR OR LANDSCAPE TAB SHEET (64.dp) ---
         Card(

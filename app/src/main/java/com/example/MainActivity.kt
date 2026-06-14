@@ -2281,9 +2281,13 @@ fun CreateStationScreen(
     }
     
     // GPS request logic
-    val locationPermissionState = rememberPermissionState(
-        permission = Manifest.permission.ACCESS_FINE_LOCATION
+    val locationPermissionsState = rememberMultiplePermissionsState(
+        permissions = listOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
     )
+    val isAnyLocationPermissionGranted = locationPermissionsState.permissions.any { it.status.isGranted }
 
     // Sync generated station code whenever prefix transitions
     LaunchedEffect(selectedPrefix) {
@@ -2295,7 +2299,7 @@ fun CreateStationScreen(
     // Trigger auto GPS locating safely on screen enter
     LaunchedEffect(Unit) {
         viewModel.resetGpsState()
-        if (locationPermissionState.status.isGranted) {
+        if (isAnyLocationPermissionGranted) {
             viewModel.captureLocation(context, "GPS")
         } else {
             viewModel.captureLocation(context, "SIMULATE")
@@ -2841,10 +2845,10 @@ fun CreateStationScreen(
                 ) {
                     Button(
                         onClick = {
-                            if (locationPermissionState.status.isGranted) {
+                            if (isAnyLocationPermissionGranted) {
                                 viewModel.captureLocation(context, "GPS")
                             } else {
-                                locationPermissionState.launchPermissionRequest()
+                                locationPermissionsState.launchMultiplePermissionRequest()
                             }
                         },
                         modifier = Modifier
@@ -9525,8 +9529,9 @@ fun generateLeafletHtml(
                     resizeCanvas();
                 }
 
+                var map = null;
                 function initLeafletMap() {
-                    var map = L.map('map', {
+                    map = L.map('map', {
                         zoomControl: false,
                         attributionControl: false
                     }).setView([$defaultLat, $defaultLon], $leafZoom);
@@ -10047,12 +10052,10 @@ fun WebViewMap(
         tileUrl
     }
     
-    val initialLat = remember(stations) {
-        if (stations.isNotEmpty()) stations.map { it.latitude }.average() else currentLat
-    }
-    val initialLon = remember(stations) {
-        if (stations.isNotEmpty()) stations.map { it.longitude }.average() else currentLon
-    }
+    // Only lock to original coordinates until a real position is locked or panned, then update initial map coordinates once
+    val isDefaultCoordinates = currentLat == 35.69439 && currentLon == 51.42151
+    val initialLat = remember(isDefaultCoordinates) { currentLat }
+    val initialLon = remember(isDefaultCoordinates) { currentLon }
     
     val htmlContent = remember(stations, observations, trackPoints, contactsList, resolvedTileUrl, isOutdoorMode, baseMapOpacity, offlineModeForce, showOfflineBoundaries, downloadedRegions, importedFeatures) {
         generateLeafletHtml(
@@ -10124,34 +10127,45 @@ fun WebViewMap(
                         val pLat = pannedCenterLatState.value
                         val pLon = pannedCenterLonState.value
 
-                        view?.evaluateJavascript(
-                            "if (typeof updateLiveLocation !== 'undefined') { updateLiveLocation($lat, $lon, $accuracy, $realPos, $lock, $lz); }",
-                            null
-                        )
-                        view?.evaluateJavascript(
-                            "if (typeof setUtmGridVisible !== 'undefined') { setUtmGridVisible($utmGrid); }",
-                            null
-                        )
+                        val hasNavTarget = navigationTargetStationState.value != null
+                        val navTargetLat = navigationTargetStationState.value?.latitude ?: 0.0
+                        val navTargetLon = navigationTargetStationState.value?.longitude ?: 0.0
 
-                        val navTarget = navigationTargetStationState.value
-                        if (navTarget != null) {
-                            view?.evaluateJavascript(
-                                "if (typeof updateNavigationLine !== 'undefined') { updateNavigationLine($lat, $lon, ${navTarget.latitude}, ${navTarget.longitude}, true); }",
-                                null
-                            )
-                        }
+                        val hasRuler = rx != null
+                        val rxLat = rx?.lat ?: 0.0
+                        val rxLon = rx?.lon ?: 0.0
 
-                        if (rx != null) {
-                            view?.evaluateJavascript(
-                                "if (typeof updateRulerLine !== 'undefined') { updateRulerLine(${rx.lat}, ${rx.lon}, $pLat, $pLon, true); }",
-                                null
-                            )
-                        } else {
-                            view?.evaluateJavascript(
-                                "if (typeof updateRulerLine !== 'undefined') { updateRulerLine(0, 0, 0, 0, false); }",
-                                null
-                            )
-                        }
+                        val jsCall = """
+                            (function() {
+                                var attempts = 0;
+                                var r = function() {
+                                    if (typeof updateLiveLocation !== 'undefined') {
+                                        updateLiveLocation($lat, $lon, $accuracy, $realPos, $lock, $lz);
+                                        if (typeof setUtmGridVisible !== 'undefined') { setUtmGridVisible($utmGrid); }
+                                        
+                                        if ($hasNavTarget) {
+                                            if (typeof updateNavigationLine !== 'undefined') {
+                                                updateNavigationLine($lat, $lon, $navTargetLat, $navTargetLon, true);
+                                            }
+                                        }
+                                        
+                                        if (typeof updateRulerLine !== 'undefined') {
+                                            if ($hasRuler) {
+                                                updateRulerLine($rxLat, $rxLon, $pLat, $pLon, true);
+                                            } else {
+                                                updateRulerLine(0, 0, 0, 0, false);
+                                            }
+                                        }
+                                    } else if (attempts < 40) {
+                                        attempts++;
+                                        setTimeout(r, 150);
+                                    }
+                                };
+                                r();
+                            })();
+                        """.trimIndent()
+
+                        view?.evaluateJavascript(jsCall, null)
                     }
                 }
                 settings.javaScriptEnabled = true
@@ -10207,6 +10221,7 @@ fun WebViewMap(
 }
 
 enum class MapLayerProvider(val label: String, val url: String) {
+    ESRI_SATELLITE("Esri World Sat (No-Key)", "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"),
     GOOGLE_SATELLITE("Google Sat", "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}"),
     GOOGLE_HYBRID("Google Hybrid", "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}"),
     GOOGLE_TERRAIN("Google Terrain/Topo", "https://mt1.google.com/vt/lyrs=p&x={x}&y={y}&z={z}"),
@@ -10286,7 +10301,7 @@ fun MapContent(viewModel: GeologyViewModel) {
     val stationsToShow = if (projectStations.isNotEmpty()) projectStations else allStationsList
     var zoomLevel by remember { mutableStateOf(14) } // 3 to 21, default 14
     var mapMode by remember { mutableStateOf(if (isInternetAvailable(context)) MapMode.ONLINE else MapMode.OFFLINE) }
-    var mapLayer by remember { mutableStateOf(MapLayerProvider.GOOGLE_SATELLITE) }
+    var mapLayer by remember { mutableStateOf(MapLayerProvider.GOOGLE_ROADMAP) }
     var mapboxTokenInput by remember { mutableStateOf("pk.eyJ1IjoiZmFyemFkZiIsImEiOiJjbHpiaXdwZ3cwMTF5MndzYzhvdzBoMHp1In0.6R0R9z84Vd-M208r_6oY7g") }
     
     // UI Panel Panels states
@@ -10364,21 +10379,25 @@ fun MapContent(viewModel: GeologyViewModel) {
 
     var isRealPositionEnabled by remember { mutableStateOf(false) }
 
-    val locationPermissionState = rememberPermissionState(
-        permission = Manifest.permission.ACCESS_FINE_LOCATION
+    val locationPermissionsState = rememberMultiplePermissionsState(
+        permissions = listOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
     )
+    val isAnyLocationPermissionGranted = locationPermissionsState.permissions.any { it.status.isGranted }
 
     // Automatically trigger live GPS tracking on screen launch and auto-request permission if not granted
     LaunchedEffect(Unit) {
-        if (!locationPermissionState.status.isGranted) {
-            locationPermissionState.launchPermissionRequest()
+        if (!isAnyLocationPermissionGranted) {
+            locationPermissionsState.launchMultiplePermissionRequest()
         } else {
             isRealPositionEnabled = true
         }
     }
 
-    LaunchedEffect(locationPermissionState.status.isGranted) {
-        if (locationPermissionState.status.isGranted) {
+    LaunchedEffect(isAnyLocationPermissionGranted) {
+        if (isAnyLocationPermissionGranted) {
             isRealPositionEnabled = true
         }
     }
@@ -10391,8 +10410,8 @@ fun MapContent(viewModel: GeologyViewModel) {
     var showUtmGrid by remember { mutableStateOf(true) }
 
     // Start location tracking if real position is chosen and permission is granted
-    LaunchedEffect(isRealPositionEnabled, locationPermissionState.status.isGranted) {
-        if (isRealPositionEnabled && locationPermissionState.status.isGranted) {
+    LaunchedEffect(isRealPositionEnabled, isAnyLocationPermissionGranted) {
+        if (isRealPositionEnabled && isAnyLocationPermissionGranted) {
             viewModel.startLocationTracking(context)
         } else if (!isRealPositionEnabled && !isTrackRecordingEnabled) {
             viewModel.stopLocationTracking()
@@ -10401,8 +10420,8 @@ fun MapContent(viewModel: GeologyViewModel) {
 
     // GNSS linked rules
     fun onRealPositionChanged(enabled: Boolean) {
-        if (enabled && !locationPermissionState.status.isGranted) {
-            locationPermissionState.launchPermissionRequest()
+        if (enabled && !isAnyLocationPermissionGranted) {
+            locationPermissionsState.launchMultiplePermissionRequest()
         }
         isRealPositionEnabled = enabled
         if (enabled) {
@@ -10425,8 +10444,8 @@ fun MapContent(viewModel: GeologyViewModel) {
     var exportFormatChoice by remember { mutableStateOf("GPX") }
 
     fun onTrackRecordingChanged(enabled: Boolean) {
-        if (enabled && !locationPermissionState.status.isGranted) {
-            locationPermissionState.launchPermissionRequest()
+        if (enabled && !isAnyLocationPermissionGranted) {
+            locationPermissionsState.launchMultiplePermissionRequest()
         }
         trackRecording = enabled
         if (enabled) {
@@ -10449,11 +10468,25 @@ fun MapContent(viewModel: GeologyViewModel) {
     }
 
     // Determine dynamic default coordinates based on active project's stations or last known location
-    val defaultInitialLat = remember(projectStations) {
-        if (projectStations.isNotEmpty()) projectStations.map { it.latitude }.average() else 35.69439
+    val defaultInitialLat = remember(projectStations, liveLocation) {
+        val loc = liveLocation
+        if (loc != null) {
+            loc.latitude
+        } else if (projectStations.isNotEmpty()) {
+            projectStations.map { it.latitude }.average()
+        } else {
+            35.69439
+        }
     }
-    val defaultInitialLon = remember(projectStations) {
-        if (projectStations.isNotEmpty()) projectStations.map { it.longitude }.average() else 51.42151
+    val defaultInitialLon = remember(projectStations, liveLocation) {
+        val loc = liveLocation
+        if (loc != null) {
+            loc.longitude
+        } else if (projectStations.isNotEmpty()) {
+            projectStations.map { it.longitude }.average()
+        } else {
+            51.42151
+        }
     }
 
     // Coordinates Simulation Walker
@@ -10476,6 +10509,11 @@ fun MapContent(viewModel: GeologyViewModel) {
         if (liveLocation != null) liveLocation!!.bearing.toDouble() else simulatorHeading
     } else {
         simulatorHeading
+    }
+    val currentAltitude = if (isRealPositionEnabled) {
+        if (liveLocation != null) liveLocation!!.altitude else if (gpsState.isCaptured) gpsState.elevation else 1420.0
+    } else {
+        1420.0
     }
 
     var pannedCenterLat by remember(defaultInitialLat) { mutableStateOf(defaultInitialLat) }
@@ -11081,33 +11119,34 @@ fun MapContent(viewModel: GeologyViewModel) {
         }
 
         fun formatMGRS(latitude: Double, longitude: Double): String {
-            val zoneNum = (((longitude + 180) / 6).toInt() % 60) + 1
-            val band = when {
-                latitude >= 84 || latitude < -80 -> 'Z'
-                latitude >= 72 -> 'X'
-                latitude >= 64 -> 'W'
-                latitude >= 56 -> 'V'
-                latitude >= 48 -> 'U'
-                latitude >= 40 -> 'T'
-                latitude >= 32 -> 'S'
-                latitude >= 24 -> 'R'
-                latitude >= 16 -> 'Q'
-                latitude >= 8 -> 'P'
-                latitude >= 0 -> 'N'
-                latitude >= -8 -> 'M'
-                latitude >= -16 -> 'L'
-                latitude >= -24 -> 'K'
-                latitude >= -32 -> 'J'
-                latitude >= -40 -> 'H'
-                latitude >= -48 -> 'G'
-                latitude >= -56 -> 'F'
-                latitude >= -64 -> 'E'
-                latitude >= -72 -> 'D'
-                else -> 'C'
+            return try {
+                val utmCoord = UtmConverter.convertLatLngToUtm(latitude, longitude)
+                val z = utmCoord.zoneNumber
+                val band = utmCoord.zoneChar
+                
+                // 100km column letters (excluding I and O)
+                val colLetters = "ABCDEFGHJKLMNPQRSTUVXYZ"
+                val colIndex = (utmCoord.easting / 100000).toInt()
+                val colOffset = ((z - 1) % 3) * 8
+                val colLetter = colLetters[(colIndex - 1 + colOffset) % colLetters.length]
+                
+                // 100km row letters (excluding I and O)
+                val rowLetters = "ABCDEFGHJKLMNPQRSTUV"
+                val rowIndex = (utmCoord.northing / 100000).toInt() % 20
+                val rowOffset = if (z % 2 != 0) 0 else 5
+                val rowLetter = rowLetters[(rowIndex + rowOffset) % rowLetters.length]
+                
+                val eastMeters = (utmCoord.easting % 100000).toInt().coerceIn(0, 99999)
+                val northMeters = (utmCoord.northing % 100000).toInt().coerceIn(0, 99999)
+                
+                val eStr = String.format(Locale.US, "%05d", eastMeters)
+                val nStr = String.format(Locale.US, "%05d", northMeters)
+                
+                "$z$band $colLetter$rowLetter $eStr $nStr"
+            } catch (e: Exception) {
+                val zoneNum = (((longitude + 180) / 6).toInt() % 60) + 1
+                "${zoneNum}N VF 00000 00000"
             }
-            val eastCode = (latitude.hashCode() % 100000).coerceAtLeast(10000)
-            val northCode = (longitude.hashCode() % 100000).coerceAtLeast(10000)
-            return "${zoneNum}${band} VF ${eastCode} ${northCode}"
         }
 
         val isAnyGisPanelOpen = isGisToolboxOpen || isMapLayerPanelVisible || isStructuralPanelVisible || 
@@ -11440,7 +11479,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                         
                         Text("LAT: ${String.format(Locale.US, "%.8f°N", currentLat)}", fontSize = 9.sp, color = labelTextCol, fontFamily = FontFamily.Monospace)
                         Text("LON: ${String.format(Locale.US, "%.8f°E", currentLon)}", fontSize = 9.sp, color = labelTextCol, fontFamily = FontFamily.Monospace)
-                        Text("ALTITUDE: 1210m MSL", fontSize = 9.sp, color = labelTextCol, fontFamily = FontFamily.Monospace)
+                        Text("ALTITUDE: ${String.format(Locale.US, "%.1f", currentAltitude)}m MSL", fontSize = 9.sp, color = labelTextCol, fontFamily = FontFamily.Monospace)
                         
                         val precisionStr = if (gpsAccuracy < 1.0) {
                             String.format(Locale.US, "±%.2f m (%.0f cm)", gpsAccuracy, gpsAccuracy * 100.0)
