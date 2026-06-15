@@ -518,6 +518,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
     val themeSetting = MutableStateFlow(prefs.getString("theme", "Dark") ?: "Dark")
     val fontSizeSetting = MutableStateFlow(prefs.getString("font_size", "Standard") ?: "Standard")
     val coordSystemSetting = MutableStateFlow(prefs.getString("coord_system", "UTM") ?: "UTM")
+    val isFarsiModeSetting = MutableStateFlow(prefs.getBoolean("is_farsi_mode", false))
 
     val customTileUrl = MutableStateFlow(prefs.getString("custom_tile_url", "") ?: "")
     val customTileLabel = MutableStateFlow(prefs.getString("custom_tile_label", "") ?: "")
@@ -547,6 +548,10 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
     fun setCoordSystemSetting(coord: String) { 
         coordSystemSetting.value = coord 
         prefs.edit().putString("coord_system", coord).apply()
+    }
+    fun setFarsiMode(enabled: Boolean) {
+        isFarsiModeSetting.value = enabled
+        prefs.edit().putBoolean("is_farsi_mode", enabled).apply()
     }
 
     // --- KML & KMZ GEOSPATIAL FILE IMPORT ENGINE ---

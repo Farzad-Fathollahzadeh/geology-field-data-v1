@@ -1,5 +1,7 @@
 package com.example
 
+import java.util.Locale
+
 object UtmConverter {
     data class UtmResult(
         val easting: Double,
@@ -110,6 +112,90 @@ object UtmConverter {
             lat >= -64 -> 'E'
             lat >= -72 -> 'D'
             else -> 'C'
+        }
+    }
+
+    fun formatDMS(value: Double, isLat: Boolean): String {
+        val direction = if (isLat) {
+            if (value >= 0) "N" else "S"
+        } else {
+            if (value >= 0) "E" else "W"
+        }
+        val absVal = Math.abs(value)
+        val degrees = absVal.toInt()
+        val minutesAndSec = (absVal - degrees) * 60.0
+        val minutes = minutesAndSec.toInt()
+        val seconds = (minutesAndSec - minutes) * 60.0
+        return String.format(Locale.US, "%d°%02d'%02.1f\"%s", degrees, minutes, seconds, direction)
+    }
+
+    fun formatDDM(value: Double, isLat: Boolean): String {
+        val direction = if (isLat) {
+            if (value >= 0) "N" else "S"
+        } else {
+            if (value >= 0) "E" else "W"
+        }
+        val absVal = Math.abs(value)
+        val degrees = absVal.toInt()
+        val minutes = (absVal - degrees) * 60.0
+        return String.format(Locale.US, "%d°%07.4f'%s", degrees, minutes, direction)
+    }
+
+    fun formatMGRS(latitude: Double, longitude: Double): String {
+        return try {
+            val utmCoord = convertLatLngToUtm(latitude, longitude)
+            val z = utmCoord.zoneNumber
+            val band = utmCoord.zoneChar
+            
+            // 100km column letters (excluding I and O)
+            val colLetters = "ABCDEFGHJKLMNPQRSTUVXYZ"
+            val colIndex = (utmCoord.easting / 100000).toInt()
+            val colOffset = ((z - 1) % 3) * 8
+            val colLetter = colLetters[(colIndex - 1 + colOffset) % colLetters.length]
+            
+            // 100km row letters (excluding I and O)
+            val rowLetters = "ABCDEFGHJKLMNPQRSTUV"
+            val rowIndex = (utmCoord.northing / 100000).toInt() % 20
+            val rowOffset = if (z % 2 != 0) 0 else 5
+            val rowLetter = rowLetters[(rowIndex + rowOffset) % rowLetters.length]
+            
+            val eastMeters = (utmCoord.easting % 100000).toInt().coerceIn(0, 99999)
+            val northMeters = (utmCoord.northing % 100000).toInt().coerceIn(0, 99999)
+            
+            val eStr = String.format(Locale.US, "%05d", eastMeters)
+            val nStr = String.format(Locale.US, "%05d", northMeters)
+            
+            "$z$band $colLetter$rowLetter $eStr $nStr"
+        } catch (e: Exception) {
+            val zoneNum = (((longitude + 180) / 6).toInt() % 60) + 1
+            "${zoneNum}N VF 00000 00000"
+        }
+    }
+
+    fun formatCoordinateDisplay(
+        lat: Double,
+        lon: Double,
+        utmZone: String,
+        utmEasting: Double,
+        utmNorthing: Double,
+        coordSystemSetting: String
+    ): String {
+        return when (coordSystemSetting) {
+            "WGS84_DECIMAL" -> {
+                String.format(Locale.US, "%.8f° N, %.8f° E", lat, lon)
+            }
+            "WGS84_DMS" -> {
+                "${formatDMS(lat, true)}, ${formatDMS(lon, false)}"
+            }
+            "WGS84_DDM" -> {
+                "${formatDDM(lat, true)}, ${formatDDM(lon, false)}"
+            }
+            "MGRS" -> {
+                formatMGRS(lat, lon)
+            }
+            else -> { // "UTM"
+                "Zone $utmZone | ${String.format(Locale.US, "%.0f E, %.0f N", utmEasting, utmNorthing)}"
+            }
         }
     }
 }

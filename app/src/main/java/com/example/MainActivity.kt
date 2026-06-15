@@ -234,6 +234,7 @@ fun MainScreenContent(
     val themeSetting by viewModel.themeSetting.collectAsStateWithLifecycle()
     val fontSizeSetting by viewModel.fontSizeSetting.collectAsStateWithLifecycle()
     val coordSystemSetting by viewModel.coordSystemSetting.collectAsStateWithLifecycle()
+    val isFarsiMode by viewModel.isFarsiModeSetting.collectAsStateWithLifecycle()
 
     // Global Stats flows
     val allStations by viewModel.allStations.collectAsStateWithLifecycle()
@@ -717,17 +718,51 @@ fun MainScreenContent(
                                     modifier = Modifier.padding(10.dp),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
+                                    // Language Toggle Setting
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().height(36.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = if (isFarsiMode) "زبان برنامه (فارسی):" else "App Language (Persian):",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 10.5.sp,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = if (isFarsiMode) "فارسی" else "English",
+                                                fontSize = 9.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Switch(
+                                                checked = isFarsiMode,
+                                                onCheckedChange = { viewModel.setFarsiMode(it) },
+                                                colors = SwitchDefaults.colors(
+                                                    checkedThumbColor = MaterialTheme.colorScheme.primary,
+                                                    checkedTrackColor = MaterialTheme.colorScheme.primaryContainer
+                                                )
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(2.dp))
+
                                     // Theme Setting Selectors
-                                    Text("App Theme:", fontWeight = FontWeight.Bold, fontSize = 10.5.sp)
+                                    Text(if (isFarsiMode) "پوسته برنامه:" else "App Theme:", fontWeight = FontWeight.Bold, fontSize = 10.5.sp)
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
                                         listOf(
-                                            "Light" to "☀️ Light",
-                                            "Dark" to "🌙 Dark",
-                                            "HighContrast" to "⚡ Contrast",
-                                            "Silver" to "🔘 Silver"
+                                            "Light" to (if (isFarsiMode) "☀️ روشن" else "☀️ Light"),
+                                            "Dark" to (if (isFarsiMode) "🌙 تاریک" else "🌙 Dark"),
+                                            "HighContrast" to (if (isFarsiMode) "⚡ کنتراست" else "⚡ Contrast"),
+                                            "Silver" to (if (isFarsiMode) "🔘 نقره‌ای" else "🔘 Silver")
                                         ).forEach { (themeId, label) ->
                                             val isSelected = themeSetting == themeId
                                             Button(
@@ -740,7 +775,7 @@ fun MainScreenContent(
                                                 modifier = Modifier.weight(1f).height(30.dp),
                                                 shape = RoundedCornerShape(4.dp)
                                             ) {
-                                                Text(label, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                                Text(label, fontSize = 7.5.sp, fontWeight = FontWeight.Bold)
                                             }
                                         }
                                     }
@@ -748,12 +783,16 @@ fun MainScreenContent(
                                     Spacer(modifier = Modifier.height(2.dp))
 
                                     // Font Size Setting Selectors
-                                    Text("Font Size:", fontWeight = FontWeight.Bold, fontSize = 10.5.sp)
+                                    Text(if (isFarsiMode) "اندازه قلم:" else "Font Size:", fontWeight = FontWeight.Bold, fontSize = 10.5.sp)
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
-                                        listOf("Standard" to "Standard", "Large" to "Large", "Huge" to "Huge").forEach { (sizeId, label) ->
+                                        listOf(
+                                            "Standard" to (if (isFarsiMode) "استاندارد" else "Standard"),
+                                            "Large" to (if (isFarsiMode) "بزرگ" else "Large"),
+                                            "Huge" to (if (isFarsiMode) "خیلی بزرگ" else "Huge")
+                                        ).forEach { (sizeId, label) ->
                                             val isSelected = fontSizeSetting == sizeId
                                             Button(
                                                 onClick = { viewModel.setFontSizeSetting(sizeId) },
@@ -773,24 +812,46 @@ fun MainScreenContent(
                                     Spacer(modifier = Modifier.height(2.dp))
 
                                     // Coordinate System Selectors
-                                    Text("Display Coordinate System:", fontWeight = FontWeight.Bold, fontSize = 10.5.sp)
-                                    Row(
+                                    Text(
+                                        text = if (isFarsiMode) "سیستم نمایش مختصات:" else "Display Coordinate System:",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 10.5.sp
+                                    )
+                                    Column(
                                         modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
-                                        listOf("UTM" to "Universal UTM", "WGS84_DECIMAL" to "WGS84 Decimal").forEach { (coordId, label) ->
-                                            val isSelected = coordSystemSetting == coordId
-                                            Button(
-                                                onClick = { viewModel.setCoordSystemSetting(coordId) },
-                                                colors = ButtonDefaults.buttonColors(
-                                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
-                                                    contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                                                ),
-                                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
-                                                modifier = Modifier.weight(1f).height(30.dp),
-                                                shape = RoundedCornerShape(4.dp)
+                                        val row1 = listOf(
+                                            "UTM" to (if (isFarsiMode) "متریک UTM" else "UTM Metric"),
+                                            "WGS84_DECIMAL" to (if (isFarsiMode) "اعشاری WGS84" else "WGS84 Dec")
+                                        )
+                                        val row2 = listOf(
+                                            "WGS84_DMS" to (if (isFarsiMode) "ثانیه‌دار DMS" else "WGS84 DMS"),
+                                            "WGS84_DDM" to (if (isFarsiMode) "دقیقه‌دار DDM" else "WGS84 DDM")
+                                        )
+                                        val row3 = listOf(
+                                            "MGRS" to (if (isFarsiMode) "نظامی MGRS" else "MGRS Grid")
+                                        )
+                                        listOf(row1, row2, row3).forEach { rowItems ->
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                                             ) {
-                                                Text(label, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                                rowItems.forEach { (coordId, label) ->
+                                                    val isSelected = coordSystemSetting == coordId
+                                                    Button(
+                                                        onClick = { viewModel.setCoordSystemSetting(coordId) },
+                                                        colors = ButtonDefaults.buttonColors(
+                                                            containerColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                                                            contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                                        ),
+                                                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                                                        modifier = if (rowItems.size == 1) Modifier.fillMaxWidth().height(30.dp) else Modifier.weight(1f).height(30.dp),
+                                                        shape = RoundedCornerShape(4.dp)
+                                                    ) {
+                                                        Text(label, fontSize = 8.5.sp, fontWeight = FontWeight.Bold)
+                                                    }
+                                                }
                                             }
                                         }
                                     }
@@ -2161,11 +2222,14 @@ fun ProjectDashboardScreen(
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = if (coordSystemSetting == "WGS84_DECIMAL") {
-                                        String.format(Locale.US, "%.8f°, %.8f°", station.latitude, station.longitude)
-                                    } else {
-                                        "Zone ${station.utmZone} | ${String.format(Locale.US, "%.0f E, %.0f N", station.utmEasting, station.utmNorthing)}"
-                                    },
+                                    text = UtmConverter.formatCoordinateDisplay(
+                                        lat = station.latitude,
+                                        lon = station.longitude,
+                                        utmZone = station.utmZone,
+                                        utmEasting = station.utmEasting,
+                                        utmNorthing = station.utmNorthing,
+                                        coordSystemSetting = coordSystemSetting
+                                    ),
                                     fontSize = 12.sp,
                                     fontFamily = FontFamily.Monospace,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -2715,15 +2779,29 @@ fun CreateStationScreen(
                                 )
                             }
                         } else {
-                            if (coordSystemSetting == "WGS84_DECIMAL") {
+                            val isGeographic = coordSystemSetting != "UTM"
+                            if (isGeographic) {
                                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text("Latitude | Longitude (Primary)", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 13.sp)
+                                    val label = when (coordSystemSetting) {
+                                        "WGS84_DECIMAL" -> "WGS84 Lat/Lon (Primary)"
+                                        "WGS84_DMS" -> "WGS84 DMS (Primary)"
+                                        "MGRS" -> "MGRS Grid (Primary)"
+                                        else -> "Latitude/Longitude"
+                                    }
+                                    Text(label, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 13.sp)
                                     Text(
-                                        text = String.format(Locale.US, "%.8f°, %.8f°", gps.latitude, gps.longitude),
+                                        text = UtmConverter.formatCoordinateDisplay(
+                                            lat = gps.latitude,
+                                            lon = gps.longitude,
+                                            utmZone = gps.utmZone,
+                                            utmEasting = gps.utmEasting,
+                                            utmNorthing = gps.utmNorthing,
+                                            coordSystemSetting = coordSystemSetting
+                                        ),
                                         fontFamily = FontFamily.Monospace,
                                         fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.primary,
-                                        fontSize = 14.sp
+                                        fontSize = 13.sp
                                     )
                                 }
                             } else {
@@ -2741,7 +2819,8 @@ fun CreateStationScreen(
                         }
                         
                         Divider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
-                        if (coordSystemSetting == "WGS84_DECIMAL") {
+                        val isUtmPrimary = coordSystemSetting == "UTM"
+                        if (!isUtmPrimary) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text("UTM Coordinates", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                                 Text(
@@ -3974,9 +4053,14 @@ fun StationDetailScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
+                    Column(modifier = Modifier.weight(1.3f)) {
                         Text(
-                            text = if (coordSystemSetting == "WGS84_DECIMAL") "GEOGRAPHIC COORDS" else "UTM COORDINATES", 
+                            text = when (coordSystemSetting) {
+                                "WGS84_DECIMAL" -> "WGS84 DECIMAL"
+                                "WGS84_DMS" -> "WGS84 DMS COORDS"
+                                "MGRS" -> "MGRS GRID LOCATOR"
+                                else -> "UTM COORDINATES"
+                            },
                             fontSize = 11.sp, 
                             fontWeight = FontWeight.Bold, 
                             color = MaterialTheme.colorScheme.primary,
@@ -3984,11 +4068,14 @@ fun StationDetailScreen(
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = if (coordSystemSetting == "WGS84_DECIMAL") {
-                                String.format(Locale.US, "%.8f° N\n%.8f° E", station.latitude, station.longitude)
-                            } else {
-                                String.format(Locale.US, "%.1f E\n%.1f N\nZone %s", station.utmEasting, station.utmNorthing, station.utmZone)
-                            },
+                            text = UtmConverter.formatCoordinateDisplay(
+                                lat = station.latitude,
+                                lon = station.longitude,
+                                utmZone = station.utmZone,
+                                utmEasting = station.utmEasting,
+                                utmNorthing = station.utmNorthing,
+                                coordSystemSetting = coordSystemSetting
+                            ),
                             fontFamily = FontFamily.Monospace,
                             fontSize = 13.sp,
                             lineHeight = 18.sp,
@@ -4021,10 +4108,10 @@ fun StationDetailScreen(
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 Text(
-                    text = if (coordSystemSetting == "WGS84_DECIMAL") {
-                        "UTM Grid Zone: ${station.utmZone} • Easting: ${String.format(Locale.US, "%.1f m", station.utmEasting)} • Northing: ${String.format(Locale.US, "%.1f m", station.utmNorthing)}"
-                    } else {
+                    text = if (coordSystemSetting == "UTM") {
                         "WGS84 Lat/Lon: ${String.format(Locale.US, "%.8f, %.8f", station.latitude, station.longitude)}"
+                    } else {
+                        "UTM Grid Zone: ${station.utmZone} • Easting: ${String.format(Locale.US, "%.1f m", station.utmEasting)} • Northing: ${String.format(Locale.US, "%.1f m", station.utmNorthing)}"
                     },
                     fontFamily = FontFamily.Monospace,
                     fontSize = 12.sp,
@@ -6267,10 +6354,21 @@ fun AddObservationScreen(
                             Column {
                                 Text("WGS84 COORDINATES", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(
-                                    "${String.format(Locale.US, "%.8f°", station?.latitude ?: 0.0)}, ${String.format(Locale.US, "%.8f°", station?.longitude ?: 0.0)}",
-                                    fontSize = 13.sp,
-                                    fontWeight = if (coordSystemSetting == "WGS84_DECIMAL") FontWeight.Bold else FontWeight.Medium,
-                                    color = if (coordSystemSetting == "WGS84_DECIMAL") Color(0xFF00A86B) else MaterialTheme.colorScheme.onSurface,
+                                    if (station != null) {
+                                        UtmConverter.formatCoordinateDisplay(
+                                            lat = station.latitude,
+                                            lon = station.longitude,
+                                            utmZone = station.utmZone,
+                                            utmEasting = station.utmEasting,
+                                            utmNorthing = station.utmNorthing,
+                                            coordSystemSetting = if (coordSystemSetting == "UTM") "WGS84_DECIMAL" else coordSystemSetting
+                                        )
+                                    } else {
+                                        "N/A"
+                                    },
+                                    fontSize = 11.sp,
+                                    fontWeight = if (coordSystemSetting != "UTM") FontWeight.Bold else FontWeight.Medium,
+                                    color = if (coordSystemSetting != "UTM") Color(0xFF00A86B) else MaterialTheme.colorScheme.onSurface,
                                     fontFamily = FontFamily.Monospace
                                 )
                             }
@@ -6367,6 +6465,71 @@ fun HomeDashboardContent(
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        // Premium Technology & Geology Branding Header with New Logo
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Logo Container with shadow/border to blend with White style
+                Box(
+                    modifier = Modifier
+                        .size(64.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color.White)
+                        .border(1.dp, Color.LightGray.copy(alpha = 0.5f), RoundedCornerShape(14.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    androidx.compose.foundation.Image(
+                        painter = androidx.compose.ui.res.painterResource(id = com.example.R.drawable.geofield_logo_new_1781495437950),
+                        contentDescription = "GeoField Pro Monogram",
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
+                // Title and tagline
+                Column {
+                    Text(
+                        text = "GeoField Pro",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.primary,
+                        letterSpacing = 0.5.sp
+                    )
+                    Text(
+                        text = "Advanced GIS & Geotechnical Logger",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .background(Color(0xFF39FF14), CircleShape)
+                        )
+                        Text(
+                            text = "Calibrated Sensors & GPS Kalman Smoothing",
+                            fontSize = 8.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                        )
+                    }
+                }
+            }
+        }
+
         // Section Title: Stats (Field statistics summary parameters - now at the very top of home dashboard as requested!)
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -9118,34 +9281,25 @@ fun generateLeafletHtml(
 
     val leafZoom = zoom.coerceIn(3, 21)
 
-    val bgColor = if (isOutdoorMode) "#F4F6F4" else "#0C100D"
-    val gridColor = if (isOutdoorMode) "rgba(0,121,107,0.12)" else "rgba(0,229,255,0.12)"
+    val bgColor = "#FFFFFF"
+    val gridColor = "rgba(0,121,107,0.12)"
 
-    val isSatellite = tileUrl.contains("lyrs=s", ignoreCase = true) || 
-                      tileUrl.contains("lyrs=y", ignoreCase = true) || 
-                      tileUrl.contains("satellite", ignoreCase = true)
-    val tileFilterStyle = if (!isOutdoorMode) {
-        val tileFilter = if (!isSatellite) ".leaflet-tile { filter: invert(100%) hue-rotate(180deg) brightness(85%) contrast(85%) !important; }" else ""
-        """
-        $tileFilter
-        .leaflet-container { background-color: #0c100d !important; }
-        .leaflet-bar { border: 1.5px solid rgba(0, 229, 255, 0.45) !important; background-color: #141a17 !important; }
-        .leaflet-bar a { background-color: #141a17 !important; color: #00ffe0 !important; border-bottom: 1.5px solid rgba(0, 229, 255, 0.25) !important; }
-        .leaflet-bar a:hover { background-color: #00ffe0 !important; color: #141a17 !important; }
-        .leaflet-popup-content-wrapper, .leaflet-popup-tip { background-color: #141a17 !important; color: #ffffff !important; border: 1.5px solid #00e5ff !important; box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important; }
+    val tileFilterStyle = """
+        .leaflet-container { background-color: #ffffff !important; }
+        .leaflet-bar { border: 1.5px solid rgba(0, 121, 107, 0.45) !important; background-color: #ffffff !important; }
+        .leaflet-bar a { background-color: #ffffff !important; color: #007A78 !important; border-bottom: 1.5px solid rgba(0, 121, 107, 0.25) !important; }
+        .leaflet-bar a:hover { background-color: #007A78 !important; color: #ffffff !important; }
+        .leaflet-popup-content-wrapper, .leaflet-popup-tip { background-color: #ffffff !important; color: #333333 !important; border: 1.5px solid #007a78 !important; box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important; }
         .leaflet-popup-content { font-family: monospace !important; font-size: 11px !important; }
-        .leaflet-control-attribution, .leaflet-control-scale { background: rgba(20, 26, 23, 0.85) !important; color: #88faec !important; font-size: 9px !important; text-shadow: none !important; }
+        .leaflet-control-attribution, .leaflet-control-scale { background: rgba(255, 255, 255, 0.85) !important; color: #007a78 !important; font-size: 9px !important; text-shadow: none !important; }
         .leaflet-control-zoom-in, .leaflet-control-zoom-out { font-weight: bold; }
-        """.trimIndent()
-    } else {
-        ""
-    }
+    """.trimIndent()
 
     return """
         <!DOCTYPE html>
         <html>
         <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
             <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
             <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
             <style>
@@ -9168,6 +9322,10 @@ fun generateLeafletHtml(
         </head>
         <body>
             <div id="map"></div>
+            <div id="dual-scale-container" style="position: absolute; bottom: 35px; left: 15px; z-index: 1000; background: rgba(255, 255, 255, 0.95); border: 1.5px solid #007A78; padding: 4px 10px; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); font-family: monospace; font-size: 10px; font-weight: bold; color: #004D40; pointer-events: none;">
+                <div id="dual-scale-label" style="text-align: center; margin-bottom: 2px;">0 m ⇄ 0 km</div>
+                <div style="height: 5px; border: 1.5px solid #007A78; border-top: none; margin: 0 auto; width: 100px;" id="dual-scale-bar"></div>
+            </div>
             <script>
                 // ---------------------------------------------------------------------
                 // OFFLINE HEAL / FALLBACK: If Leaflet is missing, load raw Canvas map!
@@ -9257,11 +9415,23 @@ fun generateLeafletHtml(
                         e.preventDefault();
                     });
                     
+                    var isZooming = false;
+                    var startDist = 0;
+                    var startZoom = 0;
+
                     canvas.addEventListener('touchstart', function(e) {
                         if (e.touches.length === 1) {
                             isDragging = true;
+                            isZooming = false;
                             startX = e.touches[0].clientX;
                             startY = e.touches[0].clientY;
+                        } else if (e.touches.length === 2) {
+                            isDragging = false;
+                            isZooming = true;
+                            var dx = e.touches[0].clientX - e.touches[1].clientX;
+                            var dy = e.touches[0].clientY - e.touches[1].clientY;
+                            startDist = Math.sqrt(dx * dx + dy * dy);
+                            startZoom = zoomLevel;
                         }
                     });
                     canvas.addEventListener('touchmove', function(e) {
@@ -9277,19 +9447,39 @@ fun generateLeafletHtml(
                                 window.AndroidInterface.onCenterChanged(centerX, centerY);
                             }
                             draw();
+                        } else if (isZooming && e.touches.length === 2) {
+                            var dx = e.touches[0].clientX - e.touches[1].clientX;
+                            var dy = e.touches[0].clientY - e.touches[1].clientY;
+                            var currentDist = Math.sqrt(dx * dx + dy * dy);
+                            if (startDist > 0) {
+                                var ratio = currentDist / startDist;
+                                zoomLevel = startZoom + Math.log2(ratio);
+                                zoomLevel = Math.max(3, Math.min(21, zoomLevel));
+                                if (window.AndroidInterface && window.AndroidInterface.onZoomChanged) {
+                                    window.AndroidInterface.onZoomChanged(Math.round(zoomLevel));
+                                }
+                                draw();
+                            }
                         }
                     });
-                    canvas.addEventListener('touchend', function() { isDragging = false; });
+                    canvas.addEventListener('touchend', function() {
+                        isDragging = false;
+                        isZooming = false;
+                    });
+                    canvas.addEventListener('touchcancel', function() {
+                        isDragging = false;
+                        isZooming = false;
+                    });
                     
                     function draw() {
                         ctx.clearRect(0, 0, canvas.width, canvas.height);
                         
-                        var isOutdoor = $isOutdoorMode;
-                        ctx.fillStyle = isOutdoor ? '#F4F6F4' : '#0C100D';
+                        var isOutdoor = true;
+                        ctx.fillStyle = '#FFFFFF';
                         ctx.fillRect(0, 0, canvas.width, canvas.height);
                         
-                        var gridColor = isOutdoor ? '#D0D4D0' : '#1D2723';
-                        var textColor = isOutdoor ? '#2E4F43' : '#00FFE0';
+                        var gridColor = '#E0E0E0';
+                        var textColor = '#2E4F43';
                         ctx.strokeStyle = gridColor;
                         ctx.lineWidth = 1;
                         ctx.font = '10px monospace';
@@ -9516,6 +9706,49 @@ fun generateLeafletHtml(
                             ctx.lineWidth = 1.5;
                             ctx.stroke();
                         }
+
+                        // --- ACCURATE MILITARY DUAL SCALE BAR (METERS vs KILOMETERS) ---
+                        ctx.save();
+                        var scaleWidthDesired = 120; 
+                        var latRad = centerX * Math.PI / 180;
+                        var metersPerPx = (156543 * Math.cos(latRad)) / Math.pow(2, zoomLevel);
+                        var rawMeters = scaleWidthDesired * metersPerPx;
+                        
+                        var niceMeters = 10;
+                        var niceOptions = [1, 2, 5, 10, 20, 50, 100, 250, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 250000, 500000];
+                        for (var i = 0; i < niceOptions.length; i++) {
+                            niceMeters = niceOptions[i];
+                            if (niceMeters >= rawMeters * 0.7) {
+                                break;
+                            }
+                        }
+                        
+                        var pxWidth = niceMeters / metersPerPx;
+                        var barX = 15;
+                        var barY = canvas.height - 40;
+                        
+                        ctx.strokeStyle = '#007A78';
+                        ctx.fillStyle = '#004D40';
+                        ctx.lineWidth = 2;
+                        
+                        ctx.beginPath();
+                        ctx.moveTo(barX, barY - 5);
+                        ctx.lineTo(barX, barY + 5);
+                        ctx.moveTo(barX, barY);
+                        ctx.lineTo(barX + pxWidth, barY);
+                        ctx.moveTo(barX + pxWidth, barY - 5);
+                        ctx.lineTo(barX + pxWidth, barY + 5);
+                        
+                        ctx.moveTo(barX + pxWidth / 2, barY);
+                        ctx.lineTo(barX + pxWidth / 2, barY + 3);
+                        ctx.stroke();
+                        
+                        ctx.font = 'bold 9px monospace';
+                        var mText = niceMeters + ' m';
+                        var kmEquivalent = (niceMeters / 1000) + ' km';
+                        var comparisonText = mText + ' / ' + kmEquivalent;
+                        ctx.fillText(comparisonText, barX, barY - 8);
+                        ctx.restore();
                     }
                     
                     window.updateLiveLocation = function(lat, lon, accuracy, isRealPos, lockCenter, leafZoom) {
@@ -9533,10 +9766,44 @@ fun generateLeafletHtml(
                 function initLeafletMap() {
                     map = L.map('map', {
                         zoomControl: false,
-                        attributionControl: false
+                        attributionControl: false,
+                        touchZoom: true,
+                        doubleClickZoom: true,
+                        boxZoom: true
                     }).setView([$defaultLat, $defaultLon], $leafZoom);
 
-                    L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(map);
+                    // Custom Dual Scale Controller (Comparing Meters vs Kilometers for military precision)
+                    function updateDualScale() {
+                        var center = map.getCenter();
+                        var lat = center.lat;
+                        var zoom = map.getZoom();
+                        var widthInPx = 100;
+                        var metersPerPx = 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
+                        var rawMeters = widthInPx * metersPerPx;
+                        
+                        var niceMeters = 10;
+                        var niceOptions = [1, 2, 5, 10, 20, 50, 100, 250, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 250000, 500000];
+                        for (var i = 0; i < niceOptions.length; i++) {
+                            niceMeters = niceOptions[i];
+                            if (niceMeters >= rawMeters * 0.7) {
+                                break;
+                            }
+                        }
+                        var targetPxWidth = niceMeters / metersPerPx;
+                        var mLabel = niceMeters + " m";
+                        var kmLabel = (niceMeters / 1000) + " km";
+                        var comparisonText = mLabel + " ⇄ " + kmLabel;
+                        
+                        var scaleBar = document.getElementById('dual-scale-bar');
+                        var scaleLabel = document.getElementById('dual-scale-label');
+                        if (scaleBar && scaleLabel) {
+                            scaleBar.style.width = targetPxWidth + "px";
+                            scaleLabel.innerText = comparisonText;
+                        }
+                    }
+                    map.on('move', updateDualScale);
+                    map.on('zoomend', updateDualScale);
+                    setTimeout(updateDualScale, 200);
 
                 L.tileLayer('$tileUrl', {
                     maxZoom: 21,
@@ -10172,6 +10439,9 @@ fun WebViewMap(
                 settings.domStorageEnabled = true
                 settings.useWideViewPort = true
                 settings.loadWithOverviewMode = true
+                settings.builtInZoomControls = true
+                settings.displayZoomControls = false
+                settings.setSupportZoom(true)
                 tag = htmlContent
                 loadDataWithBaseURL("https://localhost", htmlContent, "text/html", "UTF-8", null)
             }
@@ -10303,7 +10573,7 @@ fun MapContent(viewModel: GeologyViewModel) {
     var mapMode by remember { mutableStateOf(if (isInternetAvailable(context)) MapMode.ONLINE else MapMode.OFFLINE) }
     var mapLayer by remember { mutableStateOf(MapLayerProvider.GOOGLE_ROADMAP) }
     var mapboxTokenInput by remember { mutableStateOf("pk.eyJ1IjoiZmFyemFkZiIsImEiOiJjbHpiaXdwZ3cwMTF5MndzYzhvdzBoMHp1In0.6R0R9z84Vd-M208r_6oY7g") }
-    var isFarsiMode by remember { mutableStateOf(false) }
+    val isFarsiMode by viewModel.isFarsiModeSetting.collectAsStateWithLifecycle()
     
     // UI Panel Panels states
     var isMapLayerPanelVisible by remember { mutableStateOf(false) }
@@ -10315,7 +10585,7 @@ fun MapContent(viewModel: GeologyViewModel) {
     var isAddPointDialogVisible by remember { mutableStateOf(false) }
     val themeSetting by viewModel.themeSetting.collectAsStateWithLifecycle()
     val isSystemDark = themeSetting == "Dark" || themeSetting == "HighContrast"
-    var isOutdoorMode by remember(isSystemDark) { mutableStateOf(!isSystemDark) }
+    var isOutdoorMode by remember { mutableStateOf(true) }
     var showSimulator by remember { mutableStateOf(false) }
     var showStationsOverlay by remember { mutableStateOf(true) }
     var showSymbolsOverlay by remember { mutableStateOf(true) }
@@ -11141,7 +11411,14 @@ fun MapContent(viewModel: GeologyViewModel) {
         // -------------------------------------------------------------
         // LAYER 3: DYNAMIC ALPINEQUEST CENTER TARGET INSPECTOR HUD (BOTTOM CENTER)
         // -------------------------------------------------------------
-        var coordinateFormatMode by remember { mutableStateOf(0) } // 0: DD, 1: DMS, 2: UTM
+        val coordinateFormatMode = when (coordSystemSetting) {
+            "WGS84_DECIMAL" -> 0
+            "WGS84_DMS" -> 1
+            "UTM" -> 2
+            "WGS84_DDM" -> 3
+            "MGRS" -> 4
+            else -> 2
+        }
         
         fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
             val r = 6371e3 // meters
@@ -11330,7 +11607,16 @@ fun MapContent(viewModel: GeologyViewModel) {
                     .clip(RoundedCornerShape(12.dp))
                     .background(if (isOutdoorMode) Color.White.copy(0.9f) else Color(0xEE0F1512))
                     .border(1.5.dp, if (isOutdoorMode) Color.Black.copy(0.8f) else Color(0xFF00E5FF).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                    .clickable { coordinateFormatMode = (coordinateFormatMode + 1) % 5 }
+                    .clickable { 
+                        val nextMode = when (coordinateFormatMode) {
+                            0 -> "WGS84_DMS"
+                            1 -> "UTM"
+                            2 -> "WGS84_DDM"
+                            3 -> "MGRS"
+                            else -> "WGS84_DECIMAL"
+                        }
+                        viewModel.setCoordSystemSetting(nextMode)
+                    }
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
                 val utmResult = UtmConverter.convertLatLngToUtm(pannedCenterLat, pannedCenterLon)
@@ -14311,7 +14597,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Text("GNSS SATELLITES METRIC LOCK DIAGNOSTIC", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                                Text(if (isFarsiMode) "تشخیص هویت ماهواره‌ای و دقت گیرنده نظامی GNSS" else "GNSS SATELLITES METRIC LOCK DIAGNOSTIC", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor)
                                 
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -14319,18 +14605,24 @@ fun MapContent(viewModel: GeologyViewModel) {
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("LOCK STATUS", fontSize = 10.sp, color = overlayTextColor.copy(alpha = 0.5f))
-                                        Text(if (activeSatelliteCount >= 8) "3D RTK LOCK" else "SPS 2D LOCK", color = if (activeSatelliteCount >= 8) Color.Green else Color.Yellow, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                        Text(if (isFarsiMode) "وضعیت فرکانس" else "LOCK STATUS", fontSize = 10.sp, color = overlayTextColor.copy(alpha = 0.5f))
+                                        Text(if (activeSatelliteCount >= 8) (if (isFarsiMode) "قفل نظامی سه بعدی" else "3D MILITARY LOCK") else (if (isFarsiMode) "قفل جی‌پی‌اس ۲ بعدی" else "SPS 2D LOCK"), color = if (activeSatelliteCount >= 8) Color.Green else Color.Yellow, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                     }
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("SATELLITES", fontSize = 10.sp, color = overlayTextColor.copy(alpha = 0.5f))
-                                        Text("$activeSatelliteCount Active", color = overlayTextColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                        Text(if (isFarsiMode) "ماهواره فعال" else "SATELLITES", fontSize = 10.sp, color = overlayTextColor.copy(alpha = 0.5f))
+                                        Text(if (isFarsiMode) "$activeSatelliteCount ماهواره" else "$activeSatelliteCount Active", color = overlayTextColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                     }
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                        Text("EST D-ACCY", fontSize = 10.sp, color = overlayTextColor.copy(alpha = 0.5f))
-                                        Text("±${String.format(Locale.US, "%.1f", gpsAccuracy)} m", color = overlayTextColor, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                        Text(if (isFarsiMode) "خطای مکانی نظامی" else "EST D-ACCY", fontSize = 10.sp, color = overlayTextColor.copy(alpha = 0.5f))
+                                        Text(if (isFarsiMode) "±${String.format(Locale.US, "%.1f", gpsAccuracy)} متر" else "±${String.format(Locale.US, "%.1f", gpsAccuracy)} m", color = overlayTextColor, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
+
+                                Text(
+                                    text = if (isFarsiMode) "✓ سیستم پردازش با خطای زیر ۱ متر با مدار بیضوی WGS84 و رفرانس نظامی پانتو گرافیک ارتش" else "✓ Active military standard 1-meter reference processing enabled. Cross-aligned with WGS84 Geographic Ellipsoid projections.",
+                                    fontSize = 8.5.sp,
+                                    color = if (isOutdoorMode) Color.DarkGray else Color.LightGray
+                                )
 
                                 Divider(color = overlayTextColor.copy(alpha = 0.05f))
 
@@ -14481,7 +14773,57 @@ fun MapContent(viewModel: GeologyViewModel) {
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                                Text("SYSTEM & RELEGATION CONTROLS", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = accentColor)
+                                Text(
+                                    text = if (isFarsiMode) "تنظیمات سیستمی و سیستم مختصات" else "SYSTEM & RELEGATION CONTROLS",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = accentColor
+                                )
+
+                                // Coordinate System Selector on Map
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        text = if (isFarsiMode) "سامانه مختصات نقشه پیش‌فرض:" else "Default Map Coord System:",
+                                        color = overlayTextColor,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    val row1 = listOf(
+                                        "UTM" to (if (isFarsiMode) "یوتی‌ام مسطحاتی" else "UTM Metric"),
+                                        "WGS84_DECIMAL" to (if (isFarsiMode) "اعشاری WGS84" else "WGS84 Dec")
+                                    )
+                                    val row2 = listOf(
+                                        "WGS84_DMS" to (if (isFarsiMode) "ثانیه‌دار DMS" else "WGS84 DMS"),
+                                        "WGS84_DDM" to (if (isFarsiMode) "دقیقه‌دار DDM" else "WGS84 DDM")
+                                    )
+                                    val row3 = listOf(
+                                        "MGRS" to (if (isFarsiMode) "ام‌جی‌آر‌اس نظامی" else "MGRS Grid")
+                                    )
+                                    listOf(row1, row2, row3).forEach { rowItems ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            rowItems.forEach { (coordId, label) ->
+                                                val isSelected = coordSystemSetting == coordId
+                                                Button(
+                                                    onClick = { viewModel.setCoordSystemSetting(coordId) },
+                                                    colors = ButtonDefaults.buttonColors(
+                                                        containerColor = if (isSelected) accentColor else overlayTextColor.copy(alpha = 0.08f),
+                                                        contentColor = if (isSelected) Color.Black else overlayTextColor
+                                                    ),
+                                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                                                    modifier = if (rowItems.size == 1) Modifier.fillMaxWidth().height(28.dp) else Modifier.weight(1f).height(28.dp),
+                                                    shape = RoundedCornerShape(4.dp)
+                                                ) {
+                                                    Text(label, fontSize = 8.sp, fontWeight = FontWeight.SemiBold)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Divider(color = overlayTextColor.copy(alpha = 0.05f))
 
                                 // Outdoor mode
                                 Row(
