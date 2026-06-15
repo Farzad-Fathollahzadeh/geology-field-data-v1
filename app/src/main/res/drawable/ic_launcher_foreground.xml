@@ -1,53 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-
-    <!-- Folded Geological Strata Bedding Layers (Bottom area) -->
-    <path
-        android:fillColor="#005234"
-        android:pathData="M24,72 C32,66 40,74 48,70 C56,66 64,74 72,68 L84,76 L84,82 L24,82 Z" />
-    <path
-        android:fillColor="#006C47"
-        android:pathData="M24,62 C32,56 40,64 48,60 C56,56 64,64 72,58 L84,66 L84,76 L24,76 Z" />
-    <path
-        android:fillColor="#70DAA7"
-        android:pathData="M24,52 C32,46 40,54 48,50 C56,46 64,54 72,48 L84,56 L84,66 L24,66 Z" />
-
-    <!-- Highly Centered Geological Compass and GPS Crosshair Target representing GeoField Logging -->
-    <path
-        android:strokeWidth="3"
-        android:strokeColor="#FFFFFF"
-        android:strokeLineCap="round"
-        android:pathData="M 38 52 A 16 16 0 1 0 70 52 A 16 16 0 1 0 38 52" />
-
-    <!-- Crosshair Ticks -->
-    <path
-        android:strokeWidth="2.5"
-        android:strokeColor="#FFFFFF"
-        android:strokeLineCap="round"
-        android:pathData="M54,30 L54,36" />
-    <path
-        android:strokeWidth="2.5"
-        android:strokeColor="#FFFFFF"
-        android:strokeLineCap="round"
-        android:pathData="M54,68 L54,74" />
-    <path
-        android:strokeWidth="2.5"
-        android:strokeColor="#FFFFFF"
-        android:strokeLineCap="round"
-        android:pathData="M32,52 L38,52" />
-    <path
-        android:strokeWidth="2.5"
-        android:strokeColor="#FFFFFF"
-        android:strokeLineCap="round"
-        android:pathData="M70,52 L76,52" />
-
-    <!-- Central crosshair target node (mineral find/station position coordinate) -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M 52 52 A 2 2 0 1 0 56 52 A 2 2 0 1 0 52 52" />
-</vector>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="66dp"
+        android:height="66dp"
+        android:drawable="@drawable/geofield_logo_new_1781495437950"
+        android:gravity="center" />
+</layer-list>
 

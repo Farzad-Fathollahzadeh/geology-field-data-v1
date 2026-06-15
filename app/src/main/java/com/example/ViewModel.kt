@@ -79,6 +79,47 @@ data class ImportedFeature(
     val colorHex: String = "#FF9100"
 )
 
+class LatLonKalmanFilter(
+    private val processNoise: Double = 0.000001, // process variance (Q) - higher means more responsive, lower is smoother
+    private val measurementNoise: Double = 0.00003, // measurement variance (R) - higher filters more noise
+    private val estimationError: Double = 0.0001 // initial covariance (P)
+) {
+    private var xLat = 0.0
+    private var xLon = 0.0
+    private var pLat = estimationError
+    private var pLon = estimationError
+    private var isInitialized = false
+
+    fun filter(lat: Double, lon: Double): Pair<Double, Double> {
+        if (!isInitialized) {
+            xLat = lat
+            xLon = lon
+            isInitialized = true
+            return Pair(lat, lon)
+        }
+
+        // Predict error covariance
+        pLat += processNoise
+        pLon += processNoise
+
+        // Calculate Kalman Gain & update Lat
+        val kLat = pLat / (pLat + measurementNoise)
+        xLat += kLat * (lat - xLat)
+        pLat *= (1.0 - kLat)
+
+        // Calculate Kalman Gain & update Lon
+        val kLon = pLon / (pLon + measurementNoise)
+        xLon += kLon * (lon - xLon)
+        pLon *= (1.0 - kLon)
+
+        return Pair(xLat, xLon)
+    }
+
+    fun reset() {
+        isInitialized = false
+    }
+}
+
 class GeologyViewModel(application: Application) : AndroidViewModel(application) {
 
     private val db by lazy {
@@ -92,6 +133,16 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
     val dao by lazy { db.dao() }
 
     private val prefs = application.getSharedPreferences("geofield_prefs", Context.MODE_PRIVATE)
+
+    private val kalmanFilter = LatLonKalmanFilter()
+
+    private val _isKalmanSmoothingEnabled = MutableStateFlow(true)
+    val isKalmanSmoothingEnabled: StateFlow<Boolean> = _isKalmanSmoothingEnabled
+
+    fun setKalmanSmoothingEnabled(enabled: Boolean) {
+        _isKalmanSmoothingEnabled.value = enabled
+        prefs.edit().putBoolean("kalman_smoothing_enabled", enabled).apply()
+    }
 
     // --- REALTIME CONTINUOUS GPS & TRACKING ENGINE ---
     
@@ -127,6 +178,7 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
     val importedFeatures: StateFlow<List<ImportedFeature>> = _importedFeatures
 
     init {
+        _isKalmanSmoothingEnabled.value = prefs.getBoolean("kalman_smoothing_enabled", true)
         // Recover draft/unsaved track path on start (crash protection!)
         recoverActiveTrackDraft()
 
@@ -145,6 +197,15 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
     private fun processIncomingLocation(location: android.location.Location, sourceText: String) {
         // Allow user position mapping up to 3000m limit for visual awareness, preventing complete failures to locate
         if (location.accuracy > 3000.0) return
+
+        // Smooth coordinates with real-time Kalman filtering if enabled
+        val (smoothLat, smoothLon) = if (_isKalmanSmoothingEnabled.value) {
+            kalmanFilter.filter(location.latitude, location.longitude)
+        } else {
+            Pair(location.latitude, location.longitude)
+        }
+        location.latitude = smoothLat
+        location.longitude = smoothLon
 
         val currentLive = _liveLocation.value
         if (currentLive != null) {
@@ -241,8 +302,9 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
         }
 
         // 3. Fused Location updates (Google Play Services)
-        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1500L).apply {
-            setMinUpdateIntervalMillis(1000L)
+        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 350L).apply {
+            setMinUpdateIntervalMillis(150L)
+            setWaitForAccurateLocation(false)
         }.build()
 
         locationCallback = object : LocationCallback() {
@@ -277,14 +339,14 @@ class GeologyViewModel(application: Application) : AndroidViewModel(application)
             systemLocationListener = sysListener
             locManager.requestLocationUpdates(
                 LocationManager.GPS_PROVIDER,
-                1000L,
+                350L,
                 0.0f,
                 sysListener,
                 android.os.Looper.getMainLooper()
             )
             locManager.requestLocationUpdates(
                 LocationManager.NETWORK_PROVIDER,
-                2000L,
+                500L,
                 0.0f,
                 sysListener,
                 android.os.Looper.getMainLooper()

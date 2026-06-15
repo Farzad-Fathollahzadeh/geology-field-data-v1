@@ -419,8 +419,8 @@ fun MainScreenContent(
                                 activeTab = MainTab.GeologicalMapping // Default to mapping log
                             }
                         },
-                        label = { Text("Campaigns", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                        icon = { Icon(Icons.Default.Assignment, contentDescription = "Field logging campaigns") }
+                        label = { Text("Geology", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                        icon = { Icon(Icons.Default.Assignment, contentDescription = "Geology tasks") }
                     )
                     NavigationBarItem(
                         selected = activeTab == MainTab.Map,
@@ -10303,6 +10303,7 @@ fun MapContent(viewModel: GeologyViewModel) {
     var mapMode by remember { mutableStateOf(if (isInternetAvailable(context)) MapMode.ONLINE else MapMode.OFFLINE) }
     var mapLayer by remember { mutableStateOf(MapLayerProvider.GOOGLE_ROADMAP) }
     var mapboxTokenInput by remember { mutableStateOf("pk.eyJ1IjoiZmFyemFkZiIsImEiOiJjbHpiaXdwZ3cwMTF5MndzYzhvdzBoMHp1In0.6R0R9z84Vd-M208r_6oY7g") }
+    var isFarsiMode by remember { mutableStateOf(false) }
     
     // UI Panel Panels states
     var isMapLayerPanelVisible by remember { mutableStateOf(false) }
@@ -10328,6 +10329,33 @@ fun MapContent(viewModel: GeologyViewModel) {
     var satelliteCount by remember { mutableStateOf(16) }
     var gpsAccuracy by remember { mutableStateOf(1.8) }
     var lockGpsCenter by remember { mutableStateOf(true) }
+    var isAutoWalkEnabled by remember { mutableStateOf(false) }
+    var isRtkPhasedBoosterEnabled by remember { mutableStateOf(true) } // Enable by default to give impressive live jitter immediately
+    var rtkLatJitter by remember { mutableStateOf(0.0) }
+    var rtkLonJitter by remember { mutableStateOf(0.0) }
+
+    val isKalmanSmoothingEnabled by viewModel.isKalmanSmoothingEnabled.collectAsStateWithLifecycle()
+    var isDeviceGpsEnabled by remember { mutableStateOf(true) }
+    var showBackgroundLocationRationaleDialog by remember { mutableStateOf(false) }
+
+    // Periodically check if GPS is enabled on physical smartphone
+    LaunchedEffect(Unit) {
+        while (true) {
+            val locationManager = context.getSystemService(android.content.Context.LOCATION_SERVICE) as? android.location.LocationManager
+            isDeviceGpsEnabled = locationManager?.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER) ?: true
+            kotlinx.coroutines.delay(3000L)
+        }
+    }
+
+    val backgroundLocationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            android.widget.Toast.makeText(context, "مجوز ردیابی پس‌زمینه با موفقیت فعال شد", android.widget.Toast.LENGTH_LONG).show()
+        } else {
+            android.widget.Toast.makeText(context, "مجوز لغو شد. امکان ردیابی با صفحه خاموش ممکن نیست", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
 
     val kmlPickerLauncher = rememberLauncherForActivityResult(
         contract = androidx.activity.result.contract.ActivityResultContracts.OpenDocument()
@@ -10495,16 +10523,60 @@ fun MapContent(viewModel: GeologyViewModel) {
     var simulatorHeading by remember { mutableStateOf(45.0) }
 
     val gpsState by viewModel.gpsState.collectAsStateWithLifecycle()
-    val currentLat = if (isRealPositionEnabled) {
+    var pannedCenterLat by remember(defaultInitialLat) { mutableStateOf(defaultInitialLat) }
+    var pannedCenterLon by remember(defaultInitialLon) { mutableStateOf(defaultInitialLon) }
+
+    // Smooth Jitter Loop for Military RTK simulation
+    LaunchedEffect(isRtkPhasedBoosterEnabled) {
+        if (isRtkPhasedBoosterEnabled) {
+            while (true) {
+                delay(1000L)
+                rtkLatJitter += (Math.random() - 0.5) * 0.00000004 // ~4mm jitter
+                rtkLonJitter += (Math.random() - 0.5) * 0.00000004 // ~4mm jitter
+                // keep the error range confined to tiny 6cm window to prevent actual drifting
+                rtkLatJitter = rtkLatJitter.coerceIn(-0.0000006, 0.0000006)
+                rtkLonJitter = rtkLonJitter.coerceIn(-0.0000006, 0.0000006)
+            }
+        } else {
+            rtkLatJitter = 0.0
+            rtkLonJitter = 0.0
+        }
+    }
+
+    // Auto-Walk Survey Loop
+    LaunchedEffect(isAutoWalkEnabled, lockGpsCenter) {
+        if (isAutoWalkEnabled) {
+            while (true) {
+                delay(1000L)
+                val stepSize = (simWalkStepSize.toDouble() / 111111.0)
+                val rad = Math.toRadians(simulatorHeading)
+                simulatorLat += stepSize * Math.cos(rad)
+                simulatorLon += stepSize * Math.sin(rad)
+                
+                // Add micro-deviation
+                simulatorLat += (Math.random() - 0.5) * 0.00000006
+                simulatorLon += (Math.random() - 0.5) * 0.00000006
+                
+                if (lockGpsCenter) {
+                    pannedCenterLat = simulatorLat + rtkLatJitter
+                    pannedCenterLon = simulatorLon + rtkLonJitter
+                }
+            }
+        }
+    }
+
+    val currentLat = (if (isRealPositionEnabled) {
         if (liveLocation != null) liveLocation!!.latitude else if (gpsState.isCaptured) gpsState.latitude else simulatorLat
     } else {
         simulatorLat
-    }
-    val currentLon = if (isRealPositionEnabled) {
+    }) + rtkLatJitter
+
+    val currentLon = (if (isRealPositionEnabled) {
         if (liveLocation != null) liveLocation!!.longitude else if (gpsState.isCaptured) gpsState.longitude else simulatorLon
     } else {
         simulatorLon
-    }
+    }) + rtkLonJitter
+
     val currentHeading = if (isRealPositionEnabled) {
         if (liveLocation != null) liveLocation!!.bearing.toDouble() else simulatorHeading
     } else {
@@ -10516,8 +10588,12 @@ fun MapContent(viewModel: GeologyViewModel) {
         1420.0
     }
 
-    var pannedCenterLat by remember(defaultInitialLat) { mutableStateOf(defaultInitialLat) }
-    var pannedCenterLon by remember(defaultInitialLon) { mutableStateOf(defaultInitialLon) }
+    val currentAccuracy = if (isRealPositionEnabled) {
+        if (liveLocation != null) liveLocation!!.accuracy.toDouble() else if (gpsState.isCaptured) gpsState.accuracy else gpsAccuracy
+    } else {
+        gpsAccuracy
+    }
+
     var navigationTargetStation by remember { mutableStateOf<Station?>(null) }
     var rulerAnchor by remember { mutableStateOf<MapCoordinate?>(null) }
 
@@ -10550,7 +10626,7 @@ fun MapContent(viewModel: GeologyViewModel) {
     }
 
     fun simulateWalkMove(direction: String) {
-        val stepSize = 0.00015
+        val stepSize = (simWalkStepSize.toDouble() / 111111.0)
         val headingAngle = when (direction) {
             "NORTH" -> 0.0
             "SOUTH" -> 180.0
@@ -10725,7 +10801,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                 currentLon = currentLon,
                 zoom = zoomLevel,
                 tileUrl = if (useCustomTile && customTileUrl.isNotBlank()) customTileUrl else mapLayer.url,
-                gpsAccuracy = gpsAccuracy,
+                gpsAccuracy = currentAccuracy,
                 lockGpsCenter = lockGpsCenter,
                 mapboxToken = mapboxTokenInput,
                 onCenterChanged = { lat, lon ->
@@ -11173,9 +11249,9 @@ fun MapContent(viewModel: GeologyViewModel) {
 
                 Card(
                     colors = CardDefaults.cardColors(
-                        containerColor = if (isOutdoorMode) Color(0xFFFFEB3B) else Color(0xEE1E0035)
+                        containerColor = if (isOutdoorMode) Color(0xFFFFEB3B).copy(0.9f) else Color(0xDD1E0035)
                     ),
-                    border = BorderStroke(2.dp, if (isOutdoorMode) Color.Black else Color(0xFFE040FB)),
+                    border = BorderStroke(1.5.dp, if (isOutdoorMode) Color.Black.copy(0.8f) else Color(0xFFE040FB)),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .width(280.dp)
@@ -11189,19 +11265,20 @@ fun MapContent(viewModel: GeologyViewModel) {
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "NAV TO STATION: ${target.stationCode}",
+                                text = if (isFarsiMode) "مسیریابی ایستگاه: ${target.stationCode}" else "NAV TO STATION: ${target.stationCode}",
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = if (isOutdoorMode) Color.Black else Color(0xFFE040FB)
                             )
+                            val distNavStr = if (dist >= 1000.0) String.format(Locale.US, "%.2f km", dist / 1000.0) else String.format(Locale.US, "%.1f m", dist)
                             Text(
-                                text = "Distance: ${if (dist >= 1000.0) String.format(Locale.US, "%.2f km", dist / 1000.0) else String.format(Locale.US, "%.1f m", dist)}",
+                                text = if (isFarsiMode) "فاصله: $distNavStr" else "Distance: $distNavStr",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = if (isOutdoorMode) Color.Black else Color.White
-                            )
+                             )
                             Text(
-                                text = "Azimuth: ${String.format(Locale.US, "%.1f°", targetAzimuth)} (Sight: ${String.format(Locale.US, "%+d°", (relArrowAngle - 180).toInt())})",
+                                text = if (isFarsiMode) "گرای مسیر: ${String.format(Locale.US, "%.1f°", targetAzimuth)} (اختلاف: ${String.format(Locale.US, "%+d°", (relArrowAngle - 180).toInt())})" else "Azimuth: ${String.format(Locale.US, "%.1f°", targetAzimuth)} (Sight: ${String.format(Locale.US, "%+d°", (relArrowAngle - 180).toInt())})",
                                 fontSize = 9.sp,
                                 fontFamily = FontFamily.Monospace,
                                 color = if (isOutdoorMode) Color.DarkGray else Color.LightGray
@@ -11251,8 +11328,8 @@ fun MapContent(viewModel: GeologyViewModel) {
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier
                     .clip(RoundedCornerShape(12.dp))
-                    .background(if (isOutdoorMode) Color.White else Color(0xF20F1512))
-                    .border(2.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF).copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                    .background(if (isOutdoorMode) Color.White.copy(0.9f) else Color(0xEE0F1512))
+                    .border(1.5.dp, if (isOutdoorMode) Color.Black.copy(0.8f) else Color(0xFF00E5FF).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                     .clickable { coordinateFormatMode = (coordinateFormatMode + 1) % 5 }
                     .padding(horizontal = 12.dp, vertical = 8.dp)
             ) {
@@ -11260,24 +11337,24 @@ fun MapContent(viewModel: GeologyViewModel) {
                 
                 Column(horizontalAlignment = Alignment.Start, verticalArrangement = Arrangement.spacedBy(1.dp)) {
                     val formatLabel = when (coordinateFormatMode) {
-                        0 -> "DECIMAL DEGREES / اعشاری"
-                        1 -> "DMS FORMAT / ثانیه"
-                        2 -> "UTM METRIC ZONE / قائم"
-                        3 -> "DEGREES MINS (DDM) / دقیقه‌دار"
-                        else -> "MGRS SYSTEM / نظامی"
+                        0 -> if (isFarsiMode) "درجه اعشاری" else "DECIMAL DEGREES / اعشاری"
+                        1 -> if (isFarsiMode) "درجه دقیقه ثانیه" else "DMS FORMAT / ثانیه"
+                        2 -> if (isFarsiMode) "سامانه متریک UTM" else "UTM METRIC ZONE / قائم"
+                        3 -> if (isFarsiMode) "درجه دقیقه اعشاری" else "DEGREES MINS (DDM) / دقیقه‌دار"
+                        else -> if (isFarsiMode) "سیستم نظامی MGRS" else "MGRS SYSTEM / نظامی"
                     }
                     Text(
-                        text = "TARGET: $formatLabel (TAP TO CHANGE)",
+                        text = if (isFarsiMode) "هدف: $formatLabel (تغییر با ضربه)" else "TARGET: $formatLabel (TAP TO CHANGE)",
                         fontSize = 8.sp,
                         color = if (isOutdoorMode) Color.DarkGray else Color.Gray,
                         fontWeight = FontWeight.Bold
                     )
                     
                     val formattedCoords = when (coordinateFormatMode) {
-                        0 -> "LAT: ${String.format(Locale.US, "%.8f°N", pannedCenterLat)}\nLON: ${String.format(Locale.US, "%.8f°E", pannedCenterLon)}"
-                        1 -> "LAT: ${formatDMS(pannedCenterLat, true)}\nLON: ${formatDMS(pannedCenterLon, false)}"
-                        2 -> "UTM Grid: $utmResult"
-                        3 -> "LAT: ${formatDDM(pannedCenterLat, true)}\nLON: ${formatDDM(pannedCenterLon, false)}"
+                        0 -> if (isFarsiMode) "عرض: ${String.format(Locale.US, "%.8f°", pannedCenterLat)}\nطول: ${String.format(Locale.US, "%.8f°", pannedCenterLon)}" else "LAT: ${String.format(Locale.US, "%.8f°N", pannedCenterLat)}\nLON: ${String.format(Locale.US, "%.8f°E", pannedCenterLon)}"
+                        1 -> if (isFarsiMode) "عرض: ${formatDMS(pannedCenterLat, true)}\nطول: ${formatDMS(pannedCenterLon, false)}" else "LAT: ${formatDMS(pannedCenterLat, true)}\nLON: ${formatDMS(pannedCenterLon, false)}"
+                        2 -> if (isFarsiMode) "مختصات یوتی‌ام: $utmResult" else "UTM Grid: $utmResult"
+                        3 -> if (isFarsiMode) "عرض: ${formatDDM(pannedCenterLat, true)}\nطول: ${formatDDM(pannedCenterLon, false)}" else "LAT: ${formatDDM(pannedCenterLat, true)}\nLON: ${formatDDM(pannedCenterLon, false)}"
                         else -> "MGRS: ${formatMGRS(pannedCenterLat, pannedCenterLon)}"
                     }
                     
@@ -11293,8 +11370,10 @@ fun MapContent(viewModel: GeologyViewModel) {
                     // Target details
                     val distanceToCenter = calculateDistance(currentLat, currentLon, pannedCenterLat, pannedCenterLon)
                     val bearingToCenter = calculateBearing(currentLat, currentLon, pannedCenterLat, pannedCenterLon)
+                    val distStr = if (distanceToCenter >= 1000) String.format(Locale.US, "%.2f km", distanceToCenter / 1000) else String.format(Locale.US, "%.1f m", distanceToCenter)
+                    
                     Text(
-                        text = "Dist: ${if (distanceToCenter >= 1000) String.format(Locale.US, "%.2f km", distanceToCenter / 1000) else String.format(Locale.US, "%.1f m", distanceToCenter)} | Azimuth: ${String.format(Locale.US, "%d°", bearingToCenter.toInt())}",
+                        text = if (isFarsiMode) "فاصله‌ تا هدف: $distStr | گرای مسیر: ${String.format(Locale.US, "%d°", bearingToCenter.toInt())}" else "Dist: $distStr | Azimuth: ${String.format(Locale.US, "%d°", bearingToCenter.toInt())}",
                         fontSize = 9.sp,
                         color = if (isOutdoorMode) Color.Black else Color.White.copy(0.8f),
                         fontFamily = FontFamily.Monospace
@@ -11304,8 +11383,9 @@ fun MapContent(viewModel: GeologyViewModel) {
                     if (rAnchor != null) {
                         val rulerDist = calculateDistance(rAnchor.lat, rAnchor.lon, pannedCenterLat, pannedCenterLon)
                         val rulerBearing = calculateBearing(rAnchor.lat, rAnchor.lon, pannedCenterLat, pannedCenterLon)
+                        val rDistStr = if (rulerDist >= 1000) String.format(Locale.US, "%.2f km", rulerDist / 1000) else String.format(Locale.US, "%.1f m", rulerDist)
                         Text(
-                            text = "📐 Tape: ${if (rulerDist >= 1000) String.format(Locale.US, "%.2f km", rulerDist / 1000) else String.format(Locale.US, "%.1f m", rulerDist)} | Az: ${String.format(Locale.US, "%d°", rulerBearing.toInt())}",
+                            text = if (isFarsiMode) "📐 متر: $rDistStr | گرا: ${String.format(Locale.US, "%d°", rulerBearing.toInt())}" else "📐 Tape: $rDistStr | Az: ${String.format(Locale.US, "%d°", rulerBearing.toInt())}",
                             fontSize = 9.5.sp,
                             color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0),
                             fontFamily = FontFamily.Monospace,
@@ -11393,9 +11473,9 @@ fun MapContent(viewModel: GeologyViewModel) {
         // -------------------------------------------------------------
         if (positioningStatus && isRealPositionEnabled && !isAnyGisPanelOpen) {
             val accuracyColor = when {
-                gpsAccuracy <= 0.15 -> if (isOutdoorMode) Color(0xFF1B5E20) else Color(0xFF00FF00) // RTK FIXED solid green
-                gpsAccuracy <= 1.0 -> if (isOutdoorMode) Color(0xFFE65100) else Color(0xFFFFD600) // RTK FLOAT warm amber
-                gpsAccuracy <= 3.0 -> if (isOutdoorMode) Color(0xFF0D47A1) else Color(0xFF00E5FF) // 3D DGPS tech cyan/blue
+                currentAccuracy <= 0.15 -> if (isOutdoorMode) Color(0xFF1B5E20) else Color(0xFF00FF00) // RTK FIXED solid green
+                currentAccuracy <= 1.0 -> if (isOutdoorMode) Color(0xFFE65100) else Color(0xFFFFD600) // RTK FLOAT warm amber
+                currentAccuracy <= 3.0 -> if (isOutdoorMode) Color(0xFF0D47A1) else Color(0xFF00E5FF) // 3D DGPS tech cyan/blue
                 else -> Color(0xFFFF5252) // poor accuracy red
             }
             var isTelemetryExpanded by remember { mutableStateOf(true) }
@@ -11407,10 +11487,10 @@ fun MapContent(viewModel: GeologyViewModel) {
                     .width(if (isTelemetryExpanded) 220.dp else 120.dp)
                     .clickable { isTelemetryExpanded = !isTelemetryExpanded },
                 colors = CardDefaults.cardColors(
-                    containerColor = if (isOutdoorMode) Color.White else Color(0xCC151B17)
+                    containerColor = if (isOutdoorMode) Color.White.copy(0.9f) else Color(0xDD151B17)
                 ),
-                border = BorderStroke(2.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF).copy(alpha = 0.4f)),
-                shape = RoundedCornerShape(10.dp)
+                border = BorderStroke(1.5.dp, if (isOutdoorMode) Color.Black.copy(0.8f) else Color(0xFF00E5FF).copy(alpha = 0.4f)),
+                shape = RoundedCornerShape(12.dp)
             ) {
                 Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(
@@ -11435,19 +11515,19 @@ fun MapContent(viewModel: GeologyViewModel) {
                                     .size(8.dp)
                                     .background(accuracyColor.copy(alpha = ledAlpha), CircleShape)
                                     .border(1.dp, if (isOutdoorMode) Color.Black else Color.White, CircleShape)
-                            )
+                             )
                             
                             val gnssStatus = when {
-                                gpsAccuracy <= 0.15 -> "GNSS LOCK: RTK FIXED"
-                                gpsAccuracy <= 1.0 -> "GNSS LOCK: RTK FLOAT"
-                                gpsAccuracy <= 3.0 -> "GNSS LOCK: 3D DGPS"
-                                else -> "GNSS POOR ACCY"
+                                currentAccuracy <= 0.15 -> if (isFarsiMode) "موقعیت دقیق: RTK FIXED" else "GNSS LOCK: RTK FIXED"
+                                currentAccuracy <= 1.0 -> if (isFarsiMode) "موقعیت نسبی: RTK FLOAT" else "GNSS LOCK: RTK FLOAT"
+                                currentAccuracy <= 3.0 -> if (isFarsiMode) "جی‌پی‌اس فعال: 3D DGPS" else "GNSS LOCK: 3D DGPS"
+                                else -> if (isFarsiMode) "سیگنال ضعیف جی‌پی‌اس" else "GNSS POOR ACCY"
                             }
                             val gnssStatusShort = when {
-                                gpsAccuracy <= 0.15 -> "RTK FIXED"
-                                gpsAccuracy <= 1.0 -> "RTK FLOAT"
-                                gpsAccuracy <= 3.0 -> "3D DGPS"
-                                else -> "GNSS POOR"
+                                currentAccuracy <= 0.15 -> "RTK FIXED"
+                                currentAccuracy <= 1.0 -> "RTK FLOAT"
+                                currentAccuracy <= 3.0 -> "3D DGPS"
+                                else -> if (isFarsiMode) "سیگنال ضعیف" else "POOR"
                             }
                             Text(
                                 text = if (isTelemetryExpanded) gnssStatus else gnssStatusShort,
@@ -11464,7 +11544,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                                     .padding(horizontal = 4.dp, vertical = 1.dp)
                             ) {
                                 Text(
-                                    text = "Sats: $satelliteCount",
+                                    text = if (isFarsiMode) "ماهواره: $activeSatelliteCount" else "Sats: $activeSatelliteCount",
                                     color = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF),
                                     fontSize = 8.5.sp,
                                     fontWeight = FontWeight.Bold
@@ -11477,16 +11557,16 @@ fun MapContent(viewModel: GeologyViewModel) {
                         Spacer(modifier = Modifier.height(2.dp))
                         val labelTextCol = if (isOutdoorMode) Color.Black else Color.White
                         
-                        Text("LAT: ${String.format(Locale.US, "%.8f°N", currentLat)}", fontSize = 9.sp, color = labelTextCol, fontFamily = FontFamily.Monospace)
-                        Text("LON: ${String.format(Locale.US, "%.8f°E", currentLon)}", fontSize = 9.sp, color = labelTextCol, fontFamily = FontFamily.Monospace)
-                        Text("ALTITUDE: ${String.format(Locale.US, "%.1f", currentAltitude)}m MSL", fontSize = 9.sp, color = labelTextCol, fontFamily = FontFamily.Monospace)
+                        Text(if (isFarsiMode) "عرض جغرافیایی: ${String.format(Locale.US, "%.8f°", currentLat)}" else "LAT: ${String.format(Locale.US, "%.8f°N", currentLat)}", fontSize = 9.sp, color = labelTextCol, fontFamily = FontFamily.Monospace)
+                        Text(if (isFarsiMode) "طول جغرافیایی: ${String.format(Locale.US, "%.8f°", currentLon)}" else "LON: ${String.format(Locale.US, "%.8f°E", currentLon)}", fontSize = 9.sp, color = labelTextCol, fontFamily = FontFamily.Monospace)
+                        Text(if (isFarsiMode) "ارتفاع زمینی: ${String.format(Locale.US, "%.1f", currentAltitude)} متر" else "ALTITUDE: ${String.format(Locale.US, "%.1f", currentAltitude)}m MSL", fontSize = 9.sp, color = labelTextCol, fontFamily = FontFamily.Monospace)
                         
-                        val precisionStr = if (gpsAccuracy < 1.0) {
-                            String.format(Locale.US, "±%.2f m (%.0f cm)", gpsAccuracy, gpsAccuracy * 100.0)
+                        val precisionStr = if (currentAccuracy < 1.0) {
+                            if (isFarsiMode) String.format(Locale.US, "میزان خطای مکان: ±%.2f متر", currentAccuracy) else String.format(Locale.US, "±%.2f m (%.0f cm)", currentAccuracy, currentAccuracy * 100.0)
                         } else {
-                            String.format(Locale.US, "±%.1f m", gpsAccuracy)
+                            if (isFarsiMode) String.format(Locale.US, "میزان خطای مکان: ±%.1f متر", currentAccuracy) else String.format(Locale.US, "±%.1f m", currentAccuracy)
                         }
-                        Text("PRECISION: $precisionStr", fontSize = 8.5.sp, color = accuracyColor)
+                        Text(if (isFarsiMode) precisionStr else "PRECISION: $precisionStr", fontSize = 8.5.sp, color = accuracyColor)
                         
                         if (isTrackRecordingEnabled) {
                             val minutes = recordingDurationSec / 60
@@ -11501,7 +11581,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                             ) {
                                 Box(modifier = Modifier.size(6.dp).background(Color.Red, CircleShape))
                                 Text(
-                                    "REC TIMER: ${String.format("%02d:%02d", minutes, seconds)}",
+                                    text = if (isFarsiMode) "زمان ضبط: ${String.format("%02d:%02d", minutes, seconds)}" else "REC TIMER: ${String.format("%02d:%02d", minutes, seconds)}",
                                     fontSize = 8.5.sp,
                                     color = Color(0xFFFF5252),
                                     fontWeight = FontWeight.Bold
@@ -11509,7 +11589,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                             }
                         }
                     } else {
-                        Text("Click to expand", fontSize = 7.5.sp, color = if (isOutdoorMode) Color.Black else Color.Gray)
+                        Text(if (isFarsiMode) "برای نمایش ضربه بزنید" else "Click to expand", fontSize = 7.5.sp, color = if (isOutdoorMode) Color.Black else Color.Gray)
                     }
                 }
             }
@@ -11700,7 +11780,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "FIELD INSTRUMENTS",
+                            text = if (isFarsiMode) "ابزارهای صحرایی" else "FIELD INSTRUMENTS",
                             fontWeight = FontWeight.Bold,
                             fontSize = 11.5.sp,
                             color = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
@@ -11721,7 +11801,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                             Box(modifier = Modifier.weight(1f)) {
                                 ToolboxTile(
                                     icon = Icons.Default.Layers,
-                                    label = "Map Layer",
+                                    label = if (isFarsiMode) "لایه‌های نقشه" else "Map Layer",
                                     isActive = isMapLayerPanelVisible,
                                     activeColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
                                     isOutdoor = isOutdoorMode,
@@ -11739,7 +11819,11 @@ fun MapContent(viewModel: GeologyViewModel) {
                             Box(modifier = Modifier.weight(1f)) {
                                 ToolboxTile(
                                     icon = if (isTrackRecordingEnabled) Icons.Default.Stop else Icons.Default.RadioButtonChecked,
-                                    label = if (isTrackRecordingEnabled) "Logging..." else "Rec Track",
+                                    label = if (isTrackRecordingEnabled) {
+                                        if (isFarsiMode) "درحال ضبط..." else "Logging..."
+                                    } else {
+                                        if (isFarsiMode) "ضبط مسیر" else "Rec Track"
+                                    },
                                     isActive = isTrackRecordingEnabled,
                                     activeColor = Color(0xFFFF3030),
                                     isOutdoor = isOutdoorMode,
@@ -11752,7 +11836,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                             Box(modifier = Modifier.weight(1f)) {
                                 ToolboxTile(
                                     icon = Icons.Default.DirectionsWalk,
-                                    label = "Simulator",
+                                    label = if (isFarsiMode) "شبیه‌ساز گام" else "Simulator",
                                     isActive = showSimulator,
                                     activeColor = if (isOutdoorMode) Color(0xFF0288D1) else Color(0xFF00B0FF),
                                     isOutdoor = isOutdoorMode,
@@ -11768,7 +11852,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                             Box(modifier = Modifier.weight(1f)) {
                                 ToolboxTile(
                                     icon = Icons.Default.Explore,
-                                    label = "Surveyor",
+                                    label = if (isFarsiMode) "سنجش فاصله" else "Surveyor",
                                     isActive = isSurveyorPanelVisible,
                                     activeColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
                                     isOutdoor = isOutdoorMode,
@@ -11786,7 +11870,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                             Box(modifier = Modifier.weight(1f)) {
                                 ToolboxTile(
                                     icon = Icons.Default.List,
-                                    label = "Logs Traves",
+                                    label = if (isFarsiMode) "تاریخچه لاگ" else "Logs Traves",
                                     isActive = isJournalPanelVisible,
                                     activeColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
                                     isOutdoor = isOutdoorMode,
@@ -11804,7 +11888,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                             Box(modifier = Modifier.weight(1f)) {
                                 ToolboxTile(
                                     icon = Icons.Default.Settings,
-                                    label = "Geodetic Set",
+                                    label = if (isFarsiMode) "تنظیمات نقشه" else "Geodetic Set",
                                     isActive = isSettingsPanelVisible,
                                     activeColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
                                     isOutdoor = isOutdoorMode,
@@ -11825,7 +11909,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                             Box(modifier = Modifier.weight(1f)) {
                                 ToolboxTile(
                                     icon = Icons.Default.FilterAlt,
-                                    label = "Geology Filt",
+                                    label = if (isFarsiMode) "فیلتر لایه‌ها" else "Geology Filt",
                                     isActive = isStructuralPanelVisible,
                                     activeColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
                                     isOutdoor = isOutdoorMode,
@@ -11843,7 +11927,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                             Box(modifier = Modifier.weight(1f)) {
                                 ToolboxTile(
                                     icon = Icons.Default.Brush,
-                                    label = "Bound Pencil",
+                                    label = if (isFarsiMode) "ترسیم مرزها" else "Bound Pencil",
                                     isActive = isDrawingContactMode,
                                     activeColor = Color(0xFFD50000),
                                     isOutdoor = isOutdoorMode,
@@ -11863,7 +11947,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                             Box(modifier = Modifier.weight(1f)) {
                                 ToolboxTile(
                                     icon = if (isOutdoorMode) Icons.Default.WbSunny else Icons.Default.BrightnessMedium,
-                                    label = "Sunsight",
+                                    label = if (isFarsiMode) "نور آفتاب" else "Sunsight",
                                     isActive = isOutdoorMode,
                                     activeColor = Color(0xFFFFD54F),
                                     isOutdoor = isOutdoorMode,
@@ -11881,7 +11965,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         androidx.compose.material3.Text(
-                            text = "GEOSPATIAL OVERLAYS (KML/KMZ)",
+                            text = if (isFarsiMode) "لایه‌های کمکی مکانی (KML/KMZ)" else "GEOSPATIAL OVERLAYS (KML/KMZ)",
                             fontSize = 8.5.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isOutdoorMode) Color.DarkGray else Color.LightGray,
@@ -11917,14 +12001,18 @@ fun MapContent(viewModel: GeologyViewModel) {
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                androidx.compose.material3.Text("Import File", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                androidx.compose.material3.Text(
+                                    text = if (isFarsiMode) "وارد کردن فایل" else "Import File",
+                                    fontSize = 10.sp, 
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
 
                             if (importedFeaturesList.isNotEmpty()) {
                                 androidx.compose.material3.OutlinedButton(
                                     onClick = {
                                         viewModel.clearImportedFeatures()
-                                        Toast.makeText(context, "KML Overlay cleared.", Toast.LENGTH_SHORT).show()
+                                        Toast.makeText(context, if (isFarsiMode) "مرزبندی KML پاک شد" else "KML Overlay cleared.", Toast.LENGTH_SHORT).show()
                                     },
                                     modifier = Modifier.weight(1f).height(38.dp).testTag("clear_kml_button"),
                                     border = androidx.compose.foundation.BorderStroke(
@@ -11943,7 +12031,11 @@ fun MapContent(viewModel: GeologyViewModel) {
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    androidx.compose.material3.Text("Clear Overlay (${importedFeaturesList.size})", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    androidx.compose.material3.Text(
+                                        text = if (isFarsiMode) "حذف لایه‌ها (${importedFeaturesList.size})" else "Clear Overlay (${importedFeaturesList.size})",
+                                        fontSize = 10.sp, 
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
                             }
                         }
@@ -12067,7 +12159,7 @@ fun MapContent(viewModel: GeologyViewModel) {
             ) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "Map Layer Provider",
+                        text = if (isFarsiMode) "مدیریت لایه‌های نقشه" else "Map Layer Provider",
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp,
                         color = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)
@@ -12089,7 +12181,11 @@ fun MapContent(viewModel: GeologyViewModel) {
                             contentPadding = PaddingValues(0.dp),
                             shape = RoundedCornerShape(4.dp)
                         ) {
-                            Text("Online Webs", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = if (isFarsiMode) "آنلاین وب" else "Online Webs",
+                                fontSize = 10.sp, 
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                         Button(
                             onClick = { mapMode = MapMode.OFFLINE },
@@ -12101,13 +12197,22 @@ fun MapContent(viewModel: GeologyViewModel) {
                             contentPadding = PaddingValues(0.dp),
                             shape = RoundedCornerShape(4.dp)
                         ) {
-                            Text("Offline Grid", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = if (isFarsiMode) "شبکه آفلاین" else "Offline Grid",
+                                fontSize = 10.sp, 
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
 
                     if (mapMode == MapMode.ONLINE) {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Standard Map Layers:", fontSize = 9.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                            Text(
+                                text = if (isFarsiMode) "لایه‌های نقشه اینترنتی:" else "Standard Map Layers:",
+                                fontSize = 9.sp, 
+                                color = Color.Gray, 
+                                fontWeight = FontWeight.Bold
+                            )
                             val visibleLayers = MapLayerProvider.values()
                             visibleLayers.forEach { provider ->
                                 val selected = mapLayer == provider
@@ -12143,8 +12248,18 @@ fun MapContent(viewModel: GeologyViewModel) {
                     } else {
                         // Offline specifications
                         Column(modifier = Modifier.padding(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Offline Vector Grid Mode Active", fontSize = 10.sp, color = if (isOutdoorMode) Color.Black else Color.LightGray)
-                            Text("Allows field recording of tracks and targets cleanly without high-resolution base layers if remote signal is offline.", fontSize = 9.sp, color = Color.Gray, lineHeight = 13.sp)
+                            Text(
+                                text = if (isFarsiMode) "شبکه آفلاین بدون ماهواره فعال است" else "Offline Vector Grid Mode Active",
+                                fontSize = 10.sp, 
+                                color = if (isOutdoorMode) Color.Black else Color.LightGray,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = if (isFarsiMode) "امکان ثبت فواصل، برداشت‌های ساختاری و فیلترهای زمین‌شناختی بدون آتن‌دهی فراهم می‌باشد." else "Allows field recording of tracks and targets cleanly without high-resolution base layers if remote signal is offline.",
+                                fontSize = 9.sp, 
+                                color = Color.Gray, 
+                                lineHeight = 13.sp
+                            )
                         }
                     }
                     
@@ -12165,7 +12280,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                "UTM Grid Overlay",
+                                text = if (isFarsiMode) "نمایش خطوط شبکه UTM" else "UTM Grid Overlay",
                                 fontSize = 11.sp,
                                 color = if (isOutdoorMode) Color.Black else Color.White
                             )
@@ -12185,7 +12300,11 @@ fun MapContent(viewModel: GeologyViewModel) {
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Outdoor External Maps:", fontSize = 8.5.sp, color = Color.Gray)
+                        Text(
+                            text = if (isFarsiMode) "دسترسی بیرونی به نقشه‌ها:" else "Outdoor External Maps:",
+                            fontSize = 8.5.sp, 
+                            color = Color.Gray
+                        )
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             IconButton(
                                 onClick = { openBrowserLink(context, "https://www.google.com/maps/search/?api=1&query=$currentLat,$currentLon") },
@@ -12231,7 +12350,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "Geological Structures Filter",
+                        text = if (isFarsiMode) "فیلتر ساختارهای زمین‌شناسی" else "Geological Structures Filter",
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                         color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0),
                         modifier = Modifier.fillMaxWidth()
@@ -12240,13 +12359,19 @@ fun MapContent(viewModel: GeologyViewModel) {
 
                     // Structure pick buttons
                     Text(
-                        text = "Structure Type:",
+                        text = if (isFarsiMode) "نوع ساختار زمین‌شناختی:" else "Structure Type:",
                         fontSize = 11.sp,
                         color = if (isOutdoorMode) Color.DarkGray else Color.Gray,
                         modifier = Modifier.fillMaxWidth()
                     )
                     
-                    val optList = listOf("ALL" to "All", "Bedding" to "Bedding", "Joint" to "Joint", "Fault" to "Fault", "Foliation" to "Foliation")
+                    val optList = listOf(
+                        "ALL" to (if (isFarsiMode) "همه" else "All"), 
+                        "Bedding" to (if (isFarsiMode) "لایه‌بندی" else "Bedding"), 
+                        "Joint" to (if (isFarsiMode) "درزه" else "Joint"), 
+                        "Fault" to (if (isFarsiMode) "گسل" else "Fault"), 
+                        "Foliation" to (if (isFarsiMode) "چین‌خوردگی" else "Foliation")
+                    )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -12300,7 +12425,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                             )
                         )
                         Text(
-                            text = "Show Non-Structural Stations",
+                            text = if (isFarsiMode) "نمایش ایستگاه‌های فاقد اطلاعات ساختاری" else "Show Non-Structural Stations",
                             fontSize = 11.sp,
                             color = if (isOutdoorMode) Color.Black else Color.White
                         )
@@ -12311,7 +12436,11 @@ fun MapContent(viewModel: GeologyViewModel) {
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("Dip Range: ${dipMinFilter.toInt()}° to ${dipMaxFilter.toInt()}°", fontSize = 11.sp, color = if (isOutdoorMode) Color.Black else Color.LightGray)
+                        Text(
+                            text = if (isFarsiMode) "محدوده شیب مغناطیسی: ${dipMinFilter.toInt()}° تا ${dipMaxFilter.toInt()}°" else "Dip Range: ${dipMinFilter.toInt()}° to ${dipMaxFilter.toInt()}°", 
+                            fontSize = 11.sp, 
+                            color = if (isOutdoorMode) Color.Black else Color.LightGray
+                        )
                     }
                     RangeSlider(
                         value = dipMinFilter..dipMaxFilter,
@@ -12330,22 +12459,22 @@ fun MapContent(viewModel: GeologyViewModel) {
 
                     // Legend and Stats
                     Text(
-                        text = "Legend & Statistics:",
+                        text = if (isFarsiMode) "راهنمای لایه‌ها و آمار برداشت‌ها:" else "Legend & Statistics:",
                         fontSize = 10.sp,
                         color = if (isOutdoorMode) Color.DarkGray else Color.Gray,
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    val obsStats = remember(allObservationsList) {
+                    val obsStats = remember(allObservationsList, isFarsiMode) {
                         val bedCount = allObservationsList.count { it.observationType.lowercase().contains("bedding") || it.structureType?.contains("bed", ignoreCase = true) == true }
                         val faultCount = allObservationsList.count { it.observationType.lowercase().contains("fault") }
                         val jointCount = allObservationsList.count { it.observationType.lowercase().contains("joint") }
                         val foliationCount = allObservationsList.count { it.observationType.lowercase().contains("structure") && (it.structureType?.contains("fol", ignoreCase = true) == true || it.structureType?.contains("schist", ignoreCase = true) == true) }
                         listOf(
-                            Triple("Bedding", "#FFEB3B", bedCount),
-                            Triple("Fault", "#FF3D00", faultCount),
-                            Triple("Joint", "#00E676", jointCount),
-                            Triple("Foliation", "#E040FB", foliationCount)
+                            Triple(if (isFarsiMode) "لایه‌بندی (Bedding)" else "Bedding", "#FFEB3B", bedCount),
+                            Triple(if (isFarsiMode) "گسل (Fault)" else "Fault", "#FF3D00", faultCount),
+                            Triple(if (isFarsiMode) "درزه (Joint)" else "Joint", "#00E676", jointCount),
+                            Triple(if (isFarsiMode) "سازند و تورُق (Foliation)" else "Foliation", "#E040FB", foliationCount)
                         )
                     }
 
@@ -12831,6 +12960,145 @@ fun MapContent(viewModel: GeologyViewModel) {
 
                     Divider(color = if (isOutdoorMode) Color.LightGray else Color.White.copy(0.12f))
 
+                    // HIGH-ACCURACY GEODETIC OPTIMIZATION / تنظیمات دقت و کالیبراسیون لوکیشن
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = if (isFarsiMode) "کالیبراسیون و دقت مکانی" else "GEODETIC SENSOR CALIBRATION",
+                            fontSize = 9.sp,
+                            color = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        // 1. Hardware GPS Detection & Resolution Launcher
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (isFarsiMode) "وضعیت جی‌پی‌اس سخت‌افزار" else "Hardware GPS Status",
+                                    fontSize = 10.5.sp,
+                                    color = if (isOutdoorMode) Color.Black else Color.White
+                                )
+                                Text(
+                                    text = if (isDeviceGpsEnabled) {
+                                        if (isFarsiMode) "موقعیت‌یاب ماهواره فعال" else "GPS receiver active"
+                                    } else {
+                                        if (isFarsiMode) "لوکیشن خاموش است!" else "Device GPS turned OFF!"
+                                    },
+                                    fontSize = 8.5.sp,
+                                    color = if (isDeviceGpsEnabled) Color(0xFF4CAF50) else Color(0xFFFF5252)
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .background(
+                                        if (isDeviceGpsEnabled) Color(0xFF00FF00) else Color(0xFFFF0000),
+                                        CircleShape
+                                    )
+                            )
+                        }
+
+                        if (!isDeviceGpsEnabled) {
+                            Button(
+                                onClick = {
+                                    try {
+                                        val intent = android.content.Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        android.widget.Toast.makeText(context, "خطا در باز کردن تنظیمات لوکیشن", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFFF5252),
+                                    contentColor = Color.White
+                                ),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 4.dp, horizontal = 8.dp),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Icon(Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(12.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = if (isFarsiMode) "روشن کردن موقعیت‌یاب گوشی" else "Enable Phone GPS",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        // 2. Kalman Filter Smoothing Toggle
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (isFarsiMode) "فیلتر کالمن لوکیشن" else "Kalman Smooth Tracks",
+                                    fontSize = 10.5.sp,
+                                    color = if (isOutdoorMode) Color.Black else Color.White
+                                )
+                                Text(
+                                    text = if (isFarsiMode) "کاهش خطای پرش آنتن و لرزه جهت‌ها" else "Smoothens route & limits jump drift",
+                                    fontSize = 8.sp,
+                                    color = Color.Gray,
+                                    lineHeight = 11.sp
+                                )
+                            }
+                            Switch(
+                                checked = isKalmanSmoothingEnabled,
+                                onCheckedChange = { viewModel.setKalmanSmoothingEnabled(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)
+                                ),
+                                modifier = Modifier.scale(0.8f)
+                            )
+                        }
+
+                        // 3. Background tracking permission helper (for screen-off walks)
+                        Button(
+                            onClick = {
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                                    val hasBackgroundPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                                    if (hasBackgroundPermission) {
+                                        android.widget.Toast.makeText(context, if (isFarsiMode) "مجوز پس‌زمینه از قبل تایید شده است." else "Background location already active.", android.widget.Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        showBackgroundLocationRationaleDialog = true
+                                    }
+                                } else {
+                                    android.widget.Toast.makeText(context, if (isFarsiMode) "ردیابی پس‌زمینه در سیستم شما اتوماتیک فعال است." else "Background mapping automatically supported.", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0x3300FFE0),
+                                contentColor = if (isOutdoorMode) Color.White else Color(0xFF00FFE0)
+                            ),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 4.dp, horizontal = 8.dp),
+                            border = if (isOutdoorMode) null else BorderStroke(1.dp, Color(0xFF00E5FF).copy(0.4f)),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Icon(Icons.Default.DirectionsWalk, contentDescription = null, modifier = Modifier.size(12.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (isFarsiMode) "ردیابی در زمان قفل بودن صفحه" else "Record With Screen Off",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(2.dp))
+
+                    Divider(color = if (isOutdoorMode) Color.LightGray else Color.White.copy(0.12f))
+
                     // Mapbox details
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("MAPBOX TILES INTEGRATION API:", fontSize = 9.sp, color = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
@@ -13260,7 +13528,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                     ) {
                         Icon(Icons.Default.AddLocation, contentDescription = null, tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF))
                         Text(
-                            text = "Quick-Log Geological Station",
+                            text = if (isFarsiMode) "ثبت سریع ایستگاه زمین‌شناسی" else "Quick-Log Geological Station",
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isOutdoorMode) Color.Black else Color.White,
@@ -13276,14 +13544,14 @@ fun MapContent(viewModel: GeologyViewModel) {
                         val activeProj = activeProject
                         if (activeProj == null) {
                             Text(
-                                text = "No active project! Please select or create a project on the 'Geology' tab first.",
+                                text = if (isFarsiMode) "پروژه فعالی یافت نشد! لطفاً نسبت به انتخاب یا ساخت پروژه ورودی در بخش تب زمین‌شناسی اقدام فرمایید." else "No active project! Please select or create a project on the 'Geology' tab first.",
                                 fontSize = 11.sp,
                                 color = Color.Red,
                                 modifier = Modifier.fillMaxWidth()
                             )
                         } else {
                             Text(
-                                text = "Add new station at current sight target coordinates in active project: '${activeProj.name}'",
+                                text = if (isFarsiMode) "ثبت ایستگاه جدید در موقعیت هم‌اکنون هدف بر روی نقشه در پروژه فعال: '${activeProj.name}'" else "Add new station at current sight target coordinates in active project: '${activeProj.name}'",
                                 fontSize = 11.sp,
                                 color = if (isOutdoorMode) Color.DarkGray else Color.Gray,
                                 modifier = Modifier.fillMaxWidth()
@@ -13296,8 +13564,18 @@ fun MapContent(viewModel: GeologyViewModel) {
                             ) {
                                 Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                     val utmResultCoord = UtmConverter.convertLatLngToUtm(pannedCenterLat, pannedCenterLon)
-                                    Text("Sight target: ${String.format(Locale.US, "%.8f", pannedCenterLat)}°N , ${String.format(Locale.US, "%.8f", pannedCenterLon)}°E", fontSize = 10.5.sp, color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0), fontFamily = FontFamily.Monospace)
-                                    Text("UTM Zone: $utmResultCoord", fontSize = 9.5.sp, color = if (isOutdoorMode) Color.DarkGray else Color.LightGray, fontFamily = FontFamily.Monospace)
+                                    Text(
+                                        text = if (isFarsiMode) "موقعیت زمین: ${String.format(Locale.US, "%.8f", pannedCenterLat)}°N , ${String.format(Locale.US, "%.8f", pannedCenterLon)}°E" else "Sight target: ${String.format(Locale.US, "%.8f", pannedCenterLat)}°N , ${String.format(Locale.US, "%.8f", pannedCenterLon)}°E", 
+                                        fontSize = 10.5.sp, 
+                                        color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0), 
+                                        fontFamily = FontFamily.Monospace
+                                    )
+                                    Text(
+                                        text = if (isFarsiMode) "سامانه زون مسطحاتی UTM: $utmResultCoord" else "UTM Zone: $utmResultCoord", 
+                                        fontSize = 9.5.sp, 
+                                        color = if (isOutdoorMode) Color.DarkGray else Color.LightGray, 
+                                        fontFamily = FontFamily.Monospace
+                                    )
                                 }
                             }
 
@@ -13306,7 +13584,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                                 OutlinedTextField(
                                     value = quickStationPrefix,
                                     onValueChange = { quickStationPrefix = it },
-                                    label = { Text("Prefix", fontSize = 9.5.sp) },
+                                    label = { Text(if (isFarsiMode) "پیشوند هدر" else "Prefix", fontSize = 9.5.sp) },
                                     singleLine = true,
                                     modifier = Modifier.weight(1f),
                                     textStyle = MaterialTheme.typography.bodyMedium.copy(color = if (isOutdoorMode) Color.Black else Color.White),
@@ -13315,7 +13593,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                                 OutlinedTextField(
                                     value = quickStationCode,
                                     onValueChange = { quickStationCode = it },
-                                    label = { Text("Station Code", fontSize = 9.5.sp) },
+                                    label = { Text(if (isFarsiMode) "کد ایستگاه" else "Station Code", fontSize = 9.5.sp) },
                                     singleLine = true,
                                     modifier = Modifier.weight(2f),
                                     textStyle = MaterialTheme.typography.bodyMedium.copy(color = if (isOutdoorMode) Color.Black else Color.White),
@@ -13479,6 +13757,68 @@ fun MapContent(viewModel: GeologyViewModel) {
                 titleContentColor = if (isOutdoorMode) Color.Black else Color.White,
                 properties = DialogProperties(usePlatformDefaultWidth = false),
                 modifier = Modifier.padding(16.dp)
+            )
+        }
+
+        // -------------------------------------------------------------
+        // BACKGROUND ACCURACY RATIONALE DIALOG
+        // -------------------------------------------------------------
+        if (showBackgroundLocationRationaleDialog) {
+            AlertDialog(
+                onDismissRequest = { showBackgroundLocationRationaleDialog = false },
+                title = {
+                    Text(
+                        text = if (isFarsiMode) "مجوز پس‌زمینه ردیاب نقشه" else "Background Tracking Permission",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = if (isOutdoorMode) Color.Black else Color.White
+                    )
+                },
+                text = {
+                    Text(
+                        text = if (isFarsiMode) {
+                            "برای ردیابی مسیر گشت‌زنی با حداکثر دقت در زمان قفل بودن صفحه یا خروج از برنامه، لطفا دسترسی لوکیشن را در تنظیمات گوشی روی 'همیشه مجاز باشد' (Allow all the time) قرار دهید.\n\nپس از لمس تایید، به بخش تنظیمات برنامه هدایت می‌شوید تا گزینه همیشه فعال را برگزینید."
+                        } else {
+                            "To capture maximum accuracy paths while walking with your screen locked or using other tools, please set the Location permission to 'Allow all the time' in the system settings.\n\nAfter clicking confirm, you will be redirected to settings."
+                        },
+                        fontSize = 12.sp,
+                        color = if (isOutdoorMode) Color.DarkGray else Color.LightGray
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showBackgroundLocationRationaleDialog = false
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                                try {
+                                    backgroundLocationPermissionLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                                } catch (e: Exception) {
+                                    try {
+                                        val intent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                            data = Uri.fromParts("package", context.packageName, null)
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (ex: Exception) {}
+                                }
+                            }
+                        }
+                    ) {
+                        Text(
+                            text = if (isFarsiMode) "تایید و انتقال" else "Confirm & Go",
+                            fontWeight = FontWeight.Bold,
+                            color = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)
+                        )
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showBackgroundLocationRationaleDialog = false }) {
+                        Text(
+                            text = if (isFarsiMode) "انصراف" else "Cancel",
+                            color = Color.Gray
+                        )
+                    }
+                },
+                containerColor = if (isOutdoorMode) Color.White else Color(0xFF1E2220)
             )
         }
 
@@ -14046,6 +14386,40 @@ fun MapContent(viewModel: GeologyViewModel) {
                                         onCheckedChange = { showSimulator = it },
                                         colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = accentColor)
                                     )
+                                }
+
+                                if (showSimulator) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(if (isFarsiMode) "گشت‌زنی خودکار زمین‌شناسی" else "Auto-Walk / Continuous Survey", color = overlayTextColor, fontSize = 14.sp)
+                                            Text(if (isFarsiMode) "تغییر موقعیت گام‌به‌گام و همزمان فرکانس بالا" else "Continues tracking path automatically every second", color = overlayTextColor.copy(alpha = 0.5f), fontSize = 10.sp)
+                                        }
+                                        Switch(
+                                            checked = isAutoWalkEnabled,
+                                            onCheckedChange = { isAutoWalkEnabled = it },
+                                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = accentColor)
+                                        )
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(if (isFarsiMode) "تقویت موقعیت فازی RTK نظامی" else "Military RTK Phase Jitter", color = overlayTextColor, fontSize = 14.sp)
+                                            Text(if (isFarsiMode) "اعمال ریزنوسان تصحیح فازی موج حامل زیر ۱ سانتی‌متر" else "Sub-centimeter microscopic carrier-phase fluctuations", color = overlayTextColor.copy(alpha = 0.5f), fontSize = 10.sp)
+                                        }
+                                        Switch(
+                                            checked = isRtkPhasedBoosterEnabled,
+                                            onCheckedChange = { isRtkPhasedBoosterEnabled = it },
+                                            colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = accentColor)
+                                        )
+                                    }
                                 }
 
                                 if (showSimulator) {
