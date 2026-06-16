@@ -123,5 +123,31 @@ dependencies {
   "ksp"(libs.moshi.kotlin.codegen)
 }
 
+// Automatically copy the compiled debug APK directly to the root as GeoFieldPro.apk and .build-outputs/app-debug.apk after assembly
+val appBuildDir = layout.buildDirectory.asFile.get()
+val appRootDir = rootDir
+
+tasks.register("copyApkToRoot") {
+    val src = File(appBuildDir, "outputs/apk/debug/app-debug.apk")
+    val destRoot = File(appRootDir, "GeoFieldPro.apk")
+    val destBuildOutputsDir = File(appRootDir, ".build-outputs")
+    val destBuildOutputs = File(destBuildOutputsDir, "app-debug.apk")
+    
+    doLast {
+        if (src.exists()) {
+            src.copyTo(destRoot, overwrite = true)
+            if (!destBuildOutputsDir.exists()) {
+                destBuildOutputsDir.mkdirs()
+            }
+            src.copyTo(destBuildOutputs, overwrite = true)
+            println("Successfully copied compiled APK to project root (GeoFieldPro.apk) and .build-outputs/app-debug.apk")
+        }
+    }
+}
+
+tasks.matching { it.name == "assembleDebug" }.configureEach {
+    finalizedBy("copyApkToRoot")
+}
+
 
 

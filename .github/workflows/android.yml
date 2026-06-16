@@ -47,15 +47,19 @@ jobs:
 
     - name: Commit and Push updated GeoFieldPro.apk to Repository Root
       if: github.event_name == 'push'
+      continue-on-error: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        cp app/build/outputs/apk/debug/app-debug.apk GeoFieldPro.apk
         git config --global user.name "github-actions[bot]"
         git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git add GeoFieldPro.apk
+        git checkout ${{ github.ref_name }}
+        mkdir -p .build-outputs
+        cp app/build/outputs/apk/debug/app-debug.apk GeoFieldPro.apk
+        cp app/build/outputs/apk/debug/app-debug.apk .build-outputs/app-debug.apk
+        git add GeoFieldPro.apk .build-outputs/app-debug.apk
         git commit -m "chore: update GeoFieldPro.apk direct installation binary [skip ci]" --allow-empty
-        git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" HEAD:${{ github.ref }}
+        git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" ${{ github.ref_name }}
 
     - name: Create or Update GitHub Release
       if: github.event_name == 'push'
