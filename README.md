@@ -14,10 +14,20 @@ GeoField Pro is a professional, high-precision, offline-first mobile field data 
 
 ## 📲 دانلود و نصب مستقیم (Install Direct APK)
 
-به منظور دانلود و نصب سریع برنامه روی دمو و تلفن همراه اندروید، می‌توانید فایل نصبی آماده زیر را مستقیماً از داخل مخزن گیت‌هاب دانلود فرمایید:
+به منظور دانلود و نصب سریع، آسان و مستقیم برنامه بر روی تلفن همراه خود، می‌توانید از روش‌های زیر استفاده نمایید:
 
-*   **📥 [دانلود مستقیم فایل GeoFieldPro.apk (کلیک نمایید)](./GeoFieldPro.apk?raw=true)** — دانلود آخرین نسخه آماده و پایدار برنامه.
-*   **⚙️ [دانلود از بخش GitHub Releases](https://github.com/farzad-f/geofieldpro/releases)** — به صورت خودکار توسط سیستم CI/CD پس از هر بروزرسانی ساخته می‌شود.
+<p align="center">
+  <a href="https://github.com/farzad-f/geofieldpro/raw/main/GeoFieldPro.apk">
+    <img src="https://img.shields.io/badge/دانلود%20مستقیم-GeoFieldPro.apk-success?style=for-the-badge&logo=android&logoColor=white&color=00796B" alt="Download GeoFieldPro.apk" />
+  </a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/farzad-f/geofieldpro/releases/latest">
+    <img src="https://img.shields.io/badge/آخرین%20نسخه-GitHub%20Releases-blue?style=for-the-badge&logo=github" alt="GitHub Releases" />
+  </a>
+</p>
+
+*   **📥 [لینک مستقیم دانلود فایل GeoFieldPro.apk (کلیک نمایید)](https://github.com/farzad-f/geofieldpro/raw/main/GeoFieldPro.apk)** — دانلود آخرین نسخه پایدار برنامه (نسخه 1.3) به طور مستقیم از شاخه اصلی مخزن.
+*   **⚙️ [دانلود از بخش انتشارات گیت‌هاب (GitHub Releases)](https://github.com/farzad-f/geofieldpro/releases)** — دسترسی به آرشیو تمامی نسخه‌های پیشین و نهایی برنامه که توسط موتور خودکار CI/CD پس از هر بروزرسانی منتشر می‌شود.
 
 ---
 

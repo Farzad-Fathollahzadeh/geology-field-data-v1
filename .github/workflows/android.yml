@@ -1,4 +1,4 @@
-name: Android CI
+name: Android CI & Automated Release Engine
 
 on:
   push:
@@ -11,12 +11,14 @@ permissions:
 
 jobs:
   build:
-    name: Build Android App
+    name: Build & Release GeoField Pro
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout Source Code
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # Fetch all history for accurate changelogs
 
     - name: Set up JDK 17
       uses: actions/setup-java@v4
@@ -25,16 +27,26 @@ jobs:
         java-version: '17'
         cache: 'gradle'
 
-    - name: Restoring Debug Keystore
+    - name: Restore Debug Keystore
       run: |
         if [ -f "debug.keystore.base64" ]; then
           echo "Decoding and restoring debug keystore..."
           base64 -d debug.keystore.base64 > debug.keystore
         else
-          echo "No debug.keystore.base64 found, a fresh debug keystore will be generated."
+          echo "No debug.keystore.base64 found, generating a fresh key..."
         fi
 
-    - name: Set up Gradle and Build APK
+    - name: Extract Dynamic Version Name
+      id: get_version
+      run: |
+        VERSION_NAME=$(grep "versionName =" app/build.gradle.kts | head -n 1 | sed -E 's/.*"([^"]+)".*/\1/')
+        if [ -z "$VERSION_NAME" ]; then
+          VERSION_NAME="1.3"
+        fi
+        echo "version=$VERSION_NAME" >> $GITHUB_OUTPUT
+        echo "Derived dynamic app version: $VERSION_NAME"
+
+    - name: Build Debug Android APK
       uses: gradle/actions/setup-gradle@v3
       with:
         arguments: assembleDebug
@@ -42,10 +54,10 @@ jobs:
     - name: Upload Debug APK Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: GeoFieldPro-Debug-APK
+        name: GeoFieldPro-V${{ steps.get_version.outputs.version }}-Debug-APK
         path: app/build/outputs/apk/debug/app-debug.apk
 
-    - name: Commit and Push updated GeoFieldPro.apk to Repository Root
+    - name: Commit Direct Download Binary to Repository Root
       if: github.event_name == 'push'
       continue-on-error: true
       env:
@@ -54,22 +66,56 @@ jobs:
         git config --global user.name "github-actions[bot]"
         git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git checkout ${{ github.ref_name }}
-        mkdir -p .build-outputs
+        
+        # Deploy direct download assets
         cp app/build/outputs/apk/debug/app-debug.apk GeoFieldPro.apk
+        mkdir -p .build-outputs
         cp app/build/outputs/apk/debug/app-debug.apk .build-outputs/app-debug.apk
+        
         git add GeoFieldPro.apk .build-outputs/app-debug.apk
-        git commit -m "chore: update GeoFieldPro.apk direct installation binary [skip ci]" --allow-empty
+        git commit -m "chore: update direct installation build v${{ steps.get_version.outputs.version }} [skip ci]" --allow-empty
         git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git" ${{ github.ref_name }}
 
-    - name: Create or Update GitHub Release
+    - name: Auto-Generate Elegant Release Changelog
+      id: build_changelog
+      if: github.event_name == 'push'
+      run: |
+        echo "### 🌟 Live Production Build — Version v${{ steps.get_version.outputs.version }}" > release_notes.md
+        echo "" >> release_notes.md
+        echo "This release is automatically compiled and distributed via the **GeoField Pro Automated CI/CD Engine**." >> release_notes.md
+        echo "" >> release_notes.md
+        echo "#### 📦 Direct Downloads & Resources" >> release_notes.md
+        echo "- **[📥 Download Direct App APK File (v${{ steps.get_version.outputs.version }})](https://github.com/${{ github.repository }}/raw/${{ github.ref_name }}/GeoFieldPro.apk)**" >> release_notes.md
+        echo "" >> release_notes.md
+        echo "#### 🛠️ Comprehensive Changelog & Updates" >> release_notes.md
+        git log --oneline -n 15 --no-merges | sed 's/^/- /' >> release_notes.md || echo "- Routine stability optimizations and UI updates." >> release_notes.md
+        echo "" >> release_notes.md
+        echo "---" >> release_notes.md
+        echo "*Built for Android 7.0+ (API 24+) with high accuracy GPS precision overlays. Inspired by professional geologists mapping standards.*" >> release_notes.md
+
+    - name: Publish/Update Version Specific GitHub Release
       if: github.event_name == 'push'
       uses: ncipollo/release-action@v1
       with:
         artifacts: "app/build/outputs/apk/debug/app-debug.apk"
-        tag: "latest"
-        name: "GeoField Pro - Latest Release"
-        body: "This release automatically contains the latest compiled APK of GeoField Pro built from the main branch."
+        tag: "v${{ steps.get_version.outputs.version }}"
+        name: "GeoField Pro v${{ steps.get_version.outputs.version }}"
+        bodyFile: "release_notes.md"
         allowUpdates: true
         removeArtifacts: true
         makeLatest: true
+        token: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Sync Secondary Latest Stable Tag Releases
+      if: github.event_name == 'push'
+      continue-on-error: true
+      uses: ncipollo/release-action@v1
+      with:
+        artifacts: "app/build/outputs/apk/debug/app-debug.apk"
+        tag: "latest"
+        name: "GeoField Pro - Stable Latest Release"
+        bodyFile: "release_notes.md"
+        allowUpdates: true
+        removeArtifacts: true
+        makeLatest: false
         token: ${{ secrets.GITHUB_TOKEN }}
