@@ -88,14 +88,19 @@ val structureSuggestions = listOf("Bedding (S0)", "Foliation (S1)", "Cleavage", 
 val mineralizationSuggestions = listOf("Disseminated", "Massive Sulfide", "Stockwork", "Supergene Enrichment")
 
 class MainActivity : ComponentActivity() {
-    private val viewModel: GeologyViewModel by viewModels()
+    private val viewModel: GeologyViewModel by viewModels {
+        val app = application as GeologyApplication
+        GeologyViewModelFactory(app, app.dao)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        viewModel.setFarsiMode(false)
         enableEdgeToEdge()
         setContent {
             val themeSetting by viewModel.themeSetting.collectAsStateWithLifecycle()
             val fontSizeSetting by viewModel.fontSizeSetting.collectAsStateWithLifecycle()
+            val isFarsiMode by viewModel.isFarsiModeSetting.collectAsStateWithLifecycle()
             
             MyApplicationTheme(themeSetting = themeSetting) {
                 val currentDensity = androidx.compose.ui.platform.LocalDensity.current
@@ -110,8 +115,10 @@ class MainActivity : ComponentActivity() {
                         fontScale = currentDensity.fontScale * scaleMultiplier
                     )
                 }
+                val layoutDirection = if (isFarsiMode) androidx.compose.ui.unit.LayoutDirection.Rtl else androidx.compose.ui.unit.LayoutDirection.Ltr
                 androidx.compose.runtime.CompositionLocalProvider(
-                    androidx.compose.ui.platform.LocalDensity provides customDensity
+                    androidx.compose.ui.platform.LocalDensity provides customDensity,
+                    androidx.compose.ui.platform.LocalLayoutDirection provides layoutDirection
                 ) {
                     val backgroundColor = MaterialTheme.colorScheme.background
 
@@ -217,6 +224,17 @@ enum class MainTab {
     Home, GeologicalMapping, BoreholeLogging, RockMechanics, Map, Tools
 }
 
+private fun getScreenDepth(screen: Screen): Int {
+    return when (screen) {
+        is Screen.ProjectList -> 0
+        is Screen.CreateProject -> 1
+        is Screen.ProjectDashboard -> 1
+        is Screen.CreateStation -> 2
+        is Screen.StationDetail -> 2
+        is Screen.AddObservation -> 3
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
 fun MainScreenContent(
@@ -235,6 +253,7 @@ fun MainScreenContent(
     val fontSizeSetting by viewModel.fontSizeSetting.collectAsStateWithLifecycle()
     val coordSystemSetting by viewModel.coordSystemSetting.collectAsStateWithLifecycle()
     val isFarsiMode by viewModel.isFarsiModeSetting.collectAsStateWithLifecycle()
+    val gpsIntervalSetting by viewModel.gpsIntervalSetting.collectAsStateWithLifecycle()
 
     // Global Stats flows
     val allStations by viewModel.allStations.collectAsStateWithLifecycle()
@@ -360,14 +379,16 @@ fun MainScreenContent(
                             }
                         },
                         actions = {
-                            IconButton(
-                                onClick = { showSettingsDialog = true },
-                                modifier = Modifier.testTag("settings_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Settings,
-                                    contentDescription = "Settings"
-                                )
+                            if (activeTab != MainTab.Home) {
+                                IconButton(
+                                    onClick = { showSettingsDialog = true },
+                                    modifier = Modifier.testTag("settings_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Settings,
+                                        contentDescription = "Settings"
+                                    )
+                                }
                             }
                             IconButton(
                                 onClick = onToggleTheme,
@@ -526,7 +547,17 @@ fun MainScreenContent(
                         AnimatedContent(
                             targetState = currentScreen,
                             transitionSpec = {
-                                fadeIn() togetherWith fadeOut()
+                                val initialDepth = getScreenDepth(initialState)
+                                val targetDepth = getScreenDepth(targetState)
+                                if (targetDepth >= initialDepth) {
+                                    (slideInHorizontally { width -> width } + fadeIn()).togetherWith(
+                                        slideOutHorizontally { width -> -width } + fadeOut()
+                                    )
+                                } else {
+                                    (slideInHorizontally { width -> -width } + fadeIn()).togetherWith(
+                                        slideOutHorizontally { width -> width } + fadeOut()
+                                    )
+                                }
                             },
                             label = "ScreenTransition"
                         ) { screen ->
@@ -595,7 +626,8 @@ fun MainScreenContent(
                                         onUpdateStation = {
                                             viewModel.updateStation(it)
                                         },
-                                        coordSystemSetting = coordSystemSetting
+                                        coordSystemSetting = coordSystemSetting,
+                                        isFarsiMode = isFarsiMode
                                     )
                                 }
                                 is Screen.AddObservation -> {
@@ -810,6 +842,56 @@ fun MainScreenContent(
                                     }
 
                                     Spacer(modifier = Modifier.height(2.dp))
+
+                                    // Coordinate System Selectors
+                                    Text(
+                                        text = if (isFarsiMode) "سیستم نمایش مختصات:" else "Display Coordinate System:",
+                                    )
+
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    // GPS Battery / Accuracy settings selector
+                                    Text(
+                                        text = if (isFarsiMode) "بهینه‌ساز باتری GPS / نرخ فواصل:" else "GPS Battery Save & Accuracy Mode:",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 10.5.sp
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        listOf(
+                                            "BatterySaver" to (if (isFarsiMode) "🔋 مـوفر باتری" else "🔋 Saver"),
+                                            "Balanced" to (if (isFarsiMode) "⚖️ مـتـعادل" else "⚖️ Balanced"),
+                                            "UltraPrecise" to (if (isFarsiMode) "⚡ فوق‌دقیق" else "⚡ Precise")
+                                        ).forEach { (modeId, label) ->
+                                            val isSelected = gpsIntervalSetting == modeId
+                                            Button(
+                                                onClick = { viewModel.setGpsIntervalSetting(modeId, context) },
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                                                    contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                                ),
+                                                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
+                                                modifier = Modifier.weight(1f).height(30.dp),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(label, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+
+                                    Text(
+                                        text = when (gpsIntervalSetting) {
+                                            "BatterySaver" -> if (isFarsiMode) "عمر باتری حداکثر (بروزرسانی هر ۱۰ ثانیه). مناسب پیاده‌روی طولانی." else "Max Battery Life (10s updates). Perfect for long hikes."
+                                            "UltraPrecise" -> if (isFarsiMode) "دقت فوق‌العاده بالا (بروزرسانی هر ۱ ثانیه). مصرف شدید باتری." else "High Accuracy (1s updates). Stronger battery draw."
+                                            else -> if (isFarsiMode) "تعادل عالی (بروزرسانی هر ۲.۵ ثانیه با فیلتر فاصله). پیشنهادی." else "Optimal Balance (2.5s updates + distance filters). Recommended."
+                                        },
+                                        fontSize = 8.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+
+                                    Spacer(modifier = Modifier.height(4.dp))
 
                                     // Coordinate System Selectors
                                     Text(
@@ -3935,11 +4017,16 @@ fun StationDetailScreen(
     onAddObservationClick: () -> Unit,
     onDeleteObservation: (Int) -> Unit,
     onUpdateStation: (Station) -> Unit,
-    coordSystemSetting: String = "UTM"
+    coordSystemSetting: String = "UTM",
+    isFarsiMode: Boolean = false
 ) {
     if (station == null) return
 
-    val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(station.createdAt))
+    val dateStr = if (isFarsiMode) {
+        com.example.PersianDateHelper.getPersianDateString(station.createdAt)
+    } else {
+        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(station.createdAt))
+    }
     var showEditStationDialog by remember { mutableStateOf(false) }
 
     var showEditObsDialog by remember { mutableStateOf(false) }
@@ -6489,7 +6576,7 @@ fun HomeDashboardContent(
                     contentAlignment = Alignment.Center
                 ) {
                     androidx.compose.foundation.Image(
-                        painter = androidx.compose.ui.res.painterResource(id = com.example.R.drawable.geofield_logo_new_1781495437950),
+                        painter = androidx.compose.ui.res.painterResource(id = com.example.R.drawable.img_geofield_logo_1781623911699),
                         contentDescription = "GeoField Pro Monogram",
                         modifier = Modifier.fillMaxSize()
                     )
@@ -10361,133 +10448,290 @@ fun WebViewMap(
     val pannedCenterLatState = androidx.compose.runtime.rememberUpdatedState(pannedCenterLat)
     val pannedCenterLonState = androidx.compose.runtime.rememberUpdatedState(pannedCenterLon)
 
-    AndroidView(
-        factory = { ctx ->
-            WebView(ctx).apply {
-                addJavascriptInterface(object {
-                    @android.webkit.JavascriptInterface
-                    fun onCenterChanged(lat: Double, lon: Double) {
-                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            onCenterChanged(lat, lon)
-                        }
-                    }
+    val centerLat = if (pannedCenterLat != 0.0) pannedCenterLat else currentLatState.value
+    val centerLon = if (pannedCenterLon != 0.0) pannedCenterLon else currentLonState.value
 
-                    @android.webkit.JavascriptInterface
-                    fun onZoomChanged(lvl: Int) {
-                        android.os.Handler(android.os.Looper.getMainLooper()).post {
-                            onZoomChanged(lvl)
-                        }
-                    }
-                }, "AndroidInterface")
-
-                webViewClient = object : WebViewClient() {
-                    override fun onPageFinished(view: WebView?, url: String?) {
-                        super.onPageFinished(view, url)
-                        val lat = currentLatState.value
-                        val lon = currentLonState.value
-                        val accuracy = gpsAccuracyState.value
-                        val realPos = isRealPosState.value
-                        val lock = lockGpsCenterState.value
-                        val lz = leafZoomState.value
-                        val utmGrid = showUtmGridState.value
-                        val rx = rulerAnchorState.value
-                        val pLat = pannedCenterLatState.value
-                        val pLon = pannedCenterLonState.value
-
-                        val hasNavTarget = navigationTargetStationState.value != null
-                        val navTargetLat = navigationTargetStationState.value?.latitude ?: 0.0
-                        val navTargetLon = navigationTargetStationState.value?.longitude ?: 0.0
-
-                        val hasRuler = rx != null
-                        val rxLat = rx?.lat ?: 0.0
-                        val rxLon = rx?.lon ?: 0.0
-
-                        val jsCall = """
-                            (function() {
-                                var attempts = 0;
-                                var r = function() {
-                                    if (typeof updateLiveLocation !== 'undefined') {
-                                        updateLiveLocation($lat, $lon, $accuracy, $realPos, $lock, $lz);
-                                        if (typeof setUtmGridVisible !== 'undefined') { setUtmGridVisible($utmGrid); }
-                                        
-                                        if ($hasNavTarget) {
-                                            if (typeof updateNavigationLine !== 'undefined') {
-                                                updateNavigationLine($lat, $lon, $navTargetLat, $navTargetLon, true);
-                                            }
-                                        }
-                                        
-                                        if (typeof updateRulerLine !== 'undefined') {
-                                            if ($hasRuler) {
-                                                updateRulerLine($rxLat, $rxLon, $pLat, $pLon, true);
-                                            } else {
-                                                updateRulerLine(0, 0, 0, 0, false);
-                                            }
-                                        }
-                                    } else if (attempts < 40) {
-                                        attempts++;
-                                        setTimeout(r, 150);
-                                    }
-                                };
-                                r();
-                            })();
-                        """.trimIndent()
-
-                        view?.evaluateJavascript(jsCall, null)
-                    }
-                }
-                settings.javaScriptEnabled = true
-                settings.domStorageEnabled = true
-                settings.useWideViewPort = true
-                settings.loadWithOverviewMode = true
-                settings.builtInZoomControls = true
-                settings.displayZoomControls = false
-                settings.setSupportZoom(true)
-                tag = htmlContent
-                loadDataWithBaseURL("https://localhost", htmlContent, "text/html", "UTF-8", null)
-            }
-        },
-        update = { webView ->
-            val oldHtml = webView.tag as? String
-            if (oldHtml != htmlContent) {
-                webView.tag = htmlContent
-                webView.loadDataWithBaseURL("https://localhost", htmlContent, "text/html", "UTF-8", null)
-            }
-            webView.evaluateJavascript(
-                "if (typeof updateLiveLocation !== 'undefined') { updateLiveLocation($currentLat, $currentLon, $gpsAccuracy, $isRealPos, $lockGpsCenter, $leafZoom); }",
-                null
-            )
-            webView.evaluateJavascript(
-                "if (typeof setUtmGridVisible !== 'undefined') { setUtmGridVisible($showUtmGrid); }",
-                null
-            )
-            val navTarget = navigationTargetStation
-            if (navTarget != null) {
-                webView.evaluateJavascript(
-                    "if (typeof updateNavigationLine !== 'undefined') { updateNavigationLine($currentLat, $currentLon, ${navTarget.latitude}, ${navTarget.longitude}, true); }",
-                    null
-                )
-            } else {
-                webView.evaluateJavascript(
-                    "if (typeof updateNavigationLine !== 'undefined') { updateNavigationLine(0, 0, 0, 0, false); }",
-                    null
-                )
-            }
-
-            val rx = rulerAnchor
-            if (rx != null) {
-                webView.evaluateJavascript(
-                    "if (typeof updateRulerLine !== 'undefined') { updateRulerLine(${rx.lat}, ${rx.lon}, $pannedCenterLat, $pannedCenterLon, true); }",
-                    null
-                )
-            } else {
-                webView.evaluateJavascript(
-                    "if (typeof updateRulerLine !== 'undefined') { updateRulerLine(0, 0, 0, 0, false); }",
-                    null
-                )
-            }
-        },
+    Box(
         modifier = modifier
-    )
+    ) {
+        AndroidView(
+            factory = { ctx ->
+                WebView(ctx).apply {
+                    addJavascriptInterface(object {
+                        @android.webkit.JavascriptInterface
+                        fun onCenterChanged(lat: Double, lon: Double) {
+                            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                onCenterChanged(lat, lon)
+                            }
+                        }
+
+                        @android.webkit.JavascriptInterface
+                        fun onZoomChanged(lvl: Int) {
+                            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                                onZoomChanged(lvl)
+                            }
+                        }
+                    }, "AndroidInterface")
+
+                    webViewClient = object : WebViewClient() {
+                        override fun shouldInterceptRequest(
+                            view: WebView?,
+                            request: android.webkit.WebResourceRequest?
+                        ): android.webkit.WebResourceResponse? {
+                            val url = request?.url?.toString() ?: return null
+                            if (url.contains("tile.opentopomap.org") ||
+                                url.contains("tile.openstreetmap.org") ||
+                                url.contains("ArcGIS/rest/services") ||
+                                url.contains("google.com/vt") ||
+                                url.contains("lyrs=s") ||
+                                url.contains("MapServer/tile")
+                            ) {
+                                val ctx = view?.context ?: return null
+                                val helper = com.example.TileCacheDatabaseHelper.getInstance(ctx)
+                                val cached = helper.getTile(url)
+                                if (cached != null) {
+                                    return android.webkit.WebResourceResponse(
+                                        cached.contentType,
+                                        "UTF-8",
+                                        java.io.ByteArrayInputStream(cached.data)
+                                    )
+                                }
+                                
+                                try {
+                                    val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                                    connection.connectTimeout = 3000
+                                    connection.readTimeout = 3000
+                                    connection.useCaches = false
+                                    connection.connect()
+                                    
+                                    if (connection.responseCode == 200) {
+                                        val contentType = connection.contentType ?: "image/png"
+                                        val bytes = connection.inputStream.use { it.readBytes() }
+                                        helper.putTile(url, bytes, contentType)
+                                        return android.webkit.WebResourceResponse(
+                                            contentType,
+                                            "UTF-8",
+                                            java.io.ByteArrayInputStream(bytes)
+                                        )
+                                    }
+                                } catch (e: Exception) {
+                                    // Fail gracefully (e.g. no internet/timeout)
+                                }
+                            }
+                            return super.shouldInterceptRequest(view, request)
+                        }
+
+                        override fun onPageFinished(view: WebView?, url: String?) {
+                            super.onPageFinished(view, url)
+                            val lat = currentLatState.value
+                            val lon = currentLonState.value
+                            val accuracy = gpsAccuracyState.value
+                            val realPos = isRealPosState.value
+                            val lock = lockGpsCenterState.value
+                            val lz = leafZoomState.value
+                            val utmGrid = showUtmGridState.value
+                            val rx = rulerAnchorState.value
+                            val pLat = pannedCenterLatState.value
+                            val pLon = pannedCenterLonState.value
+
+                            val hasNavTarget = navigationTargetStationState.value != null
+                            val navTargetLat = navigationTargetStationState.value?.latitude ?: 0.0
+                            val navTargetLon = navigationTargetStationState.value?.longitude ?: 0.0
+
+                            val hasRuler = rx != null
+                            val rxLat = rx?.lat ?: 0.0
+                            val rxLon = rx?.lon ?: 0.0
+
+                            val jsCall = """
+                                (function() {
+                                    var attempts = 0;
+                                    var r = function() {
+                                        if (typeof updateLiveLocation !== 'undefined') {
+                                            updateLiveLocation($lat, $lon, $accuracy, $realPos, $lock, $lz);
+                                            if (typeof setUtmGridVisible !== 'undefined') { setUtmGridVisible($utmGrid); }
+                                            
+                                            if ($hasNavTarget) {
+                                                if (typeof updateNavigationLine !== 'undefined') {
+                                                    updateNavigationLine($lat, $lon, $navTargetLat, $navTargetLon, true);
+                                                }
+                                            }
+                                            
+                                            if (typeof updateRulerLine !== 'undefined') {
+                                                if ($hasRuler) {
+                                                    updateRulerLine($rxLat, $rxLon, $pLat, $pLon, true);
+                                                } else {
+                                                    updateRulerLine(0, 0, 0, 0, false);
+                                                }
+                                            }
+                                        } else if (attempts < 40) {
+                                            attempts++;
+                                            setTimeout(r, 150);
+                                        }
+                                    };
+                                    r();
+                                })();
+                            """.trimIndent()
+
+                            view?.evaluateJavascript(jsCall, null)
+                        }
+                    }
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    settings.useWideViewPort = true
+                    settings.loadWithOverviewMode = true
+                    settings.builtInZoomControls = true
+                    settings.displayZoomControls = false
+                    settings.setSupportZoom(true)
+                    tag = htmlContent
+                    loadDataWithBaseURL("https://localhost", htmlContent, "text/html", "UTF-8", null)
+                }
+            },
+            update = { webView ->
+                val oldHtml = webView.tag as? String
+                if (oldHtml != htmlContent) {
+                    webView.tag = htmlContent
+                    webView.loadDataWithBaseURL("https://localhost", htmlContent, "text/html", "UTF-8", null)
+                }
+                webView.evaluateJavascript(
+                    "if (typeof updateLiveLocation !== 'undefined') { updateLiveLocation($currentLat, $currentLon, $gpsAccuracy, $isRealPos, $lockGpsCenter, $leafZoom); }",
+                    null
+                )
+                webView.evaluateJavascript(
+                    "if (typeof setUtmGridVisible !== 'undefined') { setUtmGridVisible($showUtmGrid); }",
+                    null
+                )
+                val navTarget = navigationTargetStation
+                if (navTarget != null) {
+                    webView.evaluateJavascript(
+                        "if (typeof updateNavigationLine !== 'undefined') { updateNavigationLine($currentLat, $currentLon, ${navTarget.latitude}, ${navTarget.longitude}, true); }",
+                        null
+                    )
+                } else {
+                    webView.evaluateJavascript(
+                        "if (typeof updateNavigationLine !== 'undefined') { updateNavigationLine(0, 0, 0, 0, false); }",
+                        null
+                    )
+                }
+
+                val rx = rulerAnchor
+                if (rx != null) {
+                    webView.evaluateJavascript(
+                        "if (typeof updateRulerLine !== 'undefined') { updateRulerLine(${rx.lat}, ${rx.lon}, $pannedCenterLat, $pannedCenterLon, true); }",
+                        null
+                    )
+                } else {
+                    webView.evaluateJavascript(
+                        "if (typeof updateRulerLine !== 'undefined') { updateRulerLine(0, 0, 0, 0, false); }",
+                        null
+                    )
+                }
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+
+        // Precision Target Reticle/Crosshair in Center focus of Map View
+        Canvas(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .size(44.dp)
+        ) {
+            val strokeThick = 2f
+            val crosshairColor = if (isOutdoorMode) Color(0xCC007A78) else Color(0xCC109D96)
+
+            // Draw concentric target circle
+            drawCircle(
+                color = crosshairColor,
+                radius = size.width / 4,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = strokeThick)
+            )
+            // Center plus crosshairs
+            drawLine(
+                color = crosshairColor,
+                start = Offset(size.width / 2, 0f),
+                end = Offset(size.width / 2, size.height),
+                strokeWidth = strokeThick
+            )
+            drawLine(
+                color = crosshairColor,
+                start = Offset(0f, size.height / 2),
+                end = Offset(size.width, size.height / 2),
+                strokeWidth = strokeThick
+            )
+        }
+
+        // Live Heads-Up Display for Central Map Target Coordinates & Attributes
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = if (isOutdoorMode) Color.White.copy(alpha = 0.95f) else Color(0xEE0E1311)
+            ),
+            border = BorderStroke(1.dp, (if (isOutdoorMode) Color(0xFF007A78) else Color(0xFF109D96)).copy(alpha = 0.35f)),
+            shape = RoundedCornerShape(8.dp),
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(top = 10.dp, start = 12.dp)
+                .widthIn(max = 240.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MyLocation,
+                        contentDescription = "Center coordinates",
+                        tint = if (isOutdoorMode) Color(0xFF007A78) else Color(0xFF109D96),
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Text(
+                        text = "TARGET HUD / هدف مرکزی",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isOutdoorMode) Color(0xFF007A78) else Color(0xFF109D96),
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+
+                Text(
+                    text = String.format(Locale.US, "LAT: %.6f°", centerLat),
+                    fontSize = 11.sp,
+                    color = if (isOutdoorMode) Color.Black else Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = String.format(Locale.US, "LON: %.6f°", centerLon),
+                    fontSize = 11.sp,
+                    color = if (isOutdoorMode) Color.Black else Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "ZOOM: $leafZoom",
+                        fontSize = 9.sp,
+                        color = (if (isOutdoorMode) Color.Black else Color.White).copy(alpha = 0.6f),
+                        fontFamily = FontFamily.Monospace
+                    )
+                    
+                    Text(
+                        text = if (isRealPos) "🛰️ LOCK" else "📶 SIMULATED",
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isRealPos) Color(0xFF4CAF50) else Color(0xFFFF9800),
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+            }
+        }
+    }
 }
 
 enum class MapLayerProvider(val label: String, val url: String) {
@@ -10707,12 +10951,31 @@ fun MapContent(viewModel: GeologyViewModel) {
     var trackRecording by remember { mutableStateOf(false) }
     var showUtmGrid by remember { mutableStateOf(true) }
 
-    // Start location tracking if real position is chosen and permission is granted
-    LaunchedEffect(isRealPositionEnabled, isAnyLocationPermissionGranted) {
+    // Start location tracking if real position is chosen and permission is granted with lifecycle awareness to save battery
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, isRealPositionEnabled, isAnyLocationPermissionGranted, isTrackRecordingEnabled) {
         if (isRealPositionEnabled && isAnyLocationPermissionGranted) {
             viewModel.startLocationTracking(context)
         } else if (!isRealPositionEnabled && !isTrackRecordingEnabled) {
             viewModel.stopLocationTracking()
+        }
+
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_START) {
+                if (isRealPositionEnabled && isAnyLocationPermissionGranted) {
+                    viewModel.startLocationTracking(context)
+                }
+            } else if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                // To optimize battery: stop high-precision GPS tracking when screen turns off or app is closed,
+                // UNLESS active path/track recording is underway!
+                if (!isTrackRecordingEnabled) {
+                    viewModel.stopLocationTracking()
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
@@ -10914,7 +11177,7 @@ fun MapContent(viewModel: GeologyViewModel) {
         gpsAccuracy = 1.1 + Math.random() * 1.8
 
         if (isTrackRecordingEnabled) {
-            viewModel.addSimulatedPoint(
+            viewModel.appendTrackPoint(
                 TrackPoint(
                     lat = simulatorLat,
                     lon = simulatorLon,

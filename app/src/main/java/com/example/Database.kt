@@ -65,8 +65,8 @@ data class Observation(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val stationId: Int,
     val observationType: String, // Lithology, Alteration, Fault, Joint, Vein, Structure, Mineralization, Sample
-    val photoPath: String?,
-    val notes: String?,
+    val photoPath: String? = null,
+    val notes: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
 
     // Lithology-specific fields

@@ -211,7 +211,7 @@ fun GeotechnicalWorkspace(
     modifier: Modifier = Modifier
 ) {
     val evaluationsFlow = remember(projectId) { viewModel.getRockMechanicsEvaluationsForProject(projectId) }
-    val evaluations by evaluationsFlow.collectAsStateWithLifecycle()
+    val evaluations by evaluationsFlow.collectAsState(initial = emptyList())
     var selectedTab by remember { mutableStateOf(0) }
     
     // Toggle state to switch between Simple and Advanced Geotechnical Views

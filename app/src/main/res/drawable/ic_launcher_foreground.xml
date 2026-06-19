@@ -3,7 +3,7 @@
     <item
         android:width="66dp"
         android:height="66dp"
-        android:drawable="@drawable/geofield_logo_new_1781495437950"
+        android:drawable="@drawable/img_geofield_logo_1781623911699"
         android:gravity="center" />
 </layer-list>
 

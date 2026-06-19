@@ -41,7 +41,7 @@ fun GisTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = GisTypography,
+        typography = androidx.compose.material3.Typography(),
         content = content
     )
 }

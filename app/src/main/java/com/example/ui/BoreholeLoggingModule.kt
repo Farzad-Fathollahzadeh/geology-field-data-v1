@@ -327,8 +327,8 @@ fun BoreholeWorkspace(
 ) {
     val context = LocalContext.current
     val boreholesFlow = remember(projectId) { viewModel.getBoreholesForProject(projectId) }
-    val boreholes by boreholesFlow.collectAsStateWithLifecycle()
-    val activeBorehole by viewModel.activeBorehole.collectAsStateWithLifecycle()
+    val boreholes by boreholesFlow.collectAsState(initial = emptyList())
+    val activeBorehole by viewModel.activeBorehole.collectAsState(initial = null)
     
     var showCreateBoreholeDialog by remember { mutableStateOf(false) }
     var showEditBoreholeDialog by remember { mutableStateOf(false) }
@@ -1051,9 +1051,9 @@ fun BoreholeLoggingDetailsWorkspace(
     var selectedSubTab by remember { mutableStateOf(0) }
     
     val dailyReportsFlow = remember(borehole.id) { viewModel.getDailyReportsForBorehole(borehole.id) }
-    val dailyReports by dailyReportsFlow.collectAsStateWithLifecycle()
+    val dailyReports by dailyReportsFlow.collectAsState(initial = emptyList())
     val coreRunsFlow = remember(borehole.id) { viewModel.getCoreRunsForBorehole(borehole.id) }
-    val coreRuns by coreRunsFlow.collectAsStateWithLifecycle()
+    val coreRuns by coreRunsFlow.collectAsState(initial = emptyList())
 
     Column(
         modifier = modifier

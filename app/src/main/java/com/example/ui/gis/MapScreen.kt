@@ -339,7 +339,8 @@ fun MapScreen(
             // Left column: Zoom triggers + Compass Widget + Move Simulator Toggle
             Column(
                 modifier = Modifier
-                    .align(Alignment.BottomStart),
+                    .align(Alignment.CenterStart)
+                    .padding(start = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -509,7 +510,9 @@ fun MapScreen(
                 },
                 onManageLayers = { gisViewModel.updateUiState(MapUiState.LayersExpanded) },
                 isOutdoorMode = isOutdoorMode,
-                modifier = Modifier.align(Alignment.BottomEnd)
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 4.dp)
             )
         }
     }
@@ -613,7 +616,7 @@ fun MapScreen(
                         downloadedRegionsList = downloadedRegionsList,
                         onDownloadRegion = { name ->
                             scope.launch {
-                                gisViewModel.downloadRegionForLocation(currentLat, currentLon, name)
+                                gisViewModel.downloadRegionForLocation(context, currentLat, currentLon, name)
                             }
                         },
                         onDeleteRegion = { id -> gisViewModel.deleteDownloadedRegion(id) },
@@ -670,7 +673,7 @@ fun MapScreen(
                                 texture = obs.texture,
                                 color = obs.color,
                                 minStyle = obs.minStyle,
-                                onComplete = {
+                                onSaved = {
                                     Toast.makeText(context, "Observation committed successfully!", Toast.LENGTH_SHORT).show()
                                     gisViewModel.updateUiState(MapUiState.Idle)
                                 }
@@ -725,7 +728,7 @@ fun MapScreen(
                                 strike = obs.strike,
                                 dip = obs.dip,
                                 dipDirection = obs.dipDirection,
-                                onComplete = {
+                                onSaved = {
                                     Toast.makeText(context, "Bedding attitude committed successfully!", Toast.LENGTH_SHORT).show()
                                     gisViewModel.updateUiState(MapUiState.Idle)
                                 }
@@ -919,6 +922,333 @@ private fun GisNavButton(
             fontWeight = FontWeight.Bold,
             color = if (selected) accentColor else fontColor.copy(alpha = 0.5f)
         )
+    }
+}
+
+@Composable
+fun CompassWidget(
+    heading: Double,
+    bearing: Double?,
+    isOutdoorMode: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val rotation = heading.toFloat()
+    val tint = if (isOutdoorMode) Color.Black else Color.White
+    
+    Box(
+        modifier = modifier
+            .size(60.dp)
+            .background(if (isOutdoorMode) Color.White.copy(alpha = 0.8f) else Color.Black.copy(alpha = 0.8f), androidx.compose.foundation.shape.CircleShape)
+            .border(2.dp, if (isOutdoorMode) Color(0xFF007A78) else Color(0xFF109D96), androidx.compose.foundation.shape.CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        androidx.compose.foundation.Canvas(modifier = Modifier.size(44.dp)) {
+            val center = this.center
+            val radius = size.minDimension / 2.0f
+            
+            drawCircle(
+                color = tint,
+                radius = radius,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx())
+            )
+            
+            bearing?.let { b ->
+                val bearingRad = Math.toRadians((b - heading)).toFloat()
+                val targetX = center.x + radius * kotlin.math.sin(bearingRad)
+                val targetY = center.y - radius * kotlin.math.cos(bearingRad)
+                drawLine(
+                    color = Color.Red,
+                    start = androidx.compose.ui.geometry.Offset(center.x, center.y),
+                    end = androidx.compose.ui.geometry.Offset(targetX, targetY),
+                    strokeWidth = 2.dp.toPx()
+                )
+            }
+            
+            val rad = Math.toRadians(-heading).toFloat()
+            val northX = center.x + radius * 0.8f * kotlin.math.sin(rad)
+            val northY = center.y - radius * 0.8f * kotlin.math.cos(rad)
+            
+            val southX = center.x - radius * 0.8f * kotlin.math.sin(rad)
+            val southY = center.y + radius * 0.8f * kotlin.math.cos(rad)
+            
+            drawLine(
+                color = Color.Red,
+                start = androidx.compose.ui.geometry.Offset(center.x, center.y),
+                end = androidx.compose.ui.geometry.Offset(northX, northY),
+                strokeWidth = 3.dp.toPx()
+            )
+            drawLine(
+                color = Color.Gray,
+                start = androidx.compose.ui.geometry.Offset(center.x, center.y),
+                end = androidx.compose.ui.geometry.Offset(southX, southY),
+                strokeWidth = 3.dp.toPx()
+            )
+        }
+    }
+}
+
+@Composable
+fun SettingsSheet(
+    isOutdoorMode: Boolean,
+    onToggleOutdoorMode: (Boolean) -> Unit,
+    simWalkStepSize: Float,
+    onSimStepSizeChange: (Float) -> Unit,
+    onResetDatabase: () -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isOutdoorMode) Color.White else Color(0xFF1E1E1E)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+        border = BorderStroke(1.dp, if (isOutdoorMode) Color.LightGray else Color.DarkGray)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "GIS Layer & System Settings",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isOutdoorMode) Color.Black else Color.White
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Close",
+                        tint = if (isOutdoorMode) Color.Black else Color.White
+                    )
+                }
+            }
+            
+            Divider(color = if (isOutdoorMode) Color.LightGray else Color.DarkGray)
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Outdoor Contrast Mode",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                        color = if (isOutdoorMode) Color.Black else Color.White
+                    )
+                    Text(
+                        text = "Uses high contrast mapping & UI backgrounds",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (isOutdoorMode) Color.Gray else Color.LightGray
+                    )
+                }
+                Switch(
+                    checked = isOutdoorMode,
+                    onCheckedChange = { onToggleOutdoorMode(it) }
+                )
+            }
+            
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Walking Simulation Step",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                        color = if (isOutdoorMode) Color.Black else Color.White
+                    )
+                    Text(
+                        text = String.format(Locale.US, "%.5f°", simWalkStepSize),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isOutdoorMode) Color(0xFF007A78) else Color(0xFF109D96)
+                    )
+                }
+                Slider(
+                    value = simWalkStepSize,
+                    onValueChange = { onSimStepSizeChange(it) },
+                    valueRange = 0.00001f..0.001f,
+                    steps = 10
+                )
+            }
+            
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Purge Cache Database",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium,
+                        color = if (isOutdoorMode) Color.Black else Color.White
+                    )
+                    Text(
+                        text = "Deletes all project entities and trace trails locally",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (isOutdoorMode) Color.Gray else Color.LightGray
+                    )
+                }
+                Button(
+                    onClick = onResetDatabase,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Purge Database", color = Color.White)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun GeologicalObservationSheet(
+    stationId: Int,
+    onDismiss: () -> Unit,
+    onSave: (Observation) -> Unit,
+    isOutdoorMode: Boolean,
+    modifier: Modifier = Modifier
+) {
+    var obsType by remember { mutableStateOf("Lithology") }
+    var notes by remember { mutableStateOf("") }
+    var lithType by remember { mutableStateOf("") }
+    var texture by remember { mutableStateOf("") }
+    var color by remember { mutableStateOf("") }
+    var minStyle by remember { mutableStateOf("") }
+
+    val context = LocalContext.current
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isOutdoorMode) Color.White else Color(0xFF1E1E1E)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+        border = BorderStroke(1.dp, if (isOutdoorMode) Color.LightGray else Color.DarkGray)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Add Fast Observation Marker",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isOutdoorMode) Color.Black else Color.White
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = if (isOutdoorMode) Color.Black else Color.White)
+                }
+            }
+
+            Divider(color = if (isOutdoorMode) Color.LightGray else Color.DarkGray)
+
+            Text("Observation Category", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf("Lithology", "Mineralization", "Structure").forEach { type ->
+                    val selected = obsType == type
+                    FilterChip(
+                        selected = selected,
+                        onClick = { obsType = type },
+                        label = { Text(type) }
+                    )
+                }
+            }
+
+            OutlinedTextField(
+                value = notes,
+                onValueChange = { notes = it },
+                label = { Text("Observation Description / Quick Note") },
+                modifier = Modifier.fillMaxWidth(),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = if (isOutdoorMode) Color.Black else Color.White,
+                    unfocusedTextColor = if (isOutdoorMode) Color.Black else Color.White
+                )
+            )
+
+            if (obsType == "Lithology") {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = lithType,
+                        onValueChange = { lithType = it },
+                        label = { Text("Rock Type") },
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = texture,
+                        onValueChange = { texture = it },
+                        label = { Text("Texture") },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                OutlinedTextField(
+                    value = color,
+                    onValueChange = { color = it },
+                    label = { Text("Color Profile") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            } else if (obsType == "Mineralization") {
+                OutlinedTextField(
+                    value = minStyle,
+                    onValueChange = { minStyle = it },
+                    label = { Text("Style (disseminated, vein, etc.)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            Button(
+                onClick = {
+                    val observation = Observation(
+                        stationId = stationId,
+                        observationType = obsType,
+                        notes = notes,
+                        photoPath = "",
+                        lithologyType = if (lithType.isBlank()) null else lithType,
+                        texture = if (texture.isBlank()) null else texture,
+                        color = if (color.isBlank()) null else color,
+                        minStyle = if (minStyle.isBlank()) null else minStyle
+                    )
+                    onSave(observation)
+                },
+                modifier = Modifier.align(Alignment.End),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isOutdoorMode) Color(0xFF007A78) else Color(0xFF109D96)
+                )
+            ) {
+                Text("Save Observation", color = Color.White)
+            }
+        }
     }
 }
 

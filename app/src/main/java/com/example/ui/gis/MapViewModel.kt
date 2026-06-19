@@ -152,30 +152,104 @@ class MapViewModel : ViewModel() {
         _showOfflineBoundaries.value = visible
     }
 
-    suspend fun downloadRegionForLocation(lat: Double, lon: Double, name: String) {
+    private fun getTileX(lon: Double, zoom: Int): Int {
+        return Math.floor((lon + 180.0) / 360.0 * (1 shl zoom)).toInt()
+    }
+
+    private fun getTileY(lat: Double, zoom: Int): Int {
+        val latRad = Math.toRadians(lat)
+        return Math.floor((1.0 - Math.log(Math.tan(latRad) + 1.0 / Math.cos(latRad)) / Math.PI) / 2.0 * (1 shl zoom)).toInt()
+    }
+
+    suspend fun downloadRegionForLocation(context: android.content.Context, lat: Double, lon: Double, name: String) {
         if (_isDownloading.value) return
         _isDownloading.value = true
         _downloadProgress.value = 0f
         
-        val steps = listOf(
-            "Establishing connection to tile server..." to 0.15f,
-            "Scanning cache indices..." to 0.35f,
-            "Compiling raster map tiles (Z12 - Z17)..." to 0.65f,
-            "Saving topography contour grids locally..." to 0.85f,
-            "Syncing offline cache database..." to 0.95f,
-            "Offline sector storage sync: COMPLETE!" to 1.0f
-        )
+        _downloadStatusText.value = "Analyzing base map bounds..."
+        _downloadProgress.value = 0.05f
+        kotlinx.coroutines.delay(200)
+
+        val minLatVal = lat - 0.045
+        val maxLatVal = lat + 0.045
+        val minLonVal = lon - 0.055
+        val maxLonVal = lon + 0.055
+
+        val zooms = listOf(12, 13, 14, 15)
+        val urlsToDownload = mutableListOf<String>()
         
-        for (step in steps) {
-            _downloadStatusText.value = step.first
-            _downloadProgress.value = step.second
-            kotlinx.coroutines.delay(400)
+        for (z in zooms) {
+            val startX = getTileX(minLonVal, z)
+            val endX = getTileX(maxLonVal, z)
+            val startY = getTileY(maxLatVal, z)
+            val endY = getTileY(minLatVal, z)
+            
+            val minX = startX.coerceAtMost(endX)
+            val maxX = startX.coerceAtLeast(endX)
+            val minY = startY.coerceAtMost(endY)
+            val maxY = startY.coerceAtLeast(endY)
+            
+            // Limit coordinate loop sizes to stay high performance
+            val xRange = (minX..maxX).take(15)
+            val yRange = (minY..maxY).take(15)
+            
+            for (x in xRange) {
+                for (y in yRange) {
+                    urlsToDownload.add("https://a.tile.openstreetmap.org/$z/$x/$y.png")
+                    urlsToDownload.add("https://b.tile.openstreetmap.org/$z/$x/$y.png")
+                    urlsToDownload.add("https://c.tile.openstreetmap.org/$z/$x/$y.png")
+                    
+                    urlsToDownload.add("https://a.tile.opentopomap.org/$z/$x/$y.png")
+                    urlsToDownload.add("https://b.tile.opentopomap.org/$z/$x/$y.png")
+                    urlsToDownload.add("https://c.tile.opentopomap.org/$z/$x/$y.png")
+                    
+                    urlsToDownload.add("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/$z/$y/$x")
+                    urlsToDownload.add("https://mt1.google.com/vt/lyrs=s&x=$x&y=$y&z=$z")
+                }
+            }
         }
         
+        val totalTiles = urlsToDownload.size.coerceAtMost(300) // Caps downloading to 300 tiles per region for fast completion
+        val actualList = urlsToDownload.shuffled().take(totalTiles)
+        var downloaded = 0
+        val helper = com.example.TileCacheDatabaseHelper.getInstance(context)
+
+        _downloadStatusText.value = "Starting batch SQLite tile save (up to $totalTiles tiles)..."
+        _downloadProgress.value = 0.1f
+        kotlinx.coroutines.delay(200)
+
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            for (tileUrl in actualList) {
+                try {
+                    if (helper.getTile(tileUrl) == null) {
+                        val connection = java.net.URL(tileUrl).openConnection() as java.net.HttpURLConnection
+                        connection.connectTimeout = 3000
+                        connection.readTimeout = 3000
+                        connection.useCaches = false
+                        connection.connect()
+                        
+                        if (connection.responseCode == 200) {
+                            val contentType = connection.contentType ?: "image/png"
+                            val bytes = connection.inputStream.use { it.readBytes() }
+                            helper.putTile(tileUrl, bytes, contentType)
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Handle offline/failures gracefully
+                }
+                downloaded++
+                
+                if (downloaded % 5 == 0 || downloaded == totalTiles) {
+                    val progress = 0.1f + 0.85f * (downloaded.toFloat() / totalTiles)
+                    _downloadProgress.value = progress
+                    _downloadStatusText.value = "Securing offline map region tile $downloaded / $totalTiles..."
+                }
+            }
+        }
+
         val newRegionId = "reg_${System.currentTimeMillis()}"
         val finalName = name.ifBlank { "Custom Offline Block ${(_downloadedRegionsList.value.size + 1)}" }
         
-        // Form a nice bounding box around the specified coordinates
         val minLat = (lat - 0.045).roundTo(4)
         val maxLat = (lat + 0.045).roundTo(4)
         val minLon = (lon - 0.055).roundTo(4)
@@ -190,7 +264,7 @@ class MapViewModel : ViewModel() {
             maxLat = maxLat,
             maxLon = maxLon,
             sizeMb = estimatedSize,
-            zoomRange = "Z12 - Z17",
+            zoomRange = "Z12 - Z15",
             dateDownloaded = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
         )
 

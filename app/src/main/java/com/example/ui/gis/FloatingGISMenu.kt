@@ -9,6 +9,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -69,6 +71,8 @@ fun FloatingGISMenu(
                     )
                     .padding(8.dp)
                     .width(220.dp)
+                    .heightIn(max = 280.dp)
+                    .verticalScroll(rememberScrollState())
             ) {
                 Text(
                     text = "FIELD GIS CONSOLE",
