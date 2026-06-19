@@ -75,6 +75,10 @@ fun MapScreen(
     val downloadProgress by gisViewModel.downloadProgress.collectAsStateWithLifecycle()
     val downloadStatusText by gisViewModel.downloadStatusText.collectAsStateWithLifecycle()
 
+    val isImportingMbtiles by gisViewModel.isImportingMbtiles.collectAsStateWithLifecycle()
+    val mbtilesImportProgress by gisViewModel.mbtilesImportProgress.collectAsStateWithLifecycle()
+    val mbtilesImportStatus by gisViewModel.mbtilesImportStatus.collectAsStateWithLifecycle()
+
     val scope = rememberCoroutineScope()
 
     val locationPermissionsState = com.google.accompanist.permissions.rememberMultiplePermissionsState(
@@ -648,7 +652,11 @@ fun MapScreen(
                             Toast.makeText(context, "GIS storage cache purged successfully!", Toast.LENGTH_SHORT).show()
                             gisViewModel.updateUiState(MapUiState.Idle)
                         },
-                        onDismiss = { gisViewModel.updateUiState(MapUiState.Idle) }
+                        onDismiss = { gisViewModel.updateUiState(MapUiState.Idle) },
+                        isImportingMbtiles = isImportingMbtiles,
+                        mbtilesImportProgress = mbtilesImportProgress,
+                        mbtilesImportStatus = mbtilesImportStatus,
+                        onImportMbtiles = { gisViewModel.importMbtilesFile(context, it) }
                     )
                 }
             }
@@ -663,7 +671,7 @@ fun MapScreen(
                     GeologicalObservationSheet(
                         stationId = stationsToShow.firstOrNull()?.id ?: 1,
                         onDismiss = { gisViewModel.updateUiState(MapUiState.Idle) },
-                        onSave = { obs ->
+                        onSave = { obs: com.example.Observation ->
                             geologyViewModel.saveObservation(
                                 stationId = obs.stationId,
                                 obsType = obs.observationType,
@@ -926,68 +934,6 @@ private fun GisNavButton(
 }
 
 @Composable
-fun CompassWidget(
-    heading: Double,
-    bearing: Double?,
-    isOutdoorMode: Boolean,
-    modifier: Modifier = Modifier
-) {
-    val rotation = heading.toFloat()
-    val tint = if (isOutdoorMode) Color.Black else Color.White
-    
-    Box(
-        modifier = modifier
-            .size(60.dp)
-            .background(if (isOutdoorMode) Color.White.copy(alpha = 0.8f) else Color.Black.copy(alpha = 0.8f), androidx.compose.foundation.shape.CircleShape)
-            .border(2.dp, if (isOutdoorMode) Color(0xFF007A78) else Color(0xFF109D96), androidx.compose.foundation.shape.CircleShape),
-        contentAlignment = Alignment.Center
-    ) {
-        androidx.compose.foundation.Canvas(modifier = Modifier.size(44.dp)) {
-            val center = this.center
-            val radius = size.minDimension / 2.0f
-            
-            drawCircle(
-                color = tint,
-                radius = radius,
-                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx())
-            )
-            
-            bearing?.let { b ->
-                val bearingRad = Math.toRadians((b - heading)).toFloat()
-                val targetX = center.x + radius * kotlin.math.sin(bearingRad)
-                val targetY = center.y - radius * kotlin.math.cos(bearingRad)
-                drawLine(
-                    color = Color.Red,
-                    start = androidx.compose.ui.geometry.Offset(center.x, center.y),
-                    end = androidx.compose.ui.geometry.Offset(targetX, targetY),
-                    strokeWidth = 2.dp.toPx()
-                )
-            }
-            
-            val rad = Math.toRadians(-heading).toFloat()
-            val northX = center.x + radius * 0.8f * kotlin.math.sin(rad)
-            val northY = center.y - radius * 0.8f * kotlin.math.cos(rad)
-            
-            val southX = center.x - radius * 0.8f * kotlin.math.sin(rad)
-            val southY = center.y + radius * 0.8f * kotlin.math.cos(rad)
-            
-            drawLine(
-                color = Color.Red,
-                start = androidx.compose.ui.geometry.Offset(center.x, center.y),
-                end = androidx.compose.ui.geometry.Offset(northX, northY),
-                strokeWidth = 3.dp.toPx()
-            )
-            drawLine(
-                color = Color.Gray,
-                start = androidx.compose.ui.geometry.Offset(center.x, center.y),
-                end = androidx.compose.ui.geometry.Offset(southX, southY),
-                strokeWidth = 3.dp.toPx()
-            )
-        }
-    }
-}
-
-@Composable
 fun SettingsSheet(
     isOutdoorMode: Boolean,
     onToggleOutdoorMode: (Boolean) -> Unit,
@@ -995,8 +941,18 @@ fun SettingsSheet(
     onSimStepSizeChange: (Float) -> Unit,
     onResetDatabase: () -> Unit,
     onDismiss: () -> Unit,
+    isImportingMbtiles: Boolean,
+    mbtilesImportProgress: Float,
+    mbtilesImportStatus: String,
+    onImportMbtiles: (android.net.Uri) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val filePickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri: android.net.Uri? ->
+        uri?.let { onImportMbtiles(it) }
+    }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -1087,6 +1043,70 @@ fun SettingsSheet(
                     steps = 10
                 )
             }
+
+            Divider(color = if (isOutdoorMode) Color.LightGray else Color.DarkGray)
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "Offline Layer Import (MBTiles / SQLite)",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isOutdoorMode) Color.Black else Color.White
+                )
+                Text(
+                    text = "Import offline geological GIS map layers (.mbtiles) for remote navigation without internet access.\n" +
+                           "بارگذاری لایه‌های آفلاین زمین‌شناسی نقشه برای موقعیت‌یابی در کوهستان و بیابان بی‌اینترنت",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (isOutdoorMode) Color.Gray else Color.LightGray
+                )
+                
+                if (isImportingMbtiles) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                if (isOutdoorMode) Color(0xFFF0FDFC) else Color(0xFF0F2D2A),
+                                RoundedCornerShape(8.dp)
+                            )
+                            .border(1.dp, Color(0xFF007A78), RoundedCornerShape(8.dp))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = mbtilesImportStatus,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = if (isOutdoorMode) Color(0xFF007A78) else Color(0xFF43C6C1)
+                        )
+                        LinearProgressIndicator(
+                            progress = mbtilesImportProgress,
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Color(0xFF109D96),
+                            trackColor = if (isOutdoorMode) Color(0xFFE0F2F1) else Color(0xFF004D40)
+                        )
+                    }
+                } else {
+                    Button(
+                        onClick = { filePickerLauncher.launch("*/*") },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isOutdoorMode) Color(0xFF007A78) else Color(0xFF109D96)
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = "Upload",
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                        Text("Select .mbtiles File / انتخاب فایل نقشه آفلاین", color = Color.White)
+                    }
+                }
+            }
+            
+            Divider(color = if (isOutdoorMode) Color.LightGray else Color.DarkGray)
             
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1118,7 +1138,7 @@ fun SettingsSheet(
 }
 
 @Composable
-fun GeologicalObservationSheet(
+fun DuplicateGeologicalObservationSheet(
     stationId: Int,
     onDismiss: () -> Unit,
     onSave: (Observation) -> Unit,

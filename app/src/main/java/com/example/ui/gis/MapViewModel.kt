@@ -1,6 +1,10 @@
 package com.example.ui.gis
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -102,6 +106,156 @@ class MapViewModel : ViewModel() {
 
     private val _measureArea = MutableStateFlow(0.0)
     val measureArea: StateFlow<Double> = _measureArea.asStateFlow()
+
+    // MBTiles offline importing state flows
+    private val _mbtilesImportProgress = MutableStateFlow(0f)
+    val mbtilesImportProgress: StateFlow<Float> = _mbtilesImportProgress.asStateFlow()
+
+    private val _isImportingMbtiles = MutableStateFlow(false)
+    val isImportingMbtiles: StateFlow<Boolean> = _isImportingMbtiles.asStateFlow()
+
+    private val _mbtilesImportStatus = MutableStateFlow("")
+    val mbtilesImportStatus: StateFlow<String> = _mbtilesImportStatus.asStateFlow()
+
+    fun importMbtilesFile(context: android.content.Context, uri: android.net.Uri) {
+        if (_isImportingMbtiles.value) return
+        _isImportingMbtiles.value = true
+        _mbtilesImportProgress.value = 0f
+        _mbtilesImportStatus.value = "Preparing MBTiles file..."
+
+        // Launch on main viewModelScope (inherits lifecycle perfectly)
+        viewModelScope.launch(Dispatchers.IO) {
+            var tempFile: java.io.File? = null
+            var db: android.database.sqlite.SQLiteDatabase? = null
+            var cursor: android.database.Cursor? = null
+            try {
+                // 1. Copy URI to clean local temp file
+                val inputStream = context.contentResolver.openInputStream(uri)
+                if (inputStream == null) {
+                    _mbtilesImportStatus.value = "Failed to access chosen file."
+                    _isImportingMbtiles.value = false
+                    return@launch
+                }
+                
+                tempFile = java.io.File(context.cacheDir, "temp_import_${System.currentTimeMillis()}.mbtiles")
+                val outputStream = java.io.FileOutputStream(tempFile)
+                _mbtilesImportStatus.value = "Copying file to app environment..."
+                
+                val buffer = ByteArray(1024 * 16)
+                var bytesRead: Int
+                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                    outputStream.write(buffer, 0, bytesRead)
+                }
+                outputStream.flush()
+                outputStream.close()
+                inputStream.close()
+                
+                _mbtilesImportStatus.value = "Opening offline map database..."
+                // 2. Open copied file as SQLite DB
+                db = android.database.sqlite.SQLiteDatabase.openDatabase(
+                    tempFile.absolutePath,
+                    null,
+                    android.database.sqlite.SQLiteDatabase.OPEN_READONLY
+                )
+                
+                // Verify standard tables exist
+                val tableCheckCursor = db.rawQuery(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='tiles'",
+                    null
+                )
+                val tableExists = tableCheckCursor.use { it.moveToFirst() }
+                if (!tableExists) {
+                    _mbtilesImportStatus.value = "Unsupported database format (Missing 'tiles' table)."
+                    _isImportingMbtiles.value = false
+                    tempFile.delete()
+                    return@launch
+                }
+                
+                // 3. Count total tiles
+                var totalTiles = 0
+                val countCursor = db.rawQuery("SELECT count(*) FROM tiles", null)
+                if (countCursor.moveToFirst()) {
+                    totalTiles = countCursor.getInt(0)
+                }
+                countCursor.close()
+                
+                if (totalTiles == 0) {
+                    _mbtilesImportStatus.value = "Import database has zero tiles!"
+                    _isImportingMbtiles.value = false
+                    tempFile.delete()
+                    return@launch
+                }
+                
+                _mbtilesImportStatus.value = "Discovered $totalTiles tiles. Processing..."
+                
+                // 4. Query all tiles
+                cursor = db.rawQuery("SELECT zoom_level, tile_column, tile_row, tile_data FROM tiles", null)
+                
+                val zIndex = cursor.getColumnIndexOrThrow("zoom_level")
+                val xIndex = cursor.getColumnIndexOrThrow("tile_column")
+                val yIndex = cursor.getColumnIndexOrThrow("tile_row")
+                val dataIndex = cursor.getColumnIndexOrThrow("tile_data")
+                
+                val helper = com.example.TileCacheDatabaseHelper.getInstance(context)
+                var processedCount = 0
+                
+                while (cursor.moveToNext()) {
+                    val z = cursor.getInt(zIndex)
+                    val x = cursor.getInt(xIndex)
+                    val tmsY = cursor.getInt(yIndex)
+                    
+                    // Map TMS Y to XYZ: y_xyz = (2^zoom) - 1 - y_tms
+                    val maxTileY = (1 shl z) - 1
+                    val y = maxTileY - tmsY
+                    
+                    val tileBytes = cursor.getBlob(dataIndex)
+                    if (tileBytes != null && tileBytes.isNotEmpty()) {
+                        // Store to OSM, Google, and ArcGIS intercepted URLs
+                        val osmUrlA = "https://a.tile.openstreetmap.org/$z/$x/$y.png"
+                        val osmUrlB = "https://b.tile.openstreetmap.org/$z/$x/$y.png"
+                        val osmUrlC = "https://c.tile.openstreetmap.org/$z/$x/$y.png"
+                        val arcgisUrl = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/$z/$y/$x"
+                        val googleUrl = "https://mt1.google.com/vt/lyrs=s&x=$x&y=$y&z=$z"
+                        
+                        helper.putTile(osmUrlA, tileBytes, "image/png")
+                        helper.putTile(osmUrlB, tileBytes, "image/png")
+                        helper.putTile(osmUrlC, tileBytes, "image/png")
+                        helper.putTile(arcgisUrl, tileBytes, "image/jpeg")
+                        helper.putTile(googleUrl, tileBytes, "image/jpeg")
+                    }
+                    
+                    processedCount++
+                    if (processedCount % 10 == 0 || processedCount == totalTiles) {
+                        _mbtilesImportProgress.value = processedCount.toFloat() / totalTiles
+                        _mbtilesImportStatus.value = "Importing layers: $processedCount / $totalTiles (${(processedCount * 100 / totalTiles)}%)"
+                    }
+                }
+                
+                _mbtilesImportStatus.value = "Successfully imported $totalTiles tiles!"
+                _mbtilesImportProgress.value = 1f
+                
+                kotlinx.coroutines.delay(2000)
+                
+            } catch (e: Exception) {
+                e.printStackTrace()
+                _mbtilesImportStatus.value = "Error parsing SQLite file: ${e.message}"
+            } finally {
+                try {
+                    cursor?.close()
+                } catch (e: Exception) {}
+                try {
+                    db?.close()
+                } catch (e: Exception) {}
+                try {
+                    tempFile?.delete()
+                } catch (e: Exception) {}
+                
+                _isImportingMbtiles.value = false
+                _mbtilesImportProgress.value = 0f
+                _mbtilesImportStatus.value = ""
+            }
+        }
+    }
 
     fun updateUiState(newState: MapUiState) {
         _uiState.value = newState
