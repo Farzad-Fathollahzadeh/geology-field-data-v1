@@ -5,17 +5,30 @@
 # For more details, see
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# Keep Jetpack Compose classes
+-keep class androidx.compose.** { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# Preserve local Room database entities and business logic data models
+-keep class com.example.** { *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Preserve Room type converters and custom queries
+-keepclassmembers class * {
+    @androidx.room.TypeConverter *;
+    @androidx.room.Query *;
+}
+
+# Retrofit, OkHttp, Moshi, and general Kotlin serialization support
+-keepattributes Signature, InnerClasses, EnclosingMethod, AnnotationDefault, *Annotation*
+-keepclassmembers class * {
+    @retrofit2.http.* <methods>;
+}
+
+-dontwarn retrofit2.**
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-dontwarn com.squareup.moshi.**
+
+# Preserve line number information for crash report readability
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
+
