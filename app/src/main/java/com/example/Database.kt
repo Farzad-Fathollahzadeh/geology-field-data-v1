@@ -138,7 +138,9 @@ data class Track(
     val pointsJson: String, // format: "[[lat,lon,ele,time,accuracy,heading],...]"
     val lengthMeters: Double = 0.0,
     val durationSeconds: Long = 0,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val colorHex: String = "#ff3d00",
+    val strokeWidth: Float = 4.5f
 )
 
 data class TrackPoint(
@@ -409,6 +411,9 @@ interface GeologyDao {
 
     @Query("UPDATE tracks SET name = :name WHERE id = :id")
     suspend fun updateTrackName(id: Int, name: String)
+
+    @Query("UPDATE tracks SET name = :name, colorHex = :colorHex, strokeWidth = :strokeWidth WHERE id = :id")
+    suspend fun updateTrackStyling(id: Int, name: String, colorHex: String, strokeWidth: Float)
 
     @Query("DELETE FROM tracks WHERE id = :id")
     suspend fun deleteTrackById(id: Int)

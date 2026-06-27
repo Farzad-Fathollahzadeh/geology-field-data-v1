@@ -610,27 +610,6 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
             }
 
             if (isQuickMode) {
-                QuickDiagnosticKey(
-                    isFarsiMode = isFarsiMode,
-                    minerals = minerals,
-                    quickFilteredList = quickFilteredList,
-                    quickHardness = quickHardness,
-                    onHardnessChange = { quickHardness = it },
-                    quickLuster = quickLuster,
-                    onLusterChange = { quickLuster = it },
-                    quickMagnet = quickMagnet,
-                    onMagnetChange = { quickMagnet = it },
-                    quickAcid = quickAcid,
-                    onAcidChange = { quickAcid = it },
-                    quickSalty = quickSalty,
-                    onSaltyChange = { quickSalty = it },
-                    quickSoapy = quickSoapy,
-                    onSoapyChange = { quickSoapy = it },
-                    quickSheets = quickSheets,
-                    onSheetsChange = { quickSheets = it },
-                    onReset = { resetQuickFinder() }
-                )
-            } else if (false) {
                 // EASY / INTERACTIVE DYNAMIC MULTI-STEP FINDER
                 Card(
                      colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp)),

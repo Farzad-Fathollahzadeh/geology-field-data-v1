@@ -105,6 +105,8 @@ class GeologyViewModel(
     val coordSystemSetting = MutableStateFlow(prefs.getString("coord_system", "UTM") ?: "UTM")
     val isFarsiModeSetting = MutableStateFlow(prefs.getBoolean("is_farsi_mode", false))
     val isKalmanSmoothingEnabled = MutableStateFlow(prefs.getBoolean("kalman_smoothing", false))
+    val gpsAccuracyLimit = MutableStateFlow(prefs.getFloat("gps_accuracy_limit", 20.0f))
+    val gpsMinDisplacement = MutableStateFlow(prefs.getFloat("gps_min_displacement", 2.0f))
     val gpsIntervalSetting = MutableStateFlow(prefs.getString("gps_interval", "Balanced") ?: "Balanced")
 
     // Custom Map Tile Layers
@@ -122,13 +124,19 @@ class GeologyViewModel(
 
     // Track Recording Flow States
     val isTrackRecordingActive = MutableStateFlow(false)
+    val isTrackRecordingPaused = MutableStateFlow(false)
     val activePoints = MutableStateFlow<List<TrackPoint>>(emptyList())
     val recordingDurationSec = MutableStateFlow(0L)
 
     private var fusedLocationClient: FusedLocationProviderClient? = null
     private var locationCallback: LocationCallback? = null
+    private val gpsKalmanFilter = GpsKalmanFilter()
     private var recordingJob: Job? = null
     private var startRecordingTimeMs = 0L
+
+    private var projectCollectJob: Job? = null
+    private var stationsCollectJob: Job? = null
+    private var loadStationJob: Job? = null
 
     // Initialize state
     init {
@@ -160,12 +168,15 @@ class GeologyViewModel(
     }
 
     fun loadProject(projectId: Int) {
-        viewModelScope.launch {
+        projectCollectJob?.cancel()
+        stationsCollectJob?.cancel()
+        
+        projectCollectJob = viewModelScope.launch {
             dao.getProjectById(projectId).collect { proj ->
                 _activeProject.value = proj
             }
         }
-        viewModelScope.launch {
+        stationsCollectJob = viewModelScope.launch {
             dao.getStationsForProject(projectId).collect { list ->
                 _activeProjectStations.value = list
             }
@@ -173,7 +184,8 @@ class GeologyViewModel(
     }
 
     fun loadStation(stationId: Int) {
-        viewModelScope.launch {
+        loadStationJob?.cancel()
+        loadStationJob = viewModelScope.launch {
             dao.getStationById(stationId).collect { station ->
                 _activeStation.value = station
                 station?.projectId?.let { loadProject(it) }
@@ -205,6 +217,16 @@ class GeologyViewModel(
     fun setKalmanSmoothingEnabled(enabled: Boolean) {
         isKalmanSmoothingEnabled.value = enabled
         prefs.edit().putBoolean("kalman_smoothing", enabled).apply()
+    }
+
+    fun setGpsAccuracyLimit(limit: Float) {
+        gpsAccuracyLimit.value = limit
+        prefs.edit().putFloat("gps_accuracy_limit", limit).apply()
+    }
+
+    fun setGpsMinDisplacement(disp: Float) {
+        gpsMinDisplacement.value = disp
+        prefs.edit().putFloat("gps_min_displacement", disp).apply()
     }
 
     fun setCustomTileUrl(url: String) {
@@ -273,6 +295,22 @@ class GeologyViewModel(
     // GPS & Fused Location Service management
     fun startLocationTracking(context: Context) {
         stopLocationTracking() // avoid leaks
+        
+        val hasFinePermission = androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.ACCESS_FINE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+        val hasCoarsePermission = androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+        if (!hasFinePermission && !hasCoarsePermission) {
+            // Safe guard against AppOps and permissions issues
+            return
+        }
+
         val client = LocationServices.getFusedLocationProviderClient(context)
         fusedLocationClient = client
 
@@ -282,7 +320,14 @@ class GeologyViewModel(
             else -> 2500L
         }
 
-        val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, intervalMs)
+        // Dynamically choose location request priority to prevent AppOps/permission mismatch errors
+        val priority = if (hasFinePermission) {
+            Priority.PRIORITY_HIGH_ACCURACY
+        } else {
+            Priority.PRIORITY_BALANCED_POWER_ACCURACY
+        }
+
+        val locationRequest = LocationRequest.Builder(priority, intervalMs)
             .apply {
                 setMinUpdateIntervalMillis(intervalMs / 2)
             }.build()
@@ -299,16 +344,39 @@ class GeologyViewModel(
                     accuracy = loc.accuracy.toDouble()
                 )
                 // Append active tracking points for track registration
-                if (isTrackRecordingActive.value) {
-                    val p = TrackPoint(
-                        lat = loc.latitude,
-                        lon = loc.longitude,
-                        ele = loc.altitude,
-                        time = System.currentTimeMillis(),
-                        accuracy = loc.accuracy.toDouble(),
-                        heading = loc.bearing.toDouble()
-                    )
-                    activePoints.value = activePoints.value + p
+                if (isTrackRecordingActive.value && !isTrackRecordingPaused.value) {
+                    val accLimit = gpsAccuracyLimit.value.toDouble()
+                    if (loc.accuracy <= accLimit) {
+                        val (finalLat, finalLon) = if (isKalmanSmoothingEnabled.value) {
+                            gpsKalmanFilter.process(loc.latitude, loc.longitude, loc.accuracy.toDouble(), System.currentTimeMillis())
+                        } else {
+                            Pair(loc.latitude, loc.longitude)
+                        }
+
+                        val lastPoint = activePoints.value.lastOrNull()
+                        var shouldAppend = true
+
+                        if (lastPoint != null) {
+                            val results = FloatArray(1)
+                            Location.distanceBetween(lastPoint.lat, lastPoint.lon, finalLat, finalLon, results)
+                            val distance = results[0]
+                            if (distance < gpsMinDisplacement.value.toDouble()) {
+                                shouldAppend = false
+                            }
+                        }
+
+                        if (shouldAppend) {
+                            val p = TrackPoint(
+                                lat = finalLat,
+                                lon = finalLon,
+                                ele = loc.altitude,
+                                time = System.currentTimeMillis(),
+                                accuracy = loc.accuracy.toDouble(),
+                                heading = loc.bearing.toDouble()
+                            )
+                            activePoints.value = activePoints.value + p
+                        }
+                    }
                 }
             }
         }
@@ -316,37 +384,61 @@ class GeologyViewModel(
 
         try {
             client.requestLocationUpdates(locationRequest, callback, android.os.Looper.getMainLooper())
-        } catch (e: SecurityException) {
-            // Missing runtime permission (handled gracefully in main UI)
+        } catch (e: java.lang.SecurityException) {
+            // Clean up state if registration fails to avoid AppOps warnings on removal
+            locationCallback = null
+            fusedLocationClient = null
+        } catch (e: Exception) {
+            // Clean up state if registration fails
+            locationCallback = null
+            fusedLocationClient = null
         }
     }
 
     fun stopLocationTracking() {
-        locationCallback?.let {
-            fusedLocationClient?.removeLocationUpdates(it)
+        try {
+            locationCallback?.let {
+                fusedLocationClient?.removeLocationUpdates(it)
+            }
+        } catch (e: Exception) {
+            // Handled gracefully
+        } finally {
+            locationCallback = null
+            fusedLocationClient = null
         }
-        locationCallback = null
-        fusedLocationClient = null
     }
 
 
 
     // Tracks Registration & Management
     fun startRecordingTrack() {
+        gpsKalmanFilter.reset()
         isTrackRecordingActive.value = true
+        isTrackRecordingPaused.value = false
         activePoints.value = emptyList()
         recordingDurationSec.value = 0L
         startRecordingTimeMs = System.currentTimeMillis()
         recordingJob = viewModelScope.launch {
             while (isActive) {
                 delay(1000L)
-                recordingDurationSec.value = (System.currentTimeMillis() - startRecordingTimeMs) / 1000L
+                if (!isTrackRecordingPaused.value) {
+                    recordingDurationSec.value += 1
+                }
             }
         }
     }
 
+    fun pauseRecordingTrack() {
+        isTrackRecordingPaused.value = true
+    }
+
+    fun resumeRecordingTrack() {
+        isTrackRecordingPaused.value = false
+    }
+
     fun stopRecordingTrack(onDone: (String, Double, Long) -> Unit) {
         isTrackRecordingActive.value = false
+        isTrackRecordingPaused.value = false
         recordingJob?.cancel()
         recordingJob = null
         
@@ -374,7 +466,14 @@ class GeologyViewModel(
         return total
     }
 
-    fun saveTrack(name: String, pointsJson: String, lengthMeters: Double, durationSeconds: Long) {
+    fun saveTrack(
+        name: String,
+        pointsJson: String,
+        lengthMeters: Double,
+        durationSeconds: Long,
+        colorHex: String = "#ff3d00",
+        strokeWidth: Float = 4.5f
+    ) {
         viewModelScope.launch {
             val projId = _activeProject.value?.id ?: 0
             dao.insertTrack(
@@ -383,7 +482,9 @@ class GeologyViewModel(
                     name = name,
                     pointsJson = pointsJson,
                     lengthMeters = lengthMeters,
-                    durationSeconds = durationSeconds
+                    durationSeconds = durationSeconds,
+                    colorHex = colorHex,
+                    strokeWidth = strokeWidth
                 )
             )
         }
@@ -398,6 +499,12 @@ class GeologyViewModel(
     fun updateTrackName(trackId: Int, name: String) {
         viewModelScope.launch {
             dao.updateTrackName(trackId, name)
+        }
+    }
+
+    fun updateTrackStyling(trackId: Int, name: String, colorHex: String, strokeWidth: Float) {
+        viewModelScope.launch {
+            dao.updateTrackStyling(trackId, name, colorHex, strokeWidth)
         }
     }
 
@@ -571,24 +678,41 @@ class GeologyViewModel(
     fun importMapFile(context: Context, uri: android.net.Uri) {
         viewModelScope.launch {
             try {
-                // Populate high quality mock overlay data for visualization
-                val list = listOf(
-                    ImportedFeature(
-                        id = "imp_1",
-                        name = "Structural Tectonic Shear Zone",
-                        description = "Regional reverse thrust fault line mapped from geospatial sensors",
-                        type = "LineString",
-                        coordinates = listOf(
-                            Coord(35.6892, 51.3890),
-                            Coord(35.6952, 51.3960),
-                            Coord(35.7012, 51.4030)
-                        ),
-                        colorHex = "#D32F2F"
-                    )
-                )
-                importedFeatures.value = list
+                val isKmz = uri.toString().endsWith(".kmz", ignoreCase = true) ||
+                        (context.contentResolver.getType(uri)?.contains("kmz", ignoreCase = true) == true)
+                
+                val features = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                        KmlParser.parse(inputStream, isKmz)
+                    } ?: emptyList()
+                }
+
+                if (features.isNotEmpty()) {
+                    importedFeatures.value = features
+                    withContext(Dispatchers.Main) {
+                        val isFarsi = isFarsiModeSetting.value
+                        val message = if (isFarsi) {
+                            "تعداد ${features.size} لایه با موفقیت وارد شد!"
+                        } else {
+                            "Successfully imported ${features.size} map layers!"
+                        }
+                        android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
+                    }
+                } else {
+                    withContext(Dispatchers.Main) {
+                        val isFarsi = isFarsiModeSetting.value
+                        val message = if (isFarsi) {
+                            "هیچ لایه‌ای یافت نشد یا فرمت فایل نامعتبر است."
+                        } else {
+                            "No map layers found or invalid KML/KMZ format."
+                        }
+                        android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
+                    }
+                }
             } catch (e: Exception) {
-                // handle
+                withContext(Dispatchers.Main) {
+                    android.widget.Toast.makeText(context, "Error: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
+                }
             }
         }
     }
@@ -785,10 +909,6 @@ class GeologyViewModel(
         viewModelScope.launch {
             dao.deleteRockMechanicsEvaluationById(id)
         }
-    }
-
-    fun getApplication(): Application {
-        return application
     }
 
     // --- SPATIAL COORD CONVERTER ---
@@ -1156,5 +1276,46 @@ class GeologyViewModelFactory(
             return GeologyViewModel(application, dao) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class Exception")
+    }
+}
+
+class GpsKalmanFilter {
+    private var lastTime: Long = 0L
+    private var lat: Double = 0.0
+    private var lon: Double = 0.0
+    private var variance: Double = -1.0 // negative means uninitialized
+
+    fun process(newLat: Double, newLon: Double, accuracy: Double, timeMs: Long): Pair<Double, Double> {
+        if (variance < 0.0) {
+            // Initialize
+            lastTime = timeMs
+            lat = newLat
+            lon = newLon
+            variance = accuracy * accuracy
+            return Pair(lat, lon)
+        }
+
+        val duration = timeMs - lastTime
+        if (duration > 0) {
+            // Process noise variance growth: 3.0 m/s^2 walking variance growth rate
+            variance += duration * 0.003 * 0.003
+            lastTime = timeMs
+        }
+
+        // Kalman gain
+        val k = variance / (variance + accuracy * accuracy)
+
+        // Update state
+        lat += k * (newLat - lat)
+        lon += k * (newLon - lon)
+
+        // Update variance
+        variance = (1.0 - k) * variance
+
+        return Pair(lat, lon)
+    }
+
+    fun reset() {
+        variance = -1.0
     }
 }

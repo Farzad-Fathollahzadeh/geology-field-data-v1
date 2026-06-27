@@ -2350,7 +2350,7 @@ fun QSystemPanel(
                         )
                         locName = ""
                         notes = ""
-                        Toast.makeText(viewModel.getApplication(), "Geotechnical Barton Q Log committed successfully!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(viewModel.application, "Geotechnical Barton Q Log committed successfully!", Toast.LENGTH_SHORT).show()
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),

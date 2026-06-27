@@ -11,6 +11,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -58,10 +59,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.TextStyle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.ui.theme.MyApplicationTheme
-import com.example.ui.BoreholeLoggingContent
-import com.example.ui.RockMechanicsContent
 import com.example.ui.ToolsContent
 import com.google.accompanist.permissions.*
 import kotlinx.coroutines.delay
@@ -254,6 +254,9 @@ fun MainScreenContent(
     val coordSystemSetting by viewModel.coordSystemSetting.collectAsStateWithLifecycle()
     val isFarsiMode by viewModel.isFarsiModeSetting.collectAsStateWithLifecycle()
     val gpsIntervalSetting by viewModel.gpsIntervalSetting.collectAsStateWithLifecycle()
+    val gpsAccuracyLimit by viewModel.gpsAccuracyLimit.collectAsStateWithLifecycle()
+    val gpsMinDisplacement by viewModel.gpsMinDisplacement.collectAsStateWithLifecycle()
+    val isKalmanSmoothingEnabled by viewModel.isKalmanSmoothingEnabled.collectAsStateWithLifecycle()
 
     // Global Stats flows
     val allStations by viewModel.allStations.collectAsStateWithLifecycle()
@@ -491,9 +494,9 @@ fun MainScreenContent(
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             listOf(
-                                MainTab.GeologicalMapping to "Joint Mapping",
-                                MainTab.BoreholeLogging to "Borehole Core",
-                                MainTab.RockMechanics to "Rock Mass"
+                                MainTab.GeologicalMapping to (if (isFarsiMode) "برداشت ساختار" else "Joint Mapping"),
+                                MainTab.BoreholeLogging to (if (isFarsiMode) "مغزه حفاری" else "Borehole Core"),
+                                MainTab.RockMechanics to (if (isFarsiMode) "مهندسی توده سنگ" else "Rock Mass")
                             ).forEach { (tab, label) ->
                                 val isSelected = activeTab == tab
                                 Box(
@@ -532,10 +535,10 @@ fun MainScreenContent(
                         )
                     }
                     MainTab.BoreholeLogging -> {
-                        BoreholeLoggingContent(viewModel)
+                        BoreholeLoggingContent()
                     }
                     MainTab.RockMechanics -> {
-                        RockMechanicsContent(viewModel)
+                        RockMechanicsContent()
                     }
                     MainTab.Map -> {
                         MapContent(viewModel)
@@ -890,6 +893,105 @@ fun MainScreenContent(
                                         fontSize = 8.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
+
+                                    Spacer(modifier = Modifier.height(6.dp))
+
+                                    // Advanced GPS Accuracy & Smoothing Settings
+                                    Text(
+                                        text = if (isFarsiMode) "تنظیمات پیشرفته دقت و هموارسازی مسیر:" else "Advanced GPS Precision & Smoothing:",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+
+                                    // Kalman Smoothing Switch
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = if (isFarsiMode) "هموارسازی کالمن (کاهش نوسانات)" else "Kalman Filter Smoothing",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 10.sp
+                                            )
+                                            Text(
+                                                text = if (isFarsiMode) "حذف جهش‌های ناگهانی و نویز موقعیت GPS" else "Removes jitter and smooths location tracking",
+                                                fontSize = 8.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Switch(
+                                            checked = isKalmanSmoothingEnabled,
+                                            onCheckedChange = { viewModel.setKalmanSmoothingEnabled(it) },
+                                            modifier = Modifier.scale(0.8f)
+                                        )
+                                    }
+
+                                    // Accuracy Limit Slider
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = if (isFarsiMode) "حداکثر خطای مجاز سیگنال (دقت):" else "Max Signal Error Limit:",
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                text = "${gpsAccuracyLimit.toInt()} m",
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                        Slider(
+                                            value = gpsAccuracyLimit,
+                                            onValueChange = { viewModel.setGpsAccuracyLimit(it) },
+                                            valueRange = 5f..50f,
+                                            modifier = Modifier.height(24.dp)
+                                        )
+                                        Text(
+                                            text = if (isFarsiMode) "نقاط با خطای بیشتر از این مقدار ذخیره نمی‌شوند" else "Coordinates with worse accuracy than this will be filtered out",
+                                            fontSize = 7.5.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(2.dp))
+
+                                    // Min Displacement Slider
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = if (isFarsiMode) "حداقل فاصله جابجایی برای ثبت:" else "Min Displacement Filter:",
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                text = "${String.format(Locale.US, "%.1f", gpsMinDisplacement)} m",
+                                                fontSize = 9.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                        Slider(
+                                            value = gpsMinDisplacement,
+                                            onValueChange = { viewModel.setGpsMinDisplacement(it) },
+                                            valueRange = 0.5f..10.0f,
+                                            modifier = Modifier.height(24.dp)
+                                        )
+                                        Text(
+                                            text = if (isFarsiMode) "جلوگیری از انباشت نویز موقعیت در حالت ایستاده" else "Prevents static GPS drift buildup when stationary",
+                                            fontSize = 7.5.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
 
                                     Spacer(modifier = Modifier.height(4.dp))
 
@@ -6527,6 +6629,29 @@ fun shareFileWithApps(context: android.content.Context, fileName: String, mimeTy
     }
 }
 
+fun shareKmzFileWithApps(context: android.content.Context, fileName: String, kmlContent: String) {
+    try {
+        val cacheDir = context.cacheDir
+        val kmzFile = java.io.File(cacheDir, fileName)
+        java.util.zip.ZipOutputStream(java.io.FileOutputStream(kmzFile)).use { zos ->
+            val entry = java.util.zip.ZipEntry("doc.kml")
+            zos.putNextEntry(entry)
+            zos.write(kmlContent.toByteArray(Charsets.UTF_8))
+            zos.closeEntry()
+        }
+        val fileUri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", kmzFile)
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "application/vnd.google-earth.kmz"
+            putExtra(android.content.Intent.EXTRA_STREAM, fileUri)
+            putExtra(android.content.Intent.EXTRA_SUBJECT, fileName)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(android.content.Intent.createChooser(intent, "Export Recorded Route KMZ File"))
+    } catch (e: Exception) {
+        android.widget.Toast.makeText(context, "Error sharing KMZ file: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+    }
+}
+
 // -------------------------------------------------------------------------
 // 1. HOME TAB: STATS OVERVIEW & GENERAL DASHBOARD
 // -------------------------------------------------------------------------
@@ -6543,6 +6668,9 @@ fun HomeDashboardContent(
 ) {
     val scrollState = rememberScrollState()
     var isGuideExpanded by remember { mutableStateOf(false) }
+    var activeStep by remember { mutableIntStateOf(1) }
+    var homeSubTab by remember { mutableIntStateOf(0) } // 0: Guided Assistant, 1: Active Workspaces, 2: Reference & Links
+    val isFarsiMode by viewModel.isFarsiModeSetting.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier
@@ -6571,14 +6699,15 @@ fun HomeDashboardContent(
                     modifier = Modifier
                         .size(64.dp)
                         .clip(RoundedCornerShape(14.dp))
-                        .background(Color.White)
-                        .border(1.dp, Color.LightGray.copy(alpha = 0.5f), RoundedCornerShape(14.dp)),
+                        .background(MaterialTheme.colorScheme.primaryContainer)
+                        .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f), RoundedCornerShape(14.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    androidx.compose.foundation.Image(
-                        painter = androidx.compose.ui.res.painterResource(id = com.example.R.drawable.img_geofield_logo_1781623911699),
-                        contentDescription = "GeoField Pro Monogram",
-                        modifier = Modifier.fillMaxSize()
+                    Icon(
+                        imageVector = Icons.Default.Terrain,
+                        contentDescription = "GeoField Pro Logo",
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(36.dp)
                     )
                 }
 
@@ -6592,7 +6721,7 @@ fun HomeDashboardContent(
                         letterSpacing = 0.5.sp
                     )
                     Text(
-                        text = "Advanced GIS & Geotechnical Logger",
+                        text = if (isFarsiMode) "سامانه تخصصی زمین‌شناسی و ژئوتکنیک" else "Advanced GIS & Geotechnical Logger",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -6608,7 +6737,7 @@ fun HomeDashboardContent(
                                 .background(Color(0xFF39FF14), CircleShape)
                         )
                         Text(
-                            text = "Calibrated Sensors & GPS Kalman Smoothing",
+                            text = if (isFarsiMode) "سنسورهای کالیبره و فیلتر هموارساز کالمن" else "Calibrated Sensors & GPS Kalman Smoothing",
                             fontSize = 8.5.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                         )
@@ -6617,301 +6746,609 @@ fun HomeDashboardContent(
             }
         }
 
-        // Section Title: Stats (Field statistics summary parameters - now at the very top of home dashboard as requested!)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Field Statistics Overview",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Box(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color(0xFF39FF14).copy(alpha = 0.15f))
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-            ) {
-                Text(
-                    text = "GPS / RTK FIX: ACTIVE",
-                    fontSize = 8.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF39FF14)
-                )
-            }
-        }
-
-        // High visibility, clean unified statistics panel
+        // Clean Modern Segmented Capsule Tab Bar to prevent cognitive overwhelm (Decluttering)
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
-            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
-            shape = RoundedCornerShape(12.dp)
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+            shape = RoundedCornerShape(24.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
         ) {
             Row(
                 modifier = Modifier
-                    .padding(12.dp)
-                    .fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .fillMaxWidth()
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 listOf(
-                    Triple("Projects", projectsCount, Color(0xFF1E88E5)),
-                    Triple("Stations", stationsCount, Color(0xFF43A047)),
-                    Triple("Observations", observationsCount, Color(0xFFE65100)),
-                    Triple("Samples", samplesCount, Color(0xFF00ACC1))
-                ).forEach { (label, count, color) ->
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    Triple(0, if (isFarsiMode) "دستیار گام‌به‌گام" else "Field Wizard", Icons.Default.Terrain),
+                    Triple(1, if (isFarsiMode) "ماژول‌های فعال" else "Workspaces", Icons.Default.Assignment),
+                    Triple(2, if (isFarsiMode) "منابع و راهنما" else "Knowledge", Icons.Default.Assessment)
+                ).forEach { (idx, label, icon) ->
+                    val isSelected = homeSubTab == idx
+                    val bg = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent
+                    val contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                    
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(bg)
+                            .clickable { homeSubTab = idx }
+                            .padding(vertical = 10.dp),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = count.toString(),
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = color
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = label,
+                            tint = contentColor,
+                            modifier = Modifier.size(13.dp)
                         )
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = label,
-                            fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.Medium
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = contentColor,
+                            maxLines = 1
                         )
                     }
                 }
             }
         }
 
-        // Section Title: Workspaces
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Active Modules",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-
-        // High-fidelity Grid List of modules (Using Row of Columns to stay nested safe and extremely clean)
-        val workspaces = listOf(
-            Triple("Project Manager", "Projects List", Icons.Default.Folder) to MainTab.GeologicalMapping,
-            Triple("Field Mapping", "Geological Observations", Icons.Default.Terrain) to MainTab.GeologicalMapping,
-            Triple("Borehole Core Logging", "Core Runs Log", Icons.Default.Layers) to MainTab.BoreholeLogging,
-            Triple("Rock Mechanics & RMR", "Geotech Rate assessment", Icons.Default.Assessment) to MainTab.RockMechanics,
-            Triple("Interactive Web Map", "Spatial GPS GIS Map", Icons.Default.Map) to MainTab.Map,
-            Triple("Geotech Field Tools", "Mineralogy, Rocks, Converters", Icons.Default.Build) to MainTab.Tools
-        )
-
-        // Row 1 (first 2 items)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            listOf(workspaces[0], workspaces[1]).forEach { (meta, targetTab) ->
-                val (title, sub, icon) = meta
-                Card(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { onNavigateToTab(targetTab) },
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(imageVector = icon, contentDescription = title, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                        }
-                        Text(text = title, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
-                        Text(text = sub, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
-
-        // Row 2 (next 2 items)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            listOf(workspaces[2], workspaces[3]).forEach { (meta, targetTab) ->
-                val (title, sub, icon) = meta
-                Card(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { onNavigateToTab(targetTab) },
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(imageVector = icon, contentDescription = title, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                        }
-                        Text(text = title, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
-                        Text(text = sub, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
-
-        // Row 3 (items 4 and 5)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            listOf(workspaces[4], workspaces[5]).forEach { (meta, targetTab) ->
-                val (title, sub, icon) = meta
-                Card(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable { onNavigateToTab(targetTab) },
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(imageVector = icon, contentDescription = title, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                        }
-                        Text(text = title, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
-                        Text(text = sub, fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-            }
-        }
-
-        // Recent Field Journal Timeline
-        RecentObservationsTimeline(allObservations, onNavigateToTab)
-
-        // Expandable Guidelines Accordion Panel (Keeps screen perfectly clean, professional and decluttered)
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Column(
-                modifier = Modifier.animateContentSize()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { isGuideExpanded = !isGuideExpanded }
-                        .padding(14.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+        // Animated Tab Content View
+        when (homeSubTab) {
+            0 -> {
+                // TAB 0: Guided Assistant / Field Wizard
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    // Section Title: Stats (Field statistics summary parameters)
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(imageVector = Icons.Default.Assessment, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                         Text(
-                            text = "Geological & Mining Reference Guide",
-                            fontSize = 11.5.sp,
+                            text = if (isFarsiMode) "خلاصه آمار صحرایی" else "Field Statistics Overview",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color(0xFF39FF14).copy(alpha = 0.15f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "GPS / RTK: ACTIVE",
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF39FF14)
+                            )
+                        }
+                    }
+
+                    // High visibility, clean unified statistics panel
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
+                        border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.4f)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .padding(12.dp)
+                                .fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            listOf(
+                                Triple(if (isFarsiMode) "پروژه‌ها" else "Projects", projectsCount, Color(0xFF1E88E5)),
+                                Triple(if (isFarsiMode) "ایستگاه‌ها" else "Stations", stationsCount, Color(0xFF43A047)),
+                                Triple(if (isFarsiMode) "مشاهدات" else "Observations", observationsCount, Color(0xFFE65100)),
+                                Triple(if (isFarsiMode) "نمونه‌ها" else "Samples", samplesCount, Color(0xFF00ACC1))
+                            ).forEach { (label, count, color) ->
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Text(
+                                        text = count.toString(),
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = color
+                                    )
+                                    Text(
+                                        text = label,
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Section: Interactive Step-by-Step Guided Field Assistant Card
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.12f)),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            // Header
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Info,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = if (isFarsiMode) "دستیار هوشمند صحرایی" else "Smart Field Assistant",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                Text(
+                                    text = "${if (isFarsiMode) "گام" else "Step"} $activeStep/4",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Steps indicator row
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                for (i in 1..4) {
+                                    val isCurrent = activeStep == i
+                                    val isPassed = activeStep > i
+                                    val circleColor = if (isCurrent) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else if (isPassed) {
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
+                                    } else {
+                                        MaterialTheme.colorScheme.outlineVariant
+                                    }
+
+                                    val textColor = if (isCurrent || isPassed) {
+                                        MaterialTheme.colorScheme.onPrimary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+
+                                    Box(
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .clip(CircleShape)
+                                            .background(circleColor)
+                                            .clickable { activeStep = i },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (isPassed) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = textColor,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        } else {
+                                            Text(
+                                                text = i.toString(),
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = textColor
+                                            )
+                                        }
+                                    }
+
+                                    if (i < 4) {
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(2.dp)
+                                                .background(
+                                                    if (activeStep > i) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                                                    else MaterialTheme.colorScheme.outlineVariant
+                                                )
+                                        )
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Current Step Content Card
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f)),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    val stepTitle = when (activeStep) {
+                                        1 -> if (isFarsiMode) "۱. تعریف و انتخاب پروژه" else "1. Project Management"
+                                        2 -> if (isFarsiMode) "۲. ثبت ایستگاه نقشه‌برداری" else "2. Create Survey Station"
+                                        3 -> if (isFarsiMode) "۳. ثبت مشاهدات زمین‌شناسی" else "3. Log Geological Observations"
+                                        else -> if (isFarsiMode) "۴. تحلیل داده‌ها و نقشه آفلاین" else "4. Analyze & Offline Mapping"
+                                    }
+
+                                    val stepDesc = when (activeStep) {
+                                        1 -> if (isFarsiMode) 
+                                            "هر کمپین صحرایی با ایجاد یک پروژه آغاز می‌شود. در این بخش می‌توانید سیستم مختصات UTM را تنظیم کرده و پروژه‌های قبلی خود را مدیریت کنید."
+                                        else 
+                                            "Every campaign begins with a project. Configure your coordination system (UTM/WGS84), keep track of survey metrics, and easily manage campaigns."
+                                        2 -> if (isFarsiMode)
+                                            "پس از تعریف پروژه، به صحرا رفته و مکان دقیق ایستگاه‌های برداشت خود را از طریق GPS متصل یا وارد کردن مختصات ثبت نمایید."
+                                        else
+                                            "Once inside an active campaign, register observation stations using high-precision Fused GPS/RTK or enter local UTM grid positions."
+                                        3 -> if (isFarsiMode)
+                                            "در این گام می‌توانید انواع ساختارهای زمین‌شناسی (مانند شیب و امتداد لایه‌بندی، درزه‌ها، گسل‌ها) و نمونه سنگ‌ها را با ثبت جزئیات یادداشت کنید."
+                                        else
+                                            "At any active station, collect fracture/joint structural parameters, classify lithology/mineralization, and capture geotechnical notes with photos."
+                                        else -> if (isFarsiMode)
+                                            "بر روی نقشه آفلاین ایستگاه‌های خود را بررسی کرده، از استریونت برای پایداری شیب سنگ استفاده نمایید یا گزارش‌های RMR و Q-system تهیه کنید."
+                                        else
+                                            "Track survey coordinates on an interactive offline mbtiles map, calculate structural stereonet patterns, or compute rock Barton-Q and RMR ratings."
+                                    }
+
+                                    val actionText = when (activeStep) {
+                                        1 -> if (isFarsiMode) "رفتن به مدیریت پروژه‌ها" else "Go to Project Manager"
+                                        2 -> if (isFarsiMode) "ایجاد یا انتخاب ایستگاه" else "Go to Station Logs"
+                                        3 -> if (isFarsiMode) "ثبت مشاهده در ایستگاه فعال" else "Go to Observation Logging"
+                                        else -> if (isFarsiMode) "باز کردن نقشه و ابزارها" else "Go to Maps & Tools"
+                                    }
+
+                                    val stepIcon = when (activeStep) {
+                                        1 -> Icons.Default.Folder
+                                        2 -> Icons.Default.MyLocation
+                                        3 -> Icons.Default.Terrain
+                                        else -> Icons.Default.Map
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = stepIcon,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                        Text(
+                                            text = stepTitle,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    Text(
+                                        text = stepDesc,
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        lineHeight = 16.sp
+                                    )
+
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    // Action button inside the guide step
+                                    Button(
+                                        onClick = {
+                                            when (activeStep) {
+                                                1 -> {
+                                                    viewModel.navigateTo(Screen.ProjectList)
+                                                    onNavigateToTab(MainTab.GeologicalMapping)
+                                                }
+                                                2 -> {
+                                                    val activeProjId = viewModel.activeProject.value?.id
+                                                    if (activeProjId != null) {
+                                                        viewModel.navigateTo(Screen.ProjectDashboard(activeProjId))
+                                                    } else {
+                                                        viewModel.navigateTo(Screen.ProjectList)
+                                                    }
+                                                    onNavigateToTab(MainTab.GeologicalMapping)
+                                                }
+                                                3 -> {
+                                                    val activeStatId = viewModel.activeStation.value?.id
+                                                    if (activeStatId != null) {
+                                                        viewModel.navigateTo(Screen.StationDetail(activeStatId))
+                                                    } else {
+                                                        val activeProjId = viewModel.activeProject.value?.id
+                                                        if (activeProjId != null) {
+                                                            viewModel.navigateTo(Screen.ProjectDashboard(activeProjId))
+                                                        } else {
+                                                            viewModel.navigateTo(Screen.ProjectList)
+                                                        }
+                                                    }
+                                                    onNavigateToTab(MainTab.GeologicalMapping)
+                                                }
+                                                4 -> {
+                                                    onNavigateToTab(MainTab.Map)
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth().height(36.dp),
+                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(text = actionText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            Icon(
+                                                imageVector = Icons.Default.PlayArrow,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(12.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            1 -> {
+                // TAB 1: Workspaces Grid & Recent Journal Timeline
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    // Section Title: Workspaces
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (isFarsiMode) "کارپوشه‌های تخصصی" else "Active Workspaces",
+                            fontSize = 13.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
-                    Icon(
-                        imageVector = if (isGuideExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
 
-                if (isGuideExpanded) {
-                    Column(
-                        modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    // Dynamic localized active workspace shortcuts
+                    val workspaces = listOf(
+                        Triple(
+                            if (isFarsiMode) "مدیریت پروژه‌ها" else "Project Manager",
+                            if (isFarsiMode) "لیست کمپین‌های صحرایی" else "Projects List",
+                            Icons.Default.Folder
+                        ) to MainTab.GeologicalMapping,
+                        Triple(
+                            if (isFarsiMode) "نقشه‌برداری صحرایی" else "Field Mapping",
+                            if (isFarsiMode) "ثبت ساختارهای زمین‌شناسی" else "Geological Observations",
+                            Icons.Default.Terrain
+                        ) to MainTab.GeologicalMapping,
+                        Triple(
+                            if (isFarsiMode) "لاگ حفاری و گمانه" else "Borehole Core Logging",
+                            if (isFarsiMode) "ثبت نمونه مغزه‌های حفاری" else "Core Runs Log",
+                            Icons.Default.Layers
+                        ) to MainTab.BoreholeLogging,
+                        Triple(
+                            if (isFarsiMode) "مکانیک سنگ و RMR" else "Rock Mechanics & RMR",
+                            if (isFarsiMode) "ارزیابی ژئوتکنیکی توده سنگ" else "Geotech Rate assessment",
+                            Icons.Default.Assessment
+                        ) to MainTab.RockMechanics,
+                        Triple(
+                            if (isFarsiMode) "نقشه آفلاین وب" else "Interactive Web Map",
+                            if (isFarsiMode) "سیستم اطلاعات جغرافیایی GIS" else "Spatial GPS GIS Map",
+                            Icons.Default.Map
+                        ) to MainTab.Map,
+                        Triple(
+                            if (isFarsiMode) "ابزارهای صحرایی" else "Geotech Field Tools",
+                            if (isFarsiMode) "کانی‌شناسی و مبدل‌های تخصصی" else "Mineralogy, Rocks, Converters",
+                            Icons.Default.Build
+                        ) to MainTab.Tools
+                    )
+
+                    // Grid Item Rows
+                    for (rowIdx in 0..2) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            val items = listOf(workspaces[rowIdx * 2], workspaces[rowIdx * 2 + 1])
+                            items.forEach { (meta, targetTab) ->
+                                val (title, sub, icon) = meta
+                                Card(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clickable { onNavigateToTab(targetTab) },
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(32.dp)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = icon,
+                                                contentDescription = title,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                        Text(
+                                            text = title,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.5.sp,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1
+                                        )
+                                        Text(
+                                            text = sub,
+                                            fontSize = 9.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 2,
+                                            lineHeight = 12.sp
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Recent Field Journal Timeline
+                    RecentObservationsTimeline(allObservations, onNavigateToTab)
+                }
+            }
+            else -> {
+                // TAB 2: Knowledge Base & Reference & Links
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    // Expandable Guidelines Accordion Panel
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
-                        GuideBullet(
-                            number = "1",
-                            title = "Geological Field Mapping",
-                            desc = "Initialize mapping campaigns, record coordinates, describe primary lithology attributes (Texture, Mineralogy), alterations index, and structure strike/dip angles."
+                        Column(
+                            modifier = Modifier.animateContentSize()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { isGuideExpanded = !isGuideExpanded }
+                                    .padding(14.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Assessment,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = if (isFarsiMode) "راهنمای مهندسی معدن و زمین‌شناسی" else "Geological & Mining Reference Guide",
+                                        fontSize = 11.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                Icon(
+                                    imageVector = if (isGuideExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+
+                            if (isGuideExpanded) {
+                                Column(
+                                    modifier = Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+                                    GuideBullet(
+                                        number = "1",
+                                        title = if (isFarsiMode) "نقشه‌برداری زمین‌شناسی صحرایی" else "Geological Field Mapping",
+                                        desc = if (isFarsiMode) 
+                                            "آغاز کمپین نقشه‌برداری، ثبت مختصات موقعیت، توصیف مشخصات لیتولوژی، زون آلتراسیون و امتداد/شیب ساختار زمین‌شناسی."
+                                        else 
+                                            "Initialize mapping campaigns, record coordinates, describe primary lithology attributes (Texture, Mineralogy), alterations index, and structure strike/dip angles."
+                                    )
+                                    GuideBullet(
+                                        number = "2",
+                                        title = if (isFarsiMode) "لاگر پیشرفته مغزه حفاری" else "Drilling Borehole Core Logger",
+                                        desc = if (isFarsiMode)
+                                            "ثبت پیوسته عملیات گمانه‌زنی و لاگ مغزه. ثبت فواصل ابتدا/انتها و مقدار بازیابی مغزه برای محاسبه در لحظه RQD و نرخ بازیابی."
+                                        else
+                                            "Maintain continuous core runs and daily drilling metrics. Input From/To core run intervals and total core recovered to compute recovery and Rock Quality Designation (RQD) instantly."
+                                    )
+                                    GuideBullet(
+                                        number = "3",
+                                        title = if (isFarsiMode) "مکانیک سنگ ژئوتکنیکی" else "Rock Geotechnical Mechanics",
+                                        desc = if (isFarsiMode)
+                                            "ارزیابی توده سنگ با استفاده از شاخص تجربی RMR دوسویه. طبقه‌بندی مقاومت فشاری سنگ، فاصله درزه‌ها، آب زیرزمینی و جهت‌گیری گمانه‌ها."
+                                        else
+                                            "Assess rock masses using the Bieniawski RMR Index. Grade UCS, RQD, joint apertures, roughness, ground water inflows, and tunnels lineation orientations"
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+
+                    Text(
+                        text = if (isFarsiMode) 
+                            "GeoField Pro یک ابزار ماژولار و بسیار دقیق برای برداشت اطلاعات آفلاین زمین‌شناسی صحرایی و مهندسی است که جهت استفاده زمین‌شناسان، مهندسین معدن و کارشناسان اکتشاف توسعه یافته است."
+                        else 
+                            "GeoField Pro is a modular, high-precision offline GIS logging and geotech analyzer tool engineered for field geologists, mining engineers, and exploration geophysicists.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        lineHeight = 16.sp,
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
+                    )
+
+                    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        AssistChip(
+                            onClick = { uriHandler.openUri("https://github.com/farzadf7/geofield-pro") },
+                            label = { Text("GitHub Repo", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                            leadingIcon = { Icon(Icons.Default.Code, contentDescription = "GitHub", modifier = Modifier.size(12.dp)) },
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
                         )
-                        GuideBullet(
-                            number = "2",
-                            title = "Drilling Borehole Core Logger",
-                            desc = "Maintain continuous core runs and daily drilling metrics. Input From/To core run intervals and total core recovered to compute recovery and Rock Quality Designation (RQD) instantly."
-                        )
-                        GuideBullet(
-                            number = "3",
-                            title = "Rock Geotechnical Mechanics",
-                            desc = "Assess rock masses using the Bieniawski RMR Index. Grade UCS, RQD, joint apertures, roughness, ground water inflows, and tunnels lineation orientations"
+                        AssistChip(
+                            onClick = { uriHandler.openUri("https://t.me/geofield_pro") },
+                            label = { Text("Telegram Support", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                            leadingIcon = { Icon(Icons.Default.Send, contentDescription = "Telegram", modifier = Modifier.size(12.dp)) },
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
                         )
                     }
                 }
             }
-        }
-
-        Spacer(modifier = Modifier.height(6.dp))
-        Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-
-        Text(
-            text = "GeoField Pro is a modular, high-precision offline GIS logging and geotech analyzer tool engineered for field geologists, mining engineers, and exploration geophysicists.",
-            fontSize = 11.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            lineHeight = 16.sp,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)
-        )
-
-        val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            AssistChip(
-                onClick = { uriHandler.openUri("https://github.com/farzadf7/geofield-pro") },
-                label = { Text("GitHub Repo", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
-                leadingIcon = { Icon(Icons.Default.Code, contentDescription = "GitHub", modifier = Modifier.size(12.dp)) },
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
-            )
-            AssistChip(
-                onClick = { uriHandler.openUri("https://t.me/geofield_pro") },
-                label = { Text("Telegram Support", fontSize = 10.sp, fontWeight = FontWeight.Bold) },
-                leadingIcon = { Icon(Icons.Default.Send, contentDescription = "Telegram", modifier = Modifier.size(12.dp)) },
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
-            )
         }
     }
 }
@@ -9330,8 +9767,18 @@ fun generateLeafletHtml(
     offlineModeForce: Boolean = false,
     showOfflineBoundaries: Boolean = true,
     downloadedRegions: List<com.example.ui.gis.OfflineRegion> = emptyList(),
-    importedFeatures: List<ImportedFeature> = emptyList()
+    importedFeatures: List<ImportedFeature> = emptyList(),
+    savedTracks: List<Track> = emptyList(),
+    showTracksOverlay: Boolean = true
 ): String {
+    val savedTracksJson = if (showTracksOverlay) {
+        savedTracks.joinToString(prefix = "[", postfix = "]") { track ->
+            """{"id": ${track.id}, "name": "${track.name.replace("\"", "\\\"")}", "points": ${track.pointsJson}, "color": "${track.colorHex}", "weight": ${track.strokeWidth}, "lengthMeters": ${track.lengthMeters}}"""
+        }
+    } else {
+        "[]"
+    }
+
     val downloadedRegionsJson = downloadedRegions.joinToString(prefix = "[", postfix = "]") { reg ->
         """{"id": "${reg.id}", "name": "${reg.name.replace("\"", "\\\"")}", "minLat": ${reg.minLat}, "minLon": ${reg.minLon}, "maxLat": ${reg.maxLat}, "maxLon": ${reg.maxLon}, "sizeMb": ${reg.sizeMb}}"""
     }
@@ -9368,10 +9815,13 @@ fun generateLeafletHtml(
 
     val leafZoom = zoom.coerceIn(3, 21)
 
-    val bgColor = "#FFFFFF"
-    val gridColor = "rgba(0,121,107,0.12)"
+    val bgColor = if (isOutdoorMode) "#FFFFFF" else "#0B100E"
+    val gridColor = if (isOutdoorMode) "rgba(0,121,107,0.12)" else "rgba(0,255,224,0.12)"
 
-    val tileFilterStyle = """
+    val isSatellite = tileUrl.contains("lyrs=s") || tileUrl.contains("lyrs=y") || tileUrl.contains("World_Imagery") || tileUrl.contains("satellite")
+
+    val tileFilterStyle = if (isOutdoorMode) {
+        """
         .leaflet-container { background-color: #ffffff !important; }
         .leaflet-bar { border: 1.5px solid rgba(0, 121, 107, 0.45) !important; background-color: #ffffff !important; }
         .leaflet-bar a { background-color: #ffffff !important; color: #007A78 !important; border-bottom: 1.5px solid rgba(0, 121, 107, 0.25) !important; }
@@ -9380,7 +9830,32 @@ fun generateLeafletHtml(
         .leaflet-popup-content { font-family: monospace !important; font-size: 11px !important; }
         .leaflet-control-attribution, .leaflet-control-scale { background: rgba(255, 255, 255, 0.85) !important; color: #007a78 !important; font-size: 9px !important; text-shadow: none !important; }
         .leaflet-control-zoom-in, .leaflet-control-zoom-out { font-weight: bold; }
-    """.trimIndent()
+        """.trimIndent()
+    } else {
+        val filterVal = if (isSatellite) {
+            "brightness(60%) contrast(110%) saturate(120%)"
+        } else {
+            "invert(90%) hue-rotate(180deg) brightness(85%) contrast(120%) saturate(140%) sepia(20%)"
+        }
+        """
+        .leaflet-container { background-color: #0B100E !important; }
+        .leaflet-tile {
+            filter: $filterVal;
+            -webkit-filter: $filterVal;
+        }
+        .leaflet-bar { border: 1.5px solid #00FFE0 !important; background-color: #141A17 !important; }
+        .leaflet-bar a { background-color: #141A17 !important; color: #00FFE0 !important; border-bottom: 1.5px solid rgba(0, 255, 224, 0.25) !important; }
+        .leaflet-bar a:hover { background-color: #00FFE0 !important; color: #141A17 !important; }
+        .leaflet-popup-content-wrapper, .leaflet-popup-tip { background-color: #141A17 !important; color: #E0E0E0 !important; border: 1.5px solid #00FFE0 !important; box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important; }
+        .leaflet-popup-content { font-family: monospace !important; font-size: 11px !important; }
+        .leaflet-control-attribution, .leaflet-control-scale { background: rgba(20, 26, 23, 0.85) !important; color: #00FFE0 !important; font-size: 9px !important; text-shadow: none !important; }
+        .leaflet-control-zoom-in, .leaflet-control-zoom-out { font-weight: bold; }
+        """.trimIndent()
+    }
+
+    val scaleBg = if (isOutdoorMode) "rgba(255, 255, 255, 0.95)" else "rgba(20, 26, 23, 0.95)"
+    val scaleBorderColor = if (isOutdoorMode) "#007A78" else "#00FFE0"
+    val scaleTextColor = if (isOutdoorMode) "#004D40" else "#00FFE0"
 
     return """
         <!DOCTYPE html>
@@ -9404,16 +9879,186 @@ fun generateLeafletHtml(
                     width: 12px;
                     height: 12px;
                 }
+                /* Elegant center crosshair */
+                #center-crosshair {
+                    position: absolute;
+                    top: 50%;
+                    left: 50%;
+                    width: 20px;
+                    height: 20px;
+                    margin-top: -10px;
+                    margin-left: -10px;
+                    z-index: 1001;
+                    pointer-events: none;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                }
+                #center-crosshair::before, #center-crosshair::after {
+                    content: '';
+                    position: absolute;
+                    background: $scaleBorderColor;
+                    opacity: 0.8;
+                }
+                #center-crosshair::before {
+                    width: 16px;
+                    height: 1.5px;
+                }
+                #center-crosshair::after {
+                    width: 1.5px;
+                    height: 16px;
+                }
+                #center-crosshair-dot {
+                    width: 4px;
+                    height: 4px;
+                    background: $scaleBorderColor;
+                    border-radius: 50%;
+                }
                 $tileFilterStyle
             </style>
         </head>
         <body>
             <div id="map"></div>
-            <div id="dual-scale-container" style="position: absolute; bottom: 35px; left: 15px; z-index: 1000; background: rgba(255, 255, 255, 0.95); border: 1.5px solid #007A78; padding: 4px 10px; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); font-family: monospace; font-size: 10px; font-weight: bold; color: #004D40; pointer-events: none;">
+            
+            <!-- Precise Center Crosshair target -->
+            <div id="center-crosshair">
+                <div id="center-crosshair-dot"></div>
+            </div>
+
+            <!-- Dynamic coordinates overlay (WGS84 + UTM) -->
+            <div id="center-coordinates" style="position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 1000; background: $scaleBg; border: 1.5px solid $scaleBorderColor; padding: 6px 14px; border-radius: 20px; box-shadow: 0 3px 10px rgba(0,0,0,0.25); font-family: monospace; font-size: 10px; font-weight: bold; color: $scaleTextColor; white-space: nowrap; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 2px;">
+                <div id="latlon-label">Lat: 0.00000° | Lon: 0.00000°</div>
+                <div id="utm-label" style="font-size: 8.5px; opacity: 0.85;">UTM: Zone -- • 0 E • 0 N</div>
+            </div>
+
+            <!-- Geological Map Legend Panel -->
+            <div id="map-legend" style="position: absolute; top: 12px; right: 12px; z-index: 1000; background: $scaleBg; border: 1.5px solid $scaleBorderColor; border-radius: 6px; box-shadow: 0 3px 10px rgba(0,0,0,0.25); font-family: system-ui, -apple-system; font-size: 10px; color: $scaleTextColor; width: 145px; overflow: hidden; transition: all 0.3s ease;">
+                <div id="legend-header" style="padding: 6px 10px; background: rgba(0,0,0,0.06); border-bottom: 1px solid rgba(0,121,107,0.15); font-weight: bold; cursor: pointer; display: flex; justify-content: space-between; align-items: center;" onclick="toggleLegend()">
+                    <span>🗺️ راهنمای نمادها</span>
+                    <span id="legend-toggle-icon">▼</span>
+                </div>
+                <div id="legend-content" style="padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; direction: rtl;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 14px; height: 14px; background: #ffeb3b; border: 1px solid #000; border-radius: 2px; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: bold; color: #000;">├</div>
+                        <span>لایه‌بندی (Bedding)</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 14px; height: 14px; background: #00e676; border: 1px solid #000; border-radius: 2px; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #000;">┼</div>
+                        <span>درزه (Joint)</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 14px; height: 4px; background: #ff3d00;"></div>
+                        <span>گسل (Fault)</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 14px; height: 14px; background: #e040fb; border: 1px solid #000; border-radius: 2px; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #fff;">┿</div>
+                        <span>شیستوزیته (Foliation)</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 14px; height: 14px; background: #00b0ff; border: 1px solid #000; border-radius: 2px; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #000;">═</div>
+                        <span>رگه (Vein)</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Interactive Measurement tools -->
+            <div id="map-tools" style="position: absolute; bottom: 95px; left: 12px; z-index: 1000; display: flex; flex-direction: column; gap: 8px;">
+                <button id="ruler-btn" style="width: 32px; height: 32px; border-radius: 4px; border: 1.5px solid $scaleBorderColor; background: $scaleBg; color: $scaleTextColor; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,0.2); transition: all 0.2s;" title="خط‌کش اندازه‌گیری مسافت" onclick="toggleRulerMode()">📏</button>
+                <button id="area-btn" style="width: 32px; height: 32px; border-radius: 4px; border: 1.5px solid $scaleBorderColor; background: $scaleBg; color: $scaleTextColor; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,0.2); transition: all 0.2s;" title="مساحی و اندازه‌گیری مساحت" onclick="toggleAreaMode()">📐</button>
+                <button id="clear-ruler-btn" style="width: 32px; height: 32px; border-radius: 4px; border: 1.5px solid $scaleBorderColor; background: $scaleBg; color: $scaleTextColor; font-size: 14px; cursor: pointer; display: none; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,0.2); transition: all 0.2s;" title="پاک کردن اندازه‌گیری‌ها" onclick="clearMeasurements()">🧹</button>
+            </div>
+
+            <!-- Distance and Area tracker result panel -->
+            <div id="ruler-distance-display" style="position: absolute; bottom: 35px; right: 12px; z-index: 1000; background: $scaleBg; border: 1.5px solid $scaleBorderColor; padding: 6px 12px; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.2); font-family: monospace; font-size: 10px; font-weight: bold; color: $scaleTextColor; pointer-events: none; display: none; text-align: right; direction: rtl; max-width: 250px;">
+                <div id="ruler-distance-label">فاصله کل: ۰ متر</div>
+            </div>
+
+            <!-- Custom Toast container -->
+            <div id="map-toast" style="position: absolute; bottom: 85px; left: 50%; transform: translateX(-50%); z-index: 1002; background: rgba(0,0,0,0.85); color: #ffffff; padding: 6px 16px; border-radius: 20px; font-family: system-ui, -apple-system; font-size: 11px; font-weight: bold; pointer-events: none; opacity: 0; transition: opacity 0.3s; text-align: center; white-space: nowrap; direction: rtl; box-shadow: 0 2px 8px rgba(0,0,0,0.35);"></div>
+
+            <div id="dual-scale-container" style="position: absolute; bottom: 35px; left: 12px; z-index: 1000; background: $scaleBg; border: 1.5px solid $scaleBorderColor; padding: 4px 10px; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); font-family: monospace; font-size: 10px; font-weight: bold; color: $scaleTextColor; pointer-events: none;">
                 <div id="dual-scale-label" style="text-align: center; margin-bottom: 2px;">0 m ⇄ 0 km</div>
-                <div style="height: 5px; border: 1.5px solid #007A78; border-top: none; margin: 0 auto; width: 100px;" id="dual-scale-bar"></div>
+                <div style="height: 5px; border: 1.5px solid $scaleBorderColor; border-top: none; margin: 0 auto; width: 100px;" id="dual-scale-bar"></div>
             </div>
             <script>
+                // --- GLOBAL UTM PROJECTION UTILS ---
+                window.utmGridEnabled = true;
+
+                function latLngToUtm(lat, lon) {
+                    var latRad = lat * Math.PI / 180;
+                    var lonRad = lon * Math.PI / 180;
+                    var zone = Math.floor((lon + 180) / 6) + 1;
+                    if (zone <= 0) zone = 1;
+                    if (zone > 60) zone = 60;
+                    var lonOrigin = (zone - 1) * 6 - 180 + 3;
+                    var lonOriginRad = lonOrigin * Math.PI / 180;
+
+                    var a = 6378137.0;
+                    var eccSquared = 0.00669437999013;
+                    var k0 = 0.9996;
+
+                    var eccPrimeSquared = eccSquared / (1 - eccSquared);
+                    var n = a / Math.sqrt(1 - eccSquared * Math.sin(latRad) * Math.sin(latRad));
+                    var t = Math.tan(latRad) * Math.tan(latRad);
+                    var c = eccPrimeSquared * Math.cos(latRad) * Math.cos(latRad);
+                    var aCoeff = Math.cos(latRad) * (lonRad - lonOriginRad);
+
+                    var m = a * ((1 - eccSquared / 4 - 3 * eccSquared * eccSquared / 64 - 5 * eccSquared * eccSquared * eccSquared / 256) * latRad
+                            - (3 * eccSquared / 8 + 3 * eccSquared * eccSquared / 32 + 45 * eccSquared * eccSquared * eccSquared / 1024) * Math.sin(2 * latRad)
+                            + (15 * eccSquared * eccSquared / 256 + 45 * eccSquared * eccSquared * eccSquared / 1024) * Math.sin(4 * latRad)
+                            - (35 * eccSquared * eccSquared * eccSquared / 3072) * Math.sin(6 * latRad));
+
+                    var easting = k0 * n * (aCoeff + (1 - t + c) * aCoeff * aCoeff * aCoeff / 6
+                            + (5 - 18 * t + t * t + 72 * c - 58 * eccPrimeSquared) * aCoeff * aCoeff * aCoeff * aCoeff * aCoeff / 120) + 500000.0;
+
+                    var northing = k0 * (m + n * Math.tan(latRad) * (aCoeff * aCoeff / 2 + (5 - t + 9 * c + 4 * c * c) * aCoeff * aCoeff * aCoeff * aCoeff / 24
+                            + (61 - 58 * t + t * t + 600 * c - 330 * eccPrimeSquared) * aCoeff * aCoeff * aCoeff * aCoeff * aCoeff * aCoeff / 720));
+
+                    if (lat < 0) {
+                        northing += 10000000.0;
+                    }
+                    return { easting: easting, northing: northing, zone: zone };
+                }
+
+                function utmToLatLng(easting, northing, zone, isSouthern) {
+                    var k0 = 0.9996;
+                    var a = 6378137.0;
+                    var eccSquared = 0.00669437999013;
+                    var e1 = (1 - Math.sqrt(1 - eccSquared)) / (1 + Math.sqrt(1 - eccSquared));
+
+                    var x = easting - 500000.0;
+                    var y = northing;
+                    if (isSouthern) {
+                        y -= 10000000.0;
+                    }
+
+                    var lonOrigin = (zone - 1) * 6 - 180 + 3;
+                    var eccPrimeSquared = eccSquared / (1 - eccSquared);
+
+                    var m = y / k0;
+                    var mu = m / (a * (1 - eccSquared / 4 - 3 * eccSquared * eccSquared / 64 - 5 * eccSquared * eccSquared * eccSquared / 256));
+
+                    var phi1Rad = mu + (3 * e1 / 2 - 27 * e1 * e1 * e1 / 32) * Math.sin(2 * mu)
+                            + (21 * e1 * e1 / 16 - 55 * e1 * e1 * e1 * e1 / 32) * Math.sin(4 * mu)
+                            + (151 * e1 * e1 * e1 / 96) * Math.sin(6 * mu);
+
+                    var lat1Rad = phi1Rad;
+                    var n1 = a / Math.sqrt(1 - eccSquared * Math.sin(lat1Rad) * Math.sin(lat1Rad));
+                    var t1 = Math.tan(lat1Rad) * Math.tan(lat1Rad);
+                    var c1 = eccPrimeSquared * Math.cos(lat1Rad) * Math.cos(lat1Rad);
+                    var r1 = a * (1 - eccSquared) / Math.pow(1 - eccSquared * Math.sin(lat1Rad) * Math.sin(lat1Rad), 1.5);
+                    var d = x / (n1 * k0);
+
+                    var lat = lat1Rad - (n1 * Math.tan(lat1Rad) / r1) * (d * d / 2 - (5 + 3 * t1 + 10 * c1 - 4 * c1 * c1 - 9 * eccPrimeSquared) * Math.pow(d, 4) / 24
+                            + (61 + 90 * t1 + 298 * c1 + 45 * t1 * t1 - 252 * eccPrimeSquared - 3 * c1 * c1) * Math.pow(d, 6) / 720);
+                    lat = lat * 180 / Math.PI;
+
+                    var lon = (d - (1 + 2 * t1 + c1) * Math.pow(d, 3) / 6 + (5 - 2 * c1 + 28 * t1 - 3 * c1 * c1 + 8 * eccPrimeSquared + 24 * t1 * t1) * Math.pow(d, 5) / 120) / Math.cos(lat1Rad);
+                    lon = lonOrigin + lon * 180 / Math.PI;
+
+                    return { lat: lat, lon: lon };
+                }
+
                 // ---------------------------------------------------------------------
                 // OFFLINE HEAL / FALLBACK: If Leaflet is missing, load raw Canvas map!
                 // ---------------------------------------------------------------------
@@ -9561,51 +10206,131 @@ fun generateLeafletHtml(
                     function draw() {
                         ctx.clearRect(0, 0, canvas.width, canvas.height);
                         
-                        var isOutdoor = true;
-                        ctx.fillStyle = '#FFFFFF';
+                        var isOutdoor = $isOutdoorMode;
+                        var gridColor = isOutdoor ? '#E0E0E0' : 'rgba(0, 255, 224, 0.15)';
+                        var textColor = isOutdoor ? '#2E4F43' : '#00FFE0';
+                        
+                        ctx.fillStyle = isOutdoor ? '#FFFFFF' : '#0B100E';
                         ctx.fillRect(0, 0, canvas.width, canvas.height);
                         
-                        var gridColor = '#E0E0E0';
-                        var textColor = '#2E4F43';
                         ctx.strokeStyle = gridColor;
                         ctx.lineWidth = 1;
                         ctx.font = '10px monospace';
                         
-                        var spacing = 0.01;
-                        if (zoomLevel > 19) spacing = 0.0001;
-                        else if (zoomLevel > 17) spacing = 0.0005;
-                        else if (zoomLevel > 15) spacing = 0.001;
-                        else if (zoomLevel > 12) spacing = 0.005;
-                        else if (zoomLevel > 9) spacing = 0.02;
-                        else if (zoomLevel > 6) spacing = 0.1;
-                        else spacing = 0.5;
-                        
-                        var latStart = Math.floor((centerX - 1) / spacing) * spacing;
-                        var latEnd = Math.ceil((centerX + 1) / spacing) * spacing;
-                        var lonStart = Math.floor((centerY - 1.5) / spacing) * spacing;
-                        var lonEnd = Math.ceil((centerY + 1.5) / spacing) * spacing;
-                        
-                        for (var lat = latStart; lat < latEnd; lat += spacing) {
-                            var pt = toPixels(lat, centerY);
-                            if (pt.y >= 0 && pt.y <= canvas.height) {
+                        if (window.utmGridEnabled) {
+                            var swCoord = toCoords(0, canvas.height);
+                            var neCoord = toCoords(canvas.width, 0);
+                            
+                            var swUtm = latLngToUtm(swCoord.lat, swCoord.lon);
+                            var neUtm = latLngToUtm(neCoord.lat, neCoord.lon);
+                            
+                            var utmZone = swUtm.zone;
+                            var isSouthern = swCoord.lat < 0;
+                            
+                            var spacingUtm = 10000;
+                            if (zoomLevel >= 18) spacingUtm = 100;
+                            else if (zoomLevel >= 16) spacingUtm = 500;
+                            else if (zoomLevel >= 14) spacingUtm = 1000;
+                            else if (zoomLevel >= 11) spacingUtm = 5000;
+                            else if (zoomLevel >= 9) spacingUtm = 10000;
+                            else spacingUtm = 50000;
+                            
+                            var eStart = Math.floor(Math.min(swUtm.easting, neUtm.easting) / spacingUtm) * spacingUtm;
+                            var eEnd = Math.ceil(Math.max(swUtm.easting, neUtm.easting) / spacingUtm) * spacingUtm;
+                            var nStart = Math.floor(Math.min(swUtm.northing, neUtm.northing) / spacingUtm) * spacingUtm;
+                            var nEnd = Math.ceil(Math.max(swUtm.northing, neUtm.northing) / spacingUtm) * spacingUtm;
+                            
+                            ctx.strokeStyle = isOutdoor ? '#007A78' : '#00E5FF';
+                            ctx.lineWidth = 0.5;
+                            if (ctx.setLineDash) ctx.setLineDash([3, 4]);
+                            ctx.fillStyle = isOutdoor ? '#007A78' : '#00FFE0';
+                            ctx.font = '8px monospace';
+                            
+                            // Draw vertical lines (constant easting)
+                            for (var e = eStart; e <= eEnd; e += spacingUtm) {
                                 ctx.beginPath();
-                                ctx.moveTo(0, pt.y);
-                                ctx.lineTo(canvas.width, pt.y);
+                                var first = true;
+                                for (var n = nStart; n <= nEnd; n += (nEnd - nStart) / 4) {
+                                    var ptC = utmToLatLng(e, n, utmZone, isSouthern);
+                                    var ptPx = toPixels(ptC.lat, ptC.lon);
+                                    if (first) {
+                                        ctx.moveTo(ptPx.x, ptPx.y);
+                                        first = false;
+                                    } else {
+                                        ctx.lineTo(ptPx.x, ptPx.y);
+                                    }
+                                }
                                 ctx.stroke();
-                                ctx.fillStyle = textColor;
-                                ctx.fillText(lat.toFixed(7) + '°N', 8, pt.y - 4);
+                                
+                                // Label
+                                var lblPtC = utmToLatLng(e, nStart + (nEnd - nStart) * 0.1, utmZone, isSouthern);
+                                var lblPtPx = toPixels(lblPtC.lat, lblPtC.lon);
+                                if (lblPtPx.x >= 0 && lblPtPx.x <= canvas.width && lblPtPx.y >= 0 && lblPtPx.y <= canvas.height) {
+                                    ctx.fillText((e / 1000).toFixed(0) + 'k E', lblPtPx.x + 4, lblPtPx.y - 4);
+                                }
                             }
-                        }
-                        
-                        for (var lon = lonStart; lon < lonEnd; lon += spacing) {
-                            var pt = toPixels(centerX, lon);
-                            if (pt.x >= 0 && pt.x <= canvas.width) {
+                            
+                            // Draw horizontal lines (constant northing)
+                            for (var n = nStart; n <= nEnd; n += spacingUtm) {
                                 ctx.beginPath();
-                                ctx.moveTo(pt.x, 0);
-                                ctx.lineTo(pt.x, canvas.height);
+                                var first = true;
+                                for (var e = eStart; e <= eEnd; e += (eEnd - eStart) / 4) {
+                                    var ptC = utmToLatLng(e, n, utmZone, isSouthern);
+                                    var ptPx = toPixels(ptC.lat, ptC.lon);
+                                    if (first) {
+                                        ctx.moveTo(ptPx.x, ptPx.y);
+                                        first = false;
+                                    } else {
+                                        ctx.lineTo(ptPx.x, ptPx.y);
+                                    }
+                                }
                                 ctx.stroke();
-                                ctx.fillStyle = textColor;
-                                ctx.fillText(lon.toFixed(7) + '°E', pt.x + 4, canvas.height - 8);
+                                
+                                // Label
+                                var lblPtC = utmToLatLng(eStart + (eEnd - eStart) * 0.1, n, utmZone, isSouthern);
+                                var lblPtPx = toPixels(lblPtC.lat, lblPtC.lon);
+                                if (lblPtPx.x >= 0 && lblPtPx.x <= canvas.width && lblPtPx.y >= 0 && lblPtPx.y <= canvas.height) {
+                                    ctx.fillText((n / 1000).toFixed(0) + 'k N', lblPtPx.x + 4, lblPtPx.y - 4);
+                                }
+                            }
+                            if (ctx.setLineDash) ctx.setLineDash([]); // Reset
+                        } else {
+                            var spacing = 0.01;
+                            if (zoomLevel > 19) spacing = 0.0001;
+                            else if (zoomLevel > 17) spacing = 0.0005;
+                            else if (zoomLevel > 15) spacing = 0.001;
+                            else if (zoomLevel > 12) spacing = 0.005;
+                            else if (zoomLevel > 9) spacing = 0.02;
+                            else if (zoomLevel > 6) spacing = 0.1;
+                            else spacing = 0.5;
+                            
+                            var latStart = Math.floor((centerX - 1) / spacing) * spacing;
+                            var latEnd = Math.ceil((centerX + 1) / spacing) * spacing;
+                            var lonStart = Math.floor((centerY - 1.5) / spacing) * spacing;
+                            var lonEnd = Math.ceil((centerY + 1.5) / spacing) * spacing;
+                            
+                            for (var lat = latStart; lat < latEnd; lat += spacing) {
+                                var pt = toPixels(lat, centerY);
+                                if (pt.y >= 0 && pt.y <= canvas.height) {
+                                    ctx.beginPath();
+                                    ctx.moveTo(0, pt.y);
+                                    ctx.lineTo(canvas.width, pt.y);
+                                    ctx.stroke();
+                                    ctx.fillStyle = textColor;
+                                    ctx.fillText(lat.toFixed(7) + '°N', 8, pt.y - 4);
+                                }
+                            }
+                            
+                            for (var lon = lonStart; lon < lonEnd; lon += spacing) {
+                                var pt = toPixels(centerX, lon);
+                                if (pt.x >= 0 && pt.x <= canvas.width) {
+                                    ctx.beginPath();
+                                    ctx.moveTo(pt.x, 0);
+                                    ctx.lineTo(pt.x, canvas.height);
+                                    ctx.stroke();
+                                    ctx.fillStyle = textColor;
+                                    ctx.fillText(lon.toFixed(7) + '°E', pt.x + 4, canvas.height - 8);
+                                }
                             }
                         }
                         
@@ -9831,9 +10556,9 @@ fun generateLeafletHtml(
                         ctx.stroke();
                         
                         ctx.font = 'bold 9px monospace';
-                        var mText = niceMeters + ' m';
-                        var kmEquivalent = (niceMeters / 1000) + ' km';
-                        var comparisonText = mText + ' / ' + kmEquivalent;
+                        var mLabel = niceMeters + " m (" + niceMeters + " متر)";
+                        var kmLabel = (niceMeters >= 1000) ? ((niceMeters / 1000) + " km (" + (niceMeters / 1000) + " کیلومتر)") : "";
+                        var comparisonText = kmLabel ? mLabel + " / " + kmLabel : mLabel;
                         ctx.fillText(comparisonText, barX, barY - 8);
                         ctx.restore();
                     }
@@ -9843,6 +10568,10 @@ fun generateLeafletHtml(
                             centerX = lat;
                             centerY = lon;
                         }
+                        draw();
+                    };
+                    window.setUtmGridVisible = function(visible) {
+                        window.utmGridEnabled = visible;
                         draw();
                     };
                     window.updateNavigationLine = function(sLat, sLon, dLat, dLon, show) {};
@@ -9858,6 +10587,12 @@ fun generateLeafletHtml(
                         doubleClickZoom: true,
                         boxZoom: true
                     }).setView([$defaultLat, $defaultLon], $leafZoom);
+
+                    L.control.scale({
+                        position: 'bottomleft',
+                        metric: true,
+                        imperial: false
+                    }).addTo(map);
 
                     // Custom Dual Scale Controller (Comparing Meters vs Kilometers for military precision)
                     function updateDualScale() {
@@ -9877,9 +10612,11 @@ fun generateLeafletHtml(
                             }
                         }
                         var targetPxWidth = niceMeters / metersPerPx;
-                        var mLabel = niceMeters + " m";
-                        var kmLabel = (niceMeters / 1000) + " km";
-                        var comparisonText = mLabel + " ⇄ " + kmLabel;
+                        
+                        // Bilingual Scale Labels
+                        var mLabel = niceMeters + " m (" + niceMeters + " متر)";
+                        var kmLabel = (niceMeters >= 1000) ? ((niceMeters / 1000) + " km (" + (niceMeters / 1000) + " کیلومتر)") : "";
+                        var comparisonText = kmLabel ? mLabel + " ⇄ " + kmLabel : mLabel;
                         
                         var scaleBar = document.getElementById('dual-scale-bar');
                         var scaleLabel = document.getElementById('dual-scale-label');
@@ -9891,6 +10628,326 @@ fun generateLeafletHtml(
                     map.on('move', updateDualScale);
                     map.on('zoomend', updateDualScale);
                     setTimeout(updateDualScale, 200);
+
+                    // --- LIVE CENTER COORDINATES UPDATE ---
+                    function updateCenterCoordinates() {
+                        var center = map.getCenter();
+                        var lat = center.lat;
+                        var lon = center.lng;
+                        var utm = latLngToUtm(lat, lon);
+                        var zoneChar = (lat >= 0) ? 'N' : 'S';
+                        
+                        var latLabel = document.getElementById('latlon-label');
+                        var utmLabel = document.getElementById('utm-label');
+                        if (latLabel) {
+                            latLabel.innerText = "Lat: " + lat.toFixed(5) + "° | Lon: " + lon.toFixed(5) + "°";
+                        }
+                        if (utmLabel) {
+                            utmLabel.innerText = "UTM: Zone " + utm.zone + zoneChar + " • " + Math.round(utm.easting).toLocaleString() + " E • " + Math.round(utm.northing).toLocaleString() + " N";
+                        }
+                    }
+                    map.on('move', updateCenterCoordinates);
+                    setTimeout(updateCenterCoordinates, 300);
+
+                    // --- GEOLOGICAL LEGEND TOGGLE ---
+                    window.legendCollapsed = false;
+                    window.toggleLegend = function() {
+                        window.legendCollapsed = !window.legendCollapsed;
+                        var content = document.getElementById('legend-content');
+                        var icon = document.getElementById('legend-toggle-icon');
+                        if (content && icon) {
+                            if (window.legendCollapsed) {
+                                content.style.display = 'none';
+                                icon.innerText = '▲';
+                            } else {
+                                content.style.display = 'flex';
+                                icon.innerText = '▼';
+                            }
+                        }
+                    };
+
+                    // --- TOAST NOTIFICATIONS ---
+                    window.toastTimeout = null;
+                    window.showToast = function(text) {
+                        var toast = document.getElementById('map-toast');
+                        if (!toast) return;
+                        toast.innerText = text;
+                        toast.style.opacity = '1';
+                        clearTimeout(window.toastTimeout);
+                        window.toastTimeout = setTimeout(function() {
+                            toast.style.opacity = '0';
+                        }, 3500);
+                    };
+
+                    // --- DISTANCE MEASURING RULER TOOL ---
+                    window.isRulerMode = false;
+                    window.rulerPoints = [];
+                    window.rulerMarkers = [];
+                    window.rulerPolyline = null;
+                    window.rulerTempLine = null;
+
+                    window.toggleRulerMode = function() {
+                        if (window.isAreaMode) {
+                            window.toggleAreaMode();
+                        }
+                        window.isRulerMode = !window.isRulerMode;
+                        var btn = document.getElementById('ruler-btn');
+                        if (window.isRulerMode) {
+                            if (btn) {
+                                btn.style.background = '$scaleBorderColor';
+                                btn.style.color = (typeof isOutdoorMode !== 'undefined' && isOutdoorMode) ? '#ffffff' : '#0B100E';
+                            }
+                            if (map && map.getContainer()) {
+                                map.getContainer().style.cursor = 'crosshair';
+                            }
+                            var clearBtn = document.getElementById('clear-ruler-btn');
+                            if (clearBtn) clearBtn.style.display = 'flex';
+                            window.showToast("📏 ابزار خط‌کش فعال شد. روی نقشه کلیک کنید تا نقاط اندازه‌گیری فاصله ترسیم شوند.");
+                        } else {
+                            window.resetRulerModeUI();
+                        }
+                    };
+
+                    window.resetRulerModeUI = function() {
+                        window.isRulerMode = false;
+                        var btn = document.getElementById('ruler-btn');
+                        if (btn) {
+                            btn.style.background = '$scaleBg';
+                            btn.style.color = '$scaleTextColor';
+                        }
+                        if (map && map.getContainer()) {
+                            map.getContainer().style.cursor = '';
+                        }
+                        if (window.rulerTempLine && map) {
+                            map.removeLayer(window.rulerTempLine);
+                            window.rulerTempLine = null;
+                        }
+                    };
+
+                    // --- AREA MEASURING POLYGON TOOL ---
+                    window.isAreaMode = false;
+                    window.areaPoints = [];
+                    window.areaMarkers = [];
+                    window.areaPolygon = null;
+                    window.areaTempPolygon = null;
+
+                    window.toggleAreaMode = function() {
+                        if (window.isRulerMode) {
+                            window.toggleRulerMode();
+                        }
+                        window.isAreaMode = !window.isAreaMode;
+                        var btn = document.getElementById('area-btn');
+                        if (window.isAreaMode) {
+                            if (btn) {
+                                btn.style.background = '$scaleBorderColor';
+                                btn.style.color = (typeof isOutdoorMode !== 'undefined' && isOutdoorMode) ? '#ffffff' : '#0B100E';
+                            }
+                            if (map && map.getContainer()) {
+                                map.getContainer().style.cursor = 'crosshair';
+                            }
+                            var clearBtn = document.getElementById('clear-ruler-btn');
+                            if (clearBtn) clearBtn.style.display = 'flex';
+                            window.showToast("📐 ابزار سنجش مساحت فعال شد. روی نقشه کلیک کنید تا نقاط مرز محدوده مشخص شوند.");
+                        } else {
+                            window.resetAreaModeUI();
+                        }
+                    };
+
+                    window.resetAreaModeUI = function() {
+                        window.isAreaMode = false;
+                        var btn = document.getElementById('area-btn');
+                        if (btn) {
+                            btn.style.background = '$scaleBg';
+                            btn.style.color = '$scaleTextColor';
+                        }
+                        if (map && map.getContainer()) {
+                            map.getContainer().style.cursor = '';
+                        }
+                        if (window.areaTempPolygon && map) {
+                            map.removeLayer(window.areaTempPolygon);
+                            window.areaTempPolygon = null;
+                        }
+                    };
+
+                    window.clearMeasurements = function() {
+                        // Clear distance ruler
+                        window.rulerPoints = [];
+                        if (map) {
+                            window.rulerMarkers.forEach(function(m) { map.removeLayer(m); });
+                            if (window.rulerPolyline) { map.removeLayer(window.rulerPolyline); }
+                            if (window.rulerTempLine) { map.removeLayer(window.rulerTempLine); }
+                        }
+                        window.rulerMarkers = [];
+                        window.rulerPolyline = null;
+                        window.rulerTempLine = null;
+
+                        // Clear area polygon
+                        window.areaPoints = [];
+                        if (map) {
+                            window.areaMarkers.forEach(function(m) { map.removeLayer(m); });
+                            if (window.areaPolygon) { map.removeLayer(window.areaPolygon); }
+                            if (window.areaTempPolygon) { map.removeLayer(window.areaTempPolygon); }
+                        }
+                        window.areaMarkers = [];
+                        window.areaPolygon = null;
+                        window.areaTempPolygon = null;
+                        
+                        var clearBtn = document.getElementById('clear-ruler-btn');
+                        if (clearBtn) clearBtn.style.display = 'none';
+                        var distDisplay = document.getElementById('ruler-distance-display');
+                        if (distDisplay) distDisplay.style.display = 'none';
+                        
+                        window.resetRulerModeUI();
+                        window.resetAreaModeUI();
+                        window.showToast("🧹 تمامی اندازه‌گیری‌ها و مساحی‌ها پاک شدند.");
+                    };
+
+                    window.updateRulerDistance = function() {
+                        if (window.rulerPoints.length < 2) return;
+                        var totalDist = 0;
+                        for (var i = 0; i < window.rulerPoints.length - 1; i++) {
+                            totalDist += window.rulerPoints[i].distanceTo(window.rulerPoints[i+1]);
+                        }
+                        var displayStr = "";
+                        if (totalDist < 1000) {
+                            displayStr = "فاصله کل: " + Math.round(totalDist).toLocaleString() + " متر" + " (" + Math.round(totalDist) + " m)";
+                        } else {
+                            var km = (totalDist / 1000).toFixed(2);
+                            displayStr = "فاصله کل: " + parseFloat(km).toLocaleString() + " کیلومتر" + " (" + km + " km)";
+                        }
+                        var displayDiv = document.getElementById('ruler-distance-display');
+                        if (displayDiv) {
+                            displayDiv.innerText = displayStr;
+                            displayDiv.style.display = 'block';
+                        }
+                    };
+
+                    function calculatePolygonArea(latlngs) {
+                        if (latlngs.length < 3) return 0;
+                        var utmPoints = latlngs.map(function(ll) {
+                            return latLngToUtm(ll.lat, ll.lng);
+                        });
+                        var area = 0;
+                        var j = utmPoints.length - 1;
+                        for (var i = 0; i < utmPoints.length; i++) {
+                            area += (utmPoints[j].easting + utmPoints[i].easting) * (utmPoints[j].northing - utmPoints[i].northing);
+                            j = i;
+                        }
+                        return Math.abs(area / 2.0);
+                    }
+
+                    window.updateAreaCalculation = function() {
+                        var displayDiv = document.getElementById('ruler-distance-display');
+                        if (!displayDiv) return;
+                        
+                        if (window.areaPoints.length < 3) {
+                            displayDiv.innerText = "📐 نقاط مرز: " + window.areaPoints.length + " (حداقل ۳ نقطه لازم است)";
+                            displayDiv.style.display = 'block';
+                            return;
+                        }
+                        
+                        var areaSqMeters = calculatePolygonArea(window.areaPoints);
+                        var displayStr = "";
+                        if (areaSqMeters < 10000) {
+                            displayStr = "مساحت محدوده: " + Math.round(areaSqMeters).toLocaleString() + " متر مربع" + " (" + Math.round(areaSqMeters).toLocaleString() + " m²)";
+                        } else {
+                            var hectares = (areaSqMeters / 10000).toFixed(2);
+                            var sqKm = (areaSqMeters / 1000000).toFixed(4);
+                            displayStr = "مساحت: " + parseFloat(hectares).toLocaleString() + " هکتار (" + parseFloat(sqKm).toLocaleString() + " km²)";
+                        }
+                        displayDiv.innerText = displayStr;
+                        displayDiv.style.display = 'block';
+                    };
+
+                    map.on('click', function(e) {
+                        if (window.isRulerMode) {
+                            var latlng = e.latlng;
+                            window.rulerPoints.push(latlng);
+
+                            var marker = L.circleMarker(latlng, {
+                                radius: 6,
+                                fillColor: '$scaleBorderColor',
+                                color: '#ffffff',
+                                weight: 2,
+                                opacity: 1,
+                                fillOpacity: 0.9
+                            }).addTo(map);
+
+                            window.rulerMarkers.push(marker);
+
+                            if (window.rulerPoints.length > 1) {
+                                if (window.rulerPolyline) {
+                                    window.rulerPolyline.setLatLngs(window.rulerPoints);
+                                } else {
+                                    window.rulerPolyline = L.polyline(window.rulerPoints, {
+                                        color: '$scaleBorderColor',
+                                        weight: 3.5,
+                                        dashArray: '6, 6'
+                                    }).addTo(map);
+                                }
+                            }
+                            window.updateRulerDistance();
+                        } else if (window.isAreaMode) {
+                            var latlng = e.latlng;
+                            window.areaPoints.push(latlng);
+
+                            var marker = L.circleMarker(latlng, {
+                                radius: 6,
+                                fillColor: '#ff3d00',
+                                color: '#ffffff',
+                                weight: 2,
+                                opacity: 1,
+                                fillOpacity: 0.9
+                            }).addTo(map);
+
+                            window.areaMarkers.push(marker);
+
+                            if (window.areaPoints.length > 1) {
+                                if (window.areaPolygon) {
+                                    window.areaPolygon.setLatLngs(window.areaPoints);
+                                } else {
+                                    window.areaPolygon = L.polygon(window.areaPoints, {
+                                        color: '#ff3d00',
+                                        fillColor: '#ff3d00',
+                                        weight: 3,
+                                        fillOpacity: 0.25
+                                    }).addTo(map);
+                                }
+                            }
+                            window.updateAreaCalculation();
+                        }
+                    });
+
+                    map.on('mousemove', function(e) {
+                        if (window.isRulerMode && window.rulerPoints.length > 0) {
+                            var latlng = e.latlng;
+                            if (window.rulerTempLine) {
+                                window.rulerTempLine.setLatLngs([window.rulerPoints[window.rulerPoints.length - 1], latlng]);
+                            } else {
+                                window.rulerTempLine = L.polyline([window.rulerPoints[window.rulerPoints.length - 1], latlng], {
+                                    color: '$scaleBorderColor',
+                                    weight: 2,
+                                    dashArray: '3, 6',
+                                    opacity: 0.6
+                                }).addTo(map);
+                            }
+                        } else if (window.isAreaMode && window.areaPoints.length > 0) {
+                            var latlng = e.latlng;
+                            var tempPts = window.areaPoints.concat([latlng]);
+                            if (window.areaTempPolygon) {
+                                window.areaTempPolygon.setLatLngs(tempPts);
+                            } else {
+                                window.areaTempPolygon = L.polygon(tempPts, {
+                                    color: '#ff3d00',
+                                    fillColor: '#ff3d00',
+                                    weight: 1.5,
+                                    dashArray: '3, 5',
+                                    fillOpacity: 0.1,
+                                    opacity: 0.5
+                                }).addTo(map);
+                            }
+                        }
+                    });
 
                 L.tileLayer('$tileUrl', {
                     maxZoom: 21,
@@ -9994,11 +11051,46 @@ fun generateLeafletHtml(
 
                 // Display recorded paths
                 var trackPoints = $trackJson;
-                var polyline = null;
+                window.activeTrackPolyline = null;
+                
+                window.updateLiveTrackPoints = function(points, color, weight) {
+                    if (window.activeTrackPolyline) {
+                        map.removeLayer(window.activeTrackPolyline);
+                        window.activeTrackPolyline = null;
+                    }
+                    if (points && points.length > 1) {
+                        var latlngs = points.map(function(pt) { return [pt.lat, pt.lon]; });
+                        window.activeTrackPolyline = L.polyline(latlngs, {
+                            color: color || '#ff3d00',
+                            weight: weight || 4.5,
+                            opacity: 0.9,
+                            lineCap: 'round',
+                            lineJoin: 'round'
+                        }).addTo(map);
+                    }
+                };
+                
                 if (trackPoints.length > 1) {
-                    var latlngs = trackPoints.map(function(pt) { return [pt.lat, pt.lon]; });
-                    polyline = L.polyline(latlngs, {color: '#ff3d00', weight: 4}).addTo(map);
+                    window.updateLiveTrackPoints(trackPoints);
                 }
+
+                // Display saved tracks with custom styling
+                var savedTracks = $savedTracksJson;
+                window.savedTrackPolylines = [];
+                savedTracks.forEach(function(track) {
+                    if (track.points && track.points.length > 1) {
+                        var latlngs = track.points.map(function(pt) { return [pt[0], pt[1]]; });
+                        var poly = L.polyline(latlngs, {
+                            color: track.color || '#ff3d00',
+                            weight: track.weight || 4.5,
+                            opacity: 0.85,
+                            lineCap: 'round',
+                            lineJoin: 'round'
+                        }).addTo(map);
+                        poly.bindPopup("<b>" + track.name + "</b><br>Length: " + Math.round(track.lengthMeters || 0) + " m");
+                        window.savedTrackPolylines.push(poly);
+                    }
+                });
 
                 // Display geological contacts list
                 var contacts = $contactsJson;
@@ -10167,81 +11259,6 @@ fun generateLeafletHtml(
                 var utmGridLayer = L.layerGroup().addTo(map);
                 var utmGridEnabled = true;
 
-                function latLngToUtm(lat, lon) {
-                    var latRad = lat * Math.PI / 180;
-                    var lonRad = lon * Math.PI / 180;
-                    var zone = Math.floor((lon + 180) / 6) + 1;
-                    if (zone <= 0) zone = 1;
-                    if (zone > 60) zone = 60;
-                    var lonOrigin = (zone - 1) * 6 - 180 + 3;
-                    var lonOriginRad = lonOrigin * Math.PI / 180;
-
-                    var a = 6378137.0;
-                    var eccSquared = 0.00669437999013;
-                    var k0 = 0.9996;
-
-                    var eccPrimeSquared = eccSquared / (1 - eccSquared);
-                    var n = a / Math.sqrt(1 - eccSquared * Math.sin(latRad) * Math.sin(latRad));
-                    var t = Math.tan(latRad) * Math.tan(latRad);
-                    var c = eccPrimeSquared * Math.cos(latRad) * Math.cos(latRad);
-                    var aCoeff = Math.cos(latRad) * (lonRad - lonOriginRad);
-
-                    var m = a * ((1 - eccSquared / 4 - 3 * eccSquared * eccSquared / 64 - 5 * eccSquared * eccSquared * eccSquared / 256) * latRad
-                            - (3 * eccSquared / 8 + 3 * eccSquared * eccSquared / 32 + 45 * eccSquared * eccSquared * eccSquared / 1024) * Math.sin(2 * latRad)
-                            + (15 * eccSquared * eccSquared / 256 + 45 * eccSquared * eccSquared * eccSquared / 1024) * Math.sin(4 * latRad)
-                            - (35 * eccSquared * eccSquared * eccSquared / 3072) * Math.sin(6 * latRad));
-
-                    var easting = k0 * n * (aCoeff + (1 - t + c) * aCoeff * aCoeff * aCoeff / 6
-                            + (5 - 18 * t + t * t + 72 * c - 58 * eccPrimeSquared) * aCoeff * aCoeff * aCoeff * aCoeff * aCoeff / 120) + 500000.0;
-
-                    var northing = k0 * (m + n * Math.tan(latRad) * (aCoeff * aCoeff / 2 + (5 - t + 9 * c + 4 * c * c) * aCoeff * aCoeff * aCoeff * aCoeff / 24
-                            + (61 - 58 * t + t * t + 600 * c - 330 * eccPrimeSquared) * aCoeff * aCoeff * aCoeff * aCoeff * aCoeff * aCoeff / 720));
-
-                    if (lat < 0) {
-                        northing += 10000000.0;
-                    }
-                    return { easting: easting, northing: northing, zone: zone };
-                }
-
-                function utmToLatLng(easting, northing, zone, isSouthern) {
-                    var k0 = 0.9996;
-                    var a = 6378137.0;
-                    var eccSquared = 0.00669437999013;
-                    var e1 = (1 - Math.sqrt(1 - eccSquared)) / (1 + Math.sqrt(1 - eccSquared));
-
-                    var x = easting - 500000.0;
-                    var y = northing;
-                    if (isSouthern) {
-                        y -= 10000000.0;
-                    }
-
-                    var lonOrigin = (zone - 1) * 6 - 180 + 3;
-                    var eccPrimeSquared = eccSquared / (1 - eccSquared);
-
-                    var m = y / k0;
-                    var mu = m / (a * (1 - eccSquared / 4 - 3 * eccSquared * eccSquared / 64 - 5 * eccSquared * eccSquared * eccSquared / 256));
-
-                    var phi1Rad = mu + (3 * e1 / 2 - 27 * e1 * e1 * e1 / 32) * Math.sin(2 * mu)
-                            + (21 * e1 * e1 / 16 - 55 * e1 * e1 * e1 * e1 / 32) * Math.sin(4 * mu)
-                            + (151 * e1 * e1 * e1 / 96) * Math.sin(6 * mu);
-
-                    var lat1Rad = phi1Rad;
-                    var n1 = a / Math.sqrt(1 - eccSquared * Math.sin(lat1Rad) * Math.sin(lat1Rad));
-                    var t1 = Math.tan(lat1Rad) * Math.tan(lat1Rad);
-                    var c1 = eccPrimeSquared * Math.cos(lat1Rad) * Math.cos(lat1Rad);
-                    var r1 = a * (1 - eccSquared) / Math.pow(1 - eccSquared * Math.sin(lat1Rad) * Math.sin(lat1Rad), 1.5);
-                    var d = x / (n1 * k0);
-
-                    var lat = lat1Rad - (n1 * Math.tan(lat1Rad) / r1) * (d * d / 2 - (5 + 3 * t1 + 10 * c1 - 4 * c1 * c1 - 9 * eccPrimeSquared) * Math.pow(d, 4) / 24
-                            + (61 + 90 * t1 + 298 * c1 + 45 * t1 * t1 - 252 * eccPrimeSquared - 3 * c1 * c1) * Math.pow(d, 6) / 720);
-                    lat = lat * 180 / Math.PI;
-
-                    var lon = (d - (1 + 2 * t1 + c1) * Math.pow(d, 3) / 6 + (5 - 2 * c1 + 28 * t1 - 3 * c1 * c1 + 8 * eccPrimeSquared + 24 * t1 * t1) * Math.pow(d, 5) / 120) / Math.cos(lat1Rad);
-                    lon = lonOrigin + lon * 180 / Math.PI;
-
-                    return { lat: lat, lon: lon };
-                }
-
                 function updateUtmGrid() {
                     utmGridLayer.clearLayers();
                     if (!utmGridEnabled) return;
@@ -10282,9 +11299,9 @@ fun generateLeafletHtml(
                     if ((eEnd - eStart) / spacing > 120 || (nEnd - nStart) / spacing > 120) return;
 
                     var lineStyle = {
-                        color: '#00e5ff',
+                        color: '${if (isOutdoorMode) "#007A78" else "#00e5ff"}',
                         weight: 0.65,
-                        opacity: 0.45,
+                        opacity: ${if (isOutdoorMode) "0.65" else "0.45"},
                         dashArray: '3, 4',
                         interactive: false
                     };
@@ -10304,7 +11321,7 @@ fun generateLeafletHtml(
                             L.marker([lblPt.lat, lblPt.lon], {
                                 icon: L.divIcon({
                                     className: 'utm-grid-label',
-                                    html: '<div style="color: #00e5ff; font-family: monospace; font-size: 8px; background: rgba(15,21,18,0.75); border: 1px solid rgba(0,229,255,0.3); padding: 1px 3px; border-radius: 3px; white-space: nowrap;">' + text + '</div>',
+                                    html: '<div style="color: ${if (isOutdoorMode) "#004D40" else "#00FFE0"}; font-family: monospace; font-size: 8px; background: ${if (isOutdoorMode) "rgba(255,255,255,0.85)" else "rgba(15,21,18,0.75)"}; border: 1px solid ${if (isOutdoorMode) "rgba(0,121,107,0.3)" else "rgba(0,229,255,0.3)"}; padding: 1px 3px; border-radius: 3px; white-space: nowrap;">' + text + '</div>',
                                     iconSize: [40, 12],
                                     iconAnchor: [20, 6]
                                 }),
@@ -10328,7 +11345,7 @@ fun generateLeafletHtml(
                             L.marker([lblPt.lat, lblPt.lon], {
                                 icon: L.divIcon({
                                     className: 'utm-grid-label',
-                                    html: '<div style="color: #00e5ff; font-family: monospace; font-size: 8px; background: rgba(15,21,18,0.75); border: 1px solid rgba(0,229,255,0.3); padding: 1px 3px; border-radius: 3px; white-space: nowrap;">' + text + '</div>',
+                                    html: '<div style="color: ${if (isOutdoorMode) "#004D40" else "#00FFE0"}; font-family: monospace; font-size: 8px; background: ${if (isOutdoorMode) "rgba(255,255,255,0.85)" else "rgba(15,21,18,0.75)"}; border: 1px solid ${if (isOutdoorMode) "rgba(0,121,107,0.3)" else "rgba(0,229,255,0.3)"}; padding: 1px 3px; border-radius: 3px; white-space: nowrap;">' + text + '</div>',
                                     iconSize: [40, 12],
                                     iconAnchor: [20, 6]
                                 }),
@@ -10398,6 +11415,8 @@ fun WebViewMap(
     rulerAnchor: MapCoordinate? = null,
     pannedCenterLat: Double = 0.0,
     pannedCenterLon: Double = 0.0,
+    savedTracks: List<Track> = emptyList(),
+    showTracksOverlay: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val resolvedTileUrl = if (tileUrl.contains("{token}")) {
@@ -10411,7 +11430,7 @@ fun WebViewMap(
     val initialLat = remember(isDefaultCoordinates) { currentLat }
     val initialLon = remember(isDefaultCoordinates) { currentLon }
     
-    val htmlContent = remember(stations, observations, trackPoints, contactsList, resolvedTileUrl, isOutdoorMode, baseMapOpacity, offlineModeForce, showOfflineBoundaries, downloadedRegions, importedFeatures) {
+    val htmlContent = remember(stations, observations, contactsList, resolvedTileUrl, isOutdoorMode, baseMapOpacity, offlineModeForce, showOfflineBoundaries, downloadedRegions, importedFeatures, savedTracks, showTracksOverlay) {
         generateLeafletHtml(
             stations = stations,
             observations = observations,
@@ -10429,7 +11448,9 @@ fun WebViewMap(
             offlineModeForce = offlineModeForce,
             showOfflineBoundaries = showOfflineBoundaries,
             downloadedRegions = downloadedRegions,
-            importedFeatures = importedFeatures
+            importedFeatures = importedFeatures,
+            savedTracks = savedTracks,
+            showTracksOverlay = showTracksOverlay
         )
     }
 
@@ -10596,6 +11617,13 @@ fun WebViewMap(
                     "if (typeof updateLiveLocation !== 'undefined') { updateLiveLocation($currentLat, $currentLon, $gpsAccuracy, $isRealPos, $lockGpsCenter, $leafZoom); }",
                     null
                 )
+                val trackPtsJson = trackPoints.joinToString(prefix = "[", postfix = "]") { pt ->
+                    "{\"lat\": ${pt.lat}, \"lon\": ${pt.lon}}"
+                }
+                webView.evaluateJavascript(
+                    "if (typeof updateLiveTrackPoints !== 'undefined') { updateLiveTrackPoints($trackPtsJson); }",
+                    null
+                )
                 webView.evaluateJavascript(
                     "if (typeof setUtmGridVisible !== 'undefined') { setUtmGridVisible($showUtmGrid); }",
                     null
@@ -10657,79 +11685,6 @@ fun WebViewMap(
                 end = Offset(size.width, size.height / 2),
                 strokeWidth = strokeThick
             )
-        }
-
-        // Live Heads-Up Display for Central Map Target Coordinates & Attributes
-        Card(
-            colors = CardDefaults.cardColors(
-                containerColor = if (isOutdoorMode) Color.White.copy(alpha = 0.95f) else Color(0xEE0E1311)
-            ),
-            border = BorderStroke(1.dp, (if (isOutdoorMode) Color(0xFF007A78) else Color(0xFF109D96)).copy(alpha = 0.35f)),
-            shape = RoundedCornerShape(8.dp),
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(top = 10.dp, start = 12.dp)
-                .widthIn(max = 240.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                verticalArrangement = Arrangement.spacedBy(3.dp)
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.MyLocation,
-                        contentDescription = "Center coordinates",
-                        tint = if (isOutdoorMode) Color(0xFF007A78) else Color(0xFF109D96),
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Text(
-                        text = "TARGET HUD / هدف مرکزی",
-                        fontSize = 8.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isOutdoorMode) Color(0xFF007A78) else Color(0xFF109D96),
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-
-                Text(
-                    text = String.format(Locale.US, "LAT: %.6f°", centerLat),
-                    fontSize = 11.sp,
-                    color = if (isOutdoorMode) Color.Black else Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-                Text(
-                    text = String.format(Locale.US, "LON: %.6f°", centerLon),
-                    fontSize = 11.sp,
-                    color = if (isOutdoorMode) Color.Black else Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "ZOOM: $leafZoom",
-                        fontSize = 9.sp,
-                        color = (if (isOutdoorMode) Color.Black else Color.White).copy(alpha = 0.6f),
-                        fontFamily = FontFamily.Monospace
-                    )
-                    
-                    Text(
-                        text = if (isRealPos) "🛰️ LOCK" else "📶 SIMULATED",
-                        fontSize = 8.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isRealPos) Color(0xFF4CAF50) else Color(0xFFFF9800),
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-            }
         }
     }
 }
@@ -10796,6 +11751,587 @@ fun ToolboxTile(
     }
 }
 
+enum class MapPanel {
+    TOOLBOX,
+    LAYERS,
+    SURVEYOR,
+    SETTINGS,
+    JOURNAL,
+    STRUCTURES,
+    DRAW_CONTACT
+}
+
+@Composable
+fun UnifiedMapPanel(
+    panel: MapPanel,
+    isOutdoorMode: Boolean,
+    isFarsiMode: Boolean,
+    onBackToToolbox: () -> Unit,
+    onClose: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    val containerBg = if (isOutdoorMode) Color.White else Color(0xFA111513)
+    val borderColor = if (isOutdoorMode) Color.Black.copy(0.2f) else Color(0xFF00E5FF).copy(0.4f)
+    val contentColor = if (isOutdoorMode) Color.Black else Color.White
+    val accentColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+        colors = CardDefaults.cardColors(containerColor = containerBg),
+        border = BorderStroke(1.5.dp, borderColor),
+        shape = RoundedCornerShape(16.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    val headerIcon = when (panel) {
+                        MapPanel.TOOLBOX -> Icons.Default.Apps
+                        MapPanel.LAYERS -> Icons.Default.Layers
+                        MapPanel.SURVEYOR -> Icons.Default.Explore
+                        MapPanel.SETTINGS -> Icons.Default.Settings
+                        MapPanel.JOURNAL -> Icons.Default.List
+                        MapPanel.STRUCTURES -> Icons.Default.FilterAlt
+                        MapPanel.DRAW_CONTACT -> Icons.Default.Brush
+                    }
+                    val headerTitle = when (panel) {
+                        MapPanel.TOOLBOX -> if (isFarsiMode) "ابزارهای صحرایی زمین‌شناختی" else "FIELD INSTRUMENTS"
+                        MapPanel.LAYERS -> if (isFarsiMode) "مدیریت لایه‌های نقشه" else "MAP LAYER PROVIDER"
+                        MapPanel.SURVEYOR -> if (isFarsiMode) "نقشه‌بردار گرای گرادیان و فاصله" else "BEARING & DISTANCE SURVEYOR"
+                        MapPanel.SETTINGS -> if (isFarsiMode) "تنظیمات پیشرفته حسگرها" else "ADVANCED GNSS PARAMETERS"
+                        MapPanel.JOURNAL -> if (isFarsiMode) "دفترچه لاگ مسیرها و ایستگاه‌ها" else "SAVED PATHS & STATIONS JOURNAL"
+                        MapPanel.STRUCTURES -> if (isFarsiMode) "فیلتر لایه‌ها و ساختارها" else "GEOLOGICAL STRUCTURES FILTER"
+                        MapPanel.DRAW_CONTACT -> if (isFarsiMode) "ترسیم مرزها و گسل‌های ساختاری" else "DRAW GEOLOGICAL BOUNDARIES"
+                    }
+                    Icon(
+                        imageVector = headerIcon,
+                        contentDescription = null,
+                        tint = accentColor,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Text(
+                        text = headerTitle,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 11.sp,
+                        color = contentColor,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    )
+                }
+                
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (panel != MapPanel.TOOLBOX) {
+                        IconButton(
+                            onClick = onBackToToolbox,
+                            modifier = Modifier.size(26.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ArrowBack,
+                                contentDescription = "Back to Toolbox",
+                                tint = contentColor.copy(alpha = 0.6f),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = onClose,
+                        modifier = Modifier.size(26.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = contentColor.copy(alpha = 0.6f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Divider(color = contentColor.copy(alpha = 0.1f), thickness = 1.dp)
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Body
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+            ) {
+                content()
+            }
+        }
+    }
+}
+
+@Composable
+fun UnifiedMapPanelContainer(
+    activeMapPanel: MapPanel?,
+    onActiveMapPanelChange: (MapPanel?) -> Unit,
+    isOutdoorMode: Boolean,
+    onOutdoorModeChange: (Boolean) -> Unit,
+    isFarsiMode: Boolean,
+    isTrackRecordingEnabled: Boolean,
+    onTrackRecordingChange: (Boolean) -> Unit,
+    showSimulator: Boolean,
+    onShowSimulatorChange: (Boolean) -> Unit,
+    importedFeaturesCount: Int,
+    onImportKmlClick: () -> Unit,
+    onClearKmlClick: () -> Unit,
+    mapMode: MapMode,
+    onMapModeChange: (MapMode) -> Unit,
+    mapLayer: MapLayerProvider,
+    onMapLayerChange: (MapLayerProvider) -> Unit,
+    showUtmGrid: Boolean,
+    onShowUtmGridChange: (Boolean) -> Unit,
+    currentLat: Double,
+    currentLon: Double,
+    stationsToShow: List<Station>,
+    filteredStations: List<Station>,
+    allObservationsList: List<Observation>,
+    navigationTargetStation: Station?,
+    onNavigationTargetStationChange: (Station?) -> Unit,
+    onLocateStation: (Station) -> Unit,
+    onDeleteStation: (Station) -> Unit,
+    mapboxTokenInput: String,
+    onMapboxTokenInputChange: (String) -> Unit,
+    gpsAccuracy: Double,
+    onGpsAccuracyChange: (Double) -> Unit,
+    satelliteCount: Int,
+    onSatelliteCountChange: (Int) -> Unit,
+    savedTracks: List<Track>,
+    onDeleteTrack: (Track) -> Unit,
+    onEditTrack: (Track) -> Unit,
+    onShareTrack: (Track) -> Unit,
+    exportFormatChoice: String,
+    onExportFormatChoiceChange: (String) -> Unit,
+    structuralFilter: String,
+    onStructuralFilterChange: (String) -> Unit,
+    showNonStructural: Boolean,
+    onShowNonStructuralChange: (Boolean) -> Unit,
+    dipMinFilter: Float,
+    dipMaxFilter: Float,
+    onDipRangeChange: (ClosedFloatingPointRange<Float>) -> Unit,
+    contactsList: List<GeologicalContact>,
+    onContactsListChange: (List<GeologicalContact>) -> Unit,
+    isRealPositionEnabled: Boolean,
+    onRealPositionChanged: (Boolean) -> Unit,
+    showStationsOverlay: Boolean,
+    onShowStationsOverlayChange: (Boolean) -> Unit
+) {
+    androidx.compose.animation.AnimatedVisibility(
+        visible = activeMapPanel != null,
+        enter = slideInVertically { it } + fadeIn(),
+        exit = slideOutVertically { it } + fadeOut(),
+        modifier = androidx.compose.ui.Modifier
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .widthIn(max = 600.dp)
+    ) {
+        activeMapPanel?.let { panel ->
+            UnifiedMapPanel(
+                panel = panel,
+                isOutdoorMode = isOutdoorMode,
+                isFarsiMode = isFarsiMode,
+                onBackToToolbox = { onActiveMapPanelChange(MapPanel.TOOLBOX) },
+                onClose = { onActiveMapPanelChange(null) }
+            ) {
+                val contentColor = if (isOutdoorMode) Color.Black else Color.White
+                when (panel) {
+                    MapPanel.TOOLBOX -> {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Box(modifier = androidx.compose.ui.Modifier.weight(1f)) {
+                                        ToolboxTile(Icons.Default.Layers, if (isFarsiMode) "لایه‌های نقشه" else "Map Layer", false, if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), isOutdoorMode, { onActiveMapPanelChange(MapPanel.LAYERS) })
+                                    }
+                                    Box(modifier = androidx.compose.ui.Modifier.weight(1f)) {
+                                        ToolboxTile(if (isTrackRecordingEnabled) Icons.Default.Stop else Icons.Default.RadioButtonChecked, if (isTrackRecordingEnabled) (if (isFarsiMode) "درحال ضبط..." else "Logging...") else (if (isFarsiMode) "ضبط مسیر" else "Rec Track"), isTrackRecordingEnabled, Color(0xFFFF3030), isOutdoorMode, { onTrackRecordingChange(!isTrackRecordingEnabled) })
+                                    }
+                                    Box(modifier = androidx.compose.ui.Modifier.weight(1f)) {
+                                        ToolboxTile(Icons.Default.DirectionsWalk, if (isFarsiMode) "شبیه‌ساز گام" else "Simulator", showSimulator, if (isOutdoorMode) Color(0xFF0288D1) else Color(0xFF00B0FF), isOutdoorMode, { onShowSimulatorChange(!showSimulator) })
+                                    }
+                                }
+                                Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Box(modifier = androidx.compose.ui.Modifier.weight(1f)) {
+                                        ToolboxTile(Icons.Default.Explore, if (isFarsiMode) "سنجش فاصله" else "Surveyor", false, if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), isOutdoorMode, { onActiveMapPanelChange(MapPanel.SURVEYOR) })
+                                    }
+                                    Box(modifier = androidx.compose.ui.Modifier.weight(1f)) {
+                                        ToolboxTile(Icons.Default.List, if (isFarsiMode) "تاریخچه لاگ" else "Logs Traves", false, if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), isOutdoorMode, { onActiveMapPanelChange(MapPanel.JOURNAL) })
+                                    }
+                                    Box(modifier = androidx.compose.ui.Modifier.weight(1f)) {
+                                        ToolboxTile(Icons.Default.Settings, if (isFarsiMode) "تنظیمات نقشه" else "Geodetic Set", false, if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), isOutdoorMode, { onActiveMapPanelChange(MapPanel.SETTINGS) })
+                                    }
+                                }
+                                Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Box(modifier = androidx.compose.ui.Modifier.weight(1f)) {
+                                        ToolboxTile(Icons.Default.FilterAlt, if (isFarsiMode) "فیلتر لایه‌ها" else "Geology Filt", false, if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), isOutdoorMode, { onActiveMapPanelChange(MapPanel.STRUCTURES) })
+                                    }
+                                    Box(modifier = androidx.compose.ui.Modifier.weight(1f)) {
+                                        ToolboxTile(Icons.Default.Brush, if (isFarsiMode) "ترسیم مرزها" else "Bound Pencil", false, Color(0xFFD50000), isOutdoorMode, { onActiveMapPanelChange(MapPanel.DRAW_CONTACT) })
+                                    }
+                                    Box(modifier = androidx.compose.ui.Modifier.weight(1f)) {
+                                        ToolboxTile(if (isOutdoorMode) Icons.Default.WbSunny else Icons.Default.BrightnessMedium, if (isFarsiMode) "نور آفتاب" else "Sunsight", isOutdoorMode, Color(0xFFFFD54F), isOutdoorMode, { onOutdoorModeChange(!isOutdoorMode) })
+                                    }
+                                }
+                            }
+                            Divider(color = if (isOutdoorMode) Color.LightGray.copy(0.4f) else Color.DarkGray.copy(0.4f), thickness = 1.dp)
+                            Text(if (isFarsiMode) "لایه‌های کمکی مکانی (KML/KMZ)" else "GEOSPATIAL OVERLAYS (KML/KMZ)", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = if (isOutdoorMode) Color.DarkGray else Color.LightGray, modifier = androidx.compose.ui.Modifier.padding(horizontal = 4.dp))
+                            Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Button(
+                                    onClick = onImportKmlClick,
+                                    modifier = androidx.compose.ui.Modifier.weight(1f).height(36.dp).testTag("import_kml_button"),
+                                    colors = ButtonDefaults.buttonColors(containerColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), contentColor = if (isOutdoorMode) Color.White else Color(0xFF0C100D)),
+                                    shape = RoundedCornerShape(6.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp)
+                                ) {
+                                    Icon(Icons.Default.CloudUpload, null, modifier = androidx.compose.ui.Modifier.size(14.dp))
+                                    Spacer(androidx.compose.ui.Modifier.width(4.dp))
+                                    Text(if (isFarsiMode) "وارد کردن فایل" else "Import File", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                                if (importedFeaturesCount > 0) {
+                                    OutlinedButton(
+                                        onClick = onClearKmlClick,
+                                        modifier = androidx.compose.ui.Modifier.weight(1f).height(36.dp).testTag("clear_kml_button"),
+                                        border = BorderStroke(1.dp, if (isOutdoorMode) Color(0xFFC62828) else Color(0xFFFF5252)),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = if (isOutdoorMode) Color(0xFFC62828) else Color(0xFFFF5252)),
+                                        shape = RoundedCornerShape(6.dp),
+                                        contentPadding = PaddingValues(horizontal = 8.dp)
+                                    ) {
+                                        Icon(Icons.Default.Delete, null, modifier = androidx.compose.ui.Modifier.size(14.dp))
+                                        Spacer(androidx.compose.ui.Modifier.width(4.dp))
+                                        Text(if (isFarsiMode) "حذف لایه‌ها ($importedFeaturesCount)" else "Clear Overlay ($importedFeaturesCount)", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    MapPanel.LAYERS -> {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth().background(if (isOutdoorMode) Color(0xFFF1F1F1) else Color.Black.copy(0.3f), RoundedCornerShape(6.dp)).padding(3.dp)) {
+                                Button(onClick = { onMapModeChange(MapMode.ONLINE) }, modifier = androidx.compose.ui.Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = if (mapMode == MapMode.ONLINE) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)) else Color.Transparent, contentColor = if (mapMode == MapMode.ONLINE) (if (isOutdoorMode) Color.White else Color.Black) else (if (isOutdoorMode) Color.Black else Color.White)), contentPadding = PaddingValues(0.dp), shape = RoundedCornerShape(4.dp)) {
+                                    Text(if (isFarsiMode) "آنلاین وب" else "Online Webs", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                                Button(onClick = { onMapModeChange(MapMode.OFFLINE) }, modifier = androidx.compose.ui.Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = if (mapMode == MapMode.OFFLINE) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)) else Color.Transparent, contentColor = if (mapMode == MapMode.OFFLINE) (if (isOutdoorMode) Color.White else Color.Black) else (if (isOutdoorMode) Color.Black else Color.White)), contentPadding = PaddingValues(0.dp), shape = RoundedCornerShape(4.dp)) {
+                                    Text(if (isFarsiMode) "شبکه آفلاین" else "Offline Grid", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            if (mapMode == MapMode.ONLINE) {
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(if (isFarsiMode) "لایه‌های نقشه اینترنتی:" else "Standard Map Layers:", fontSize = 9.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                                    MapLayerProvider.values().forEach { provider ->
+                                        val selected = mapLayer == provider
+                                        Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth().clickable { onMapLayerChange(provider); onActiveMapPanelChange(null) }.background(if (selected) (if (isOutdoorMode) Color(0xFF00796B).copy(0.12f) else Color(0xFF00E5FF).copy(0.12f)) else Color.Transparent, RoundedCornerShape(4.dp)).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(if (selected) Icons.Default.CheckCircle else Icons.Default.Layers, null, tint = if (selected) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)) else Color.Gray, modifier = androidx.compose.ui.Modifier.size(14.dp))
+                                            Spacer(androidx.compose.ui.Modifier.width(6.dp))
+                                            Text(provider.label, fontSize = 11.sp, color = if (selected) (if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0)) else (if (isOutdoorMode) Color.Black else Color.White))
+                                        }
+                                    }
+                                }
+                            } else {
+                                Column(modifier = androidx.compose.ui.Modifier.padding(4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(if (isFarsiMode) "شبکه آفلاین بدون ماهواره فعال است" else "Offline Vector Grid Mode Active", fontSize = 10.sp, color = if (isOutdoorMode) Color.Black else Color.LightGray, fontWeight = FontWeight.Bold)
+                                    Text(if (isFarsiMode) "امکان ثبت فواصل، برداشت‌های ساختاری و فیلترهای زمین‌شناختی بدون آتن‌دهی فراهم می‌باشد." else "Allows field recording of tracks and targets cleanly without high-resolution base layers if remote signal is offline.", fontSize = 9.sp, color = Color.Gray, lineHeight = 12.sp)
+                                }
+                            }
+                            Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth().clickable { onShowUtmGridChange(!showUtmGrid) }.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.GridView, null, tint = if (showUtmGrid) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)) else Color.Gray, modifier = androidx.compose.ui.Modifier.size(14.dp))
+                                    Spacer(androidx.compose.ui.Modifier.width(6.dp))
+                                    Text(if (isFarsiMode) "نمایش خطوط شبکه UTM" else "UTM Grid Overlay", fontSize = 11.sp, color = if (isOutdoorMode) Color.Black else Color.White)
+                                }
+                                Checkbox(checked = showUtmGrid, onCheckedChange = onShowUtmGridChange, colors = CheckboxDefaults.colors(checkedColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)))
+                            }
+                        }
+                    }
+                    MapPanel.SURVEYOR -> {
+                        var targetLatStr by remember { mutableStateOf("35.7000") }
+                        var targetLonStr by remember { mutableStateOf("51.4300") }
+                        val targetLatVal = targetLatStr.toDoubleOrNull() ?: 35.7
+                        val targetLonVal = targetLonStr.toDoubleOrNull() ?: 51.43
+                        val lat1Rad = Math.toRadians(currentLat)
+                        val lat2Rad = Math.toRadians(targetLatVal)
+                        val deltaLatRad = Math.toRadians(targetLatVal - currentLat)
+                        val deltaLonRad = Math.toRadians(targetLonVal - currentLon)
+                        val a = Math.sin(deltaLatRad / 2.0) * Math.sin(deltaLatRad / 2.0) + Math.cos(lat1Rad) * Math.cos(lat2Rad) * Math.sin(deltaLonRad / 2.0) * Math.sin(deltaLonRad / 2.0)
+                        val computedDistanceMeters = 6371000.0 * (2.0 * Math.atan2(Math.sqrt(a), Math.sqrt(1.0 - a)))
+                        val yAzimuth = Math.sin(deltaLonRad) * Math.cos(lat2Rad)
+                        val xAzimuth = Math.cos(lat1Rad) * Math.sin(lat2Rad) - Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(deltaLonRad)
+                        val bearingDeg = (Math.toDegrees(Math.atan2(yAzimuth, xAzimuth)) + 360.0) % 360.0
+
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(if (isFarsiMode) "سنجش فاصله ژئودزیک با دقت بالا تا هدف معین" else "High-precision geodesic distance to borehole target", fontSize = 9.sp, color = if (isOutdoorMode) Color.DarkGray else Color.LightGray)
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = androidx.compose.ui.Modifier.fillMaxWidth()) {
+                                OutlinedTextField(value = targetLatStr, onValueChange = { targetLatStr = it }, label = { Text(if (isFarsiMode) "عرض هدف (°)" else "Target Lat (°)", fontSize = 8.sp, color = if (isOutdoorMode) Color.Black else Color.LightGray) }, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp, color = if (isOutdoorMode) Color.Black else Color.White, fontFamily = FontFamily.Monospace), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = androidx.compose.ui.Modifier.weight(1f), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF), unfocusedBorderColor = Color.Gray.copy(0.4f)))
+                                OutlinedTextField(value = targetLonStr, onValueChange = { targetLonStr = it }, label = { Text(if (isFarsiMode) "طول هدف (°)" else "Target Lng (°)", fontSize = 8.sp, color = if (isOutdoorMode) Color.Black else Color.LightGray) }, textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp, color = if (isOutdoorMode) Color.Black else Color.White, fontFamily = FontFamily.Monospace), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = androidx.compose.ui.Modifier.weight(1f), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF), unfocusedBorderColor = Color.Gray.copy(0.4f)))
+                            }
+                            if (stationsToShow.isNotEmpty()) {
+                                var snapExpanded by remember { mutableStateOf(false) }
+                                Box {
+                                    OutlinedButton(onClick = { snapExpanded = !snapExpanded }, modifier = androidx.compose.ui.Modifier.fillMaxWidth(), shape = RoundedCornerShape(6.dp), colors = ButtonDefaults.outlinedButtonColors(contentColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF)), border = BorderStroke(0.5.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF).copy(0.6f)), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)) {
+                                        Text(if (isFarsiMode) "نشاندن هدف روی ایستگاه‌های ثبت‌شده" else "Snap targeting to mapped station", fontSize = 10.sp)
+                                        Spacer(androidx.compose.ui.Modifier.weight(1f))
+                                        Icon(Icons.Default.ArrowDropDown, null, modifier = androidx.compose.ui.Modifier.size(16.dp))
+                                    }
+                                    DropdownMenu(expanded = snapExpanded, onDismissRequest = { snapExpanded = false }, modifier = androidx.compose.ui.Modifier.background(if (isOutdoorMode) Color.White else Color(0xFF161C19)).border(1.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF))) {
+                                        stationsToShow.forEach { s ->
+                                            DropdownMenuItem(text = { Text("${s.stationCode} (Lat: ${s.latitude})", fontSize = 11.sp, color = if (isOutdoorMode) Color.Black else Color.White) }, onClick = { targetLatStr = s.latitude.toString(); targetLonStr = s.longitude.toString(); snapExpanded = false })
+                                        }
+                                    }
+                                }
+                            }
+                            Card(colors = CardDefaults.cardColors(containerColor = if (isOutdoorMode) Color(0xFFEEEEEE) else Color.Black.copy(0.4f)), border = BorderStroke(0.5.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF).copy(alpha = 0.2f))) {
+                                Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth().padding(6.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(if (isFarsiMode) "فاصله ژئودزیک" else "Spheroidal Dist", fontSize = 8.5.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                                        Text(if (computedDistanceMeters >= 1000.0) "${String.format(Locale.US, "%.3f", computedDistanceMeters / 1000.0)} km" else "${computedDistanceMeters.toInt()} m", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00FFE0))
+                                    }
+                                    Box(modifier = androidx.compose.ui.Modifier.width(1.dp).height(20.dp).background(Color.Gray.copy(0.5f)))
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        Text(if (isFarsiMode) "گرای حقیقی" else "True Bearing", fontSize = 8.5.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                                        Text("${String.format(Locale.US, "%.1f° N", bearingDeg)}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00FFE0))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    MapPanel.SETTINGS -> {
+                        Column(modifier = androidx.compose.ui.Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(if (isFarsiMode) "سامانه تقویت سخت‌افزاری RTK" else "RTK Hardware Phased Booster", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = contentColor)
+                                Switch(checked = isRealPositionEnabled, onCheckedChange = onRealPositionChanged, colors = SwitchDefaults.colors(checkedThumbColor = if (isOutdoorMode) Color.White else Color.Black, checkedTrackColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)))
+                            }
+                            Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(if (isFarsiMode) "فیلتر کالمن برای حذف نویز لوکیشن" else "Kalman Filter Location Smoothing", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = contentColor)
+                                Switch(checked = showStationsOverlay, onCheckedChange = onShowStationsOverlayChange, colors = SwitchDefaults.colors(checkedThumbColor = if (isOutdoorMode) Color.White else Color.Black, checkedTrackColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)))
+                            }
+                            Divider(color = if (isOutdoorMode) Color.LightGray else Color.White.copy(0.1f))
+                            Text(if (isFarsiMode) "توکن سفارشی مپ‌باکس:" else "Custom Mapbox SDK Token:", fontSize = 10.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                            OutlinedTextField(value = mapboxTokenInput, onValueChange = onMapboxTokenInputChange, modifier = androidx.compose.ui.Modifier.fillMaxWidth(), textStyle = androidx.compose.ui.text.TextStyle(fontSize = 10.5.sp, color = contentColor, fontFamily = FontFamily.Monospace), singleLine = true, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF), unfocusedBorderColor = Color.Gray.copy(0.4f)))
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = androidx.compose.ui.Modifier.fillMaxWidth()) {
+                                Text(if (isFarsiMode) "خطای فرضی جی‌پی‌اس: ±${if (gpsAccuracy < 1.0) String.format(Locale.US, "%.0f cm", gpsAccuracy * 100.0) else String.format(Locale.US, "%.1f m", gpsAccuracy)}" else "Sim GPS error: ±${if (gpsAccuracy < 1.0) String.format(Locale.US, "%.0f cm", gpsAccuracy * 100.0) else String.format(Locale.US, "%.1f m", gpsAccuracy)}", fontSize = 10.sp, color = contentColor, modifier = androidx.compose.ui.Modifier.weight(1f))
+                                Slider(value = gpsAccuracy.toFloat(), onValueChange = { onGpsAccuracyChange(it.toDouble()) }, valueRange = 0.02f..12.0f, modifier = androidx.compose.ui.Modifier.width(120.dp), colors = SliderDefaults.colors(activeTrackColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), thumbColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)))
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = androidx.compose.ui.Modifier.fillMaxWidth()) {
+                                listOf(Triple("RTK FIXED", 0.02, 22), Triple("RTK FLOAT", 0.35, 18), Triple("3D DGPS", 1.8, 14), Triple("POOR GPS", 6.5, 6)).forEach { (name, acc, sats) ->
+                                        val isSelected = Math.abs(gpsAccuracy - acc) < 0.1
+                                        Box(modifier = androidx.compose.ui.Modifier.weight(1f).clip(RoundedCornerShape(4.dp)).background(if (isSelected) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)) else (if (isOutdoorMode) Color(0xFFEEEEEE) else Color(0xFF222522))).clickable { onGpsAccuracyChange(acc); onSatelliteCountChange(sats) }.padding(vertical = 5.dp), contentAlignment = Alignment.Center) {
+                                            Text(name, fontSize = 7.5.sp, fontWeight = FontWeight.Bold, color = if (isSelected) (if (isOutdoorMode) Color.White else Color.Black) else (if (isOutdoorMode) Color.DarkGray else Color.LightGray))
+                                        }
+                                    }
+                            }
+                        }
+                    }
+                    MapPanel.JOURNAL -> {
+                        var journalTabChoice by remember { mutableStateOf("Tracks") }
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                listOf("Tracks" to (if (isFarsiMode) "مسیرهای ضبط‌شده" else "Saved Tracks"), "Stations" to (if (isFarsiMode) "دفترچه ایستگاه‌ها" else "Saved Stations")).forEach { (tabKey, tabLabel) ->
+                                        val active = journalTabChoice == tabKey
+                                        Box(modifier = androidx.compose.ui.Modifier.weight(1f).clip(RoundedCornerShape(6.dp)).background(if (active) (if (isOutdoorMode) Color.Black else Color(0x3300E5FF)) else (if (isOutdoorMode) Color(0xFFE0E0E0) else Color(0x11FFFFFF))).border(1.dp, if (active) (if (isOutdoorMode) Color.Black else Color(0xFF00E5FF)) else Color.Transparent, RoundedCornerShape(6.dp)).clickable { journalTabChoice = tabKey }.padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+                                            Text(tabLabel, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = if (active) (if (isOutdoorMode) Color.White else Color(0xFF00E5FF)) else (if (isOutdoorMode) Color.Black else Color.LightGray))
+                                        }
+                                    }
+                            }
+                            Box(modifier = androidx.compose.ui.Modifier.fillMaxWidth().height(160.dp)) {
+                                if (journalTabChoice == "Tracks") {
+                                    if (savedTracks.isEmpty()) {
+                                        Box(modifier = androidx.compose.ui.Modifier.fillMaxSize().padding(12.dp), contentAlignment = Alignment.Center) { Text(if (isFarsiMode) "هیچ مسیر زمین‌شناسی ذخیره نشده است. دکمه رکورد مسیر را فشار دهید." else "No saved field GPS paths. Tap the red record indicator widget to log walks.", fontSize = 10.sp, color = if (isOutdoorMode) Color.DarkGray else Color.LightGray, textAlign = TextAlign.Center) }
+                                    } else {
+                                        LazyColumn(modifier = androidx.compose.ui.Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            items(savedTracks) { track ->
+                                                Card(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = if (isOutdoorMode) Color(0xFFEEEEEE) else Color(0xFF1E2521)), border = BorderStroke(0.5.dp, if (isOutdoorMode) Color.Gray else Color(0xFF00E5FF).copy(alpha = 0.2f))) {
+                                                    Column(modifier = androidx.compose.ui.Modifier.padding(6.dp)) {
+                                                        Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                                            Text(track.name, fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00E5FF))
+                                                            Text(java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()).format(java.util.Date(track.createdAt)), fontSize = 8.sp, color = if (isOutdoorMode) Color.DarkGray else Color.Gray, fontFamily = FontFamily.Monospace)
+                                                        }
+                                                        Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                                            Text("Len: ${track.lengthMeters.toInt()}m | Dur: ${track.durationSeconds / 60}m", fontSize = 9.sp, color = if (isOutdoorMode) Color.Black else Color.LightGray)
+                                                            IconButton(onClick = { onDeleteTrack(track) }, modifier = androidx.compose.ui.Modifier.size(20.dp)) { Icon(Icons.Default.Delete, null, tint = Color(0xFFFF5252), modifier = androidx.compose.ui.Modifier.size(12.dp)) }
+                                                        }
+                                                        Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                                                            TextButton(onClick = { onEditTrack(track) }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 1.dp), modifier = androidx.compose.ui.Modifier.height(20.dp)) { Icon(Icons.Default.Edit, null, modifier = androidx.compose.ui.Modifier.size(10.dp), tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00FFE0)); Spacer(androidx.compose.ui.Modifier.width(2.dp)); Text(if (isFarsiMode) "تغییر نام" else "Rename", fontSize = 9.sp, color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0)) }
+                                                            Spacer(androidx.compose.ui.Modifier.width(6.dp))
+                                                            TextButton(onClick = { onShareTrack(track) }, contentPadding = PaddingValues(horizontal = 4.dp, vertical = 1.dp), modifier = androidx.compose.ui.Modifier.height(20.dp)) { Icon(Icons.Default.Share, null, modifier = androidx.compose.ui.Modifier.size(10.dp), tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00FFE0)); Spacer(androidx.compose.ui.Modifier.width(2.dp)); Text("Share ($exportFormatChoice)", fontSize = 9.sp, color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0)) }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    if (filteredStations.isEmpty()) {
+                                        Box(modifier = androidx.compose.ui.Modifier.fillMaxSize().padding(12.dp), contentAlignment = Alignment.Center) { Text(if (isFarsiMode) "هیچ ایستگاهی در این محدوده ثبت نشده است." else "No saved stations in this area.", fontSize = 10.sp, color = if (isOutdoorMode) Color.DarkGray else Color.LightGray, textAlign = TextAlign.Center) }
+                                    } else {
+                                        LazyColumn(modifier = androidx.compose.ui.Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            items(filteredStations) { station ->
+                                                val lat1RadVal = Math.toRadians(currentLat)
+                                                val lat2RadVal = Math.toRadians(station.latitude)
+                                                val deltaLatRadVal = Math.toRadians(station.latitude - currentLat)
+                                                val deltaLonRadVal = Math.toRadians(station.longitude - currentLon)
+                                                val aVal = Math.sin(deltaLatRadVal / 2.0) * Math.sin(deltaLatRadVal / 2.0) + Math.cos(lat1RadVal) * Math.cos(lat2RadVal) * Math.sin(deltaLonRadVal / 2.0) * Math.sin(deltaLonRadVal / 2.0)
+                                                val distanceToMyPos = 6371000.0 * (2.0 * Math.atan2(Math.sqrt(aVal), Math.sqrt(1.0 - aVal)))
+
+                                                Card(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = if (isOutdoorMode) Color(0xFFEEEEEE) else Color(0xFF1E2521)), border = BorderStroke(0.5.dp, if (isOutdoorMode) Color.Gray else Color(0xFF00E5FF).copy(alpha = 0.2f))) {
+                                                    Column(modifier = androidx.compose.ui.Modifier.padding(6.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                                                        Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                                            Column(modifier = androidx.compose.ui.Modifier.weight(1f)) {
+                                                                Text("STATION: ${station.stationCode}", fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00E5FF))
+                                                                Text("Dist: ${if (distanceToMyPos >= 1000.0) String.format(Locale.US, "%.2f km", distanceToMyPos / 1000.0) else String.format(Locale.US, "%.1f m", distanceToMyPos)}", fontSize = 9.sp, color = Color.Gray)
+                                                            }
+                                                            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                                IconButton(onClick = { onNavigationTargetStationChange(if (navigationTargetStation?.id == station.id) null else station); onActiveMapPanelChange(null) }, modifier = androidx.compose.ui.Modifier.size(24.dp).background(if (navigationTargetStation?.id == station.id) (if (isOutdoorMode) Color.Black else Color(0x3300E5FF)) else Color.Transparent, CircleShape)) { Icon(Icons.Default.Navigation, null, tint = if (navigationTargetStation?.id == station.id) (if (isOutdoorMode) Color.White else Color(0xFF00E5FF)) else Color.Gray, modifier = androidx.compose.ui.Modifier.size(12.dp)) }
+                                                                IconButton(onClick = { onLocateStation(station); onActiveMapPanelChange(null) }, modifier = androidx.compose.ui.Modifier.size(24.dp)) { Icon(Icons.Default.MyLocation, null, tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00FFE0), modifier = androidx.compose.ui.Modifier.size(12.dp)) }
+                                                                IconButton(onClick = { onDeleteStation(station) }, modifier = androidx.compose.ui.Modifier.size(24.dp)) { Icon(Icons.Default.Delete, null, tint = Color(0xFFFF5252), modifier = androidx.compose.ui.Modifier.size(12.dp)) }
+                                                            }
+                                                        }
+                                                        val obsList = allObservationsList.filter { it.stationId == station.id }
+                                                        if (obsList.isNotEmpty()) {
+                                                            Column(verticalArrangement = Arrangement.spacedBy(1.dp), modifier = androidx.compose.ui.Modifier.padding(start = 4.dp)) {
+                                                                obsList.forEach { obs ->
+                                                                    val dipText = if (obs.strike != null && obs.dip != null) "S: ${obs.strike}°/D: ${obs.dip}°" else ""
+                                                                    Text("• ${obs.observationType}: $dipText ${obs.notes?.take(25) ?: ""}", fontSize = 8.5.sp, color = if (isOutdoorMode) Color.Black else Color.White.copy(0.7f))
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text(if (isFarsiMode) "قالب خروجی اشتراک‌گذاری:" else "Export Layout Format:", fontSize = 8.5.sp, color = Color.Gray)
+                                Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    listOf("GPX", "KML", "GeoJSON", "TXT").forEach { format ->
+                                        FilterChip(selected = exportFormatChoice == format, onClick = { onExportFormatChoiceChange(format) }, label = { Text(format, fontSize = 8.sp, fontWeight = FontWeight.Bold) }, colors = FilterChipDefaults.filterChipColors(selectedContainerColor = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00E5FF), selectedLabelColor = if (isOutdoorMode) Color.White else Color.Black, containerColor = if (isOutdoorMode) Color(0xFFE0E0E0) else Color.White.copy(0.1f), labelColor = if (isOutdoorMode) Color.Black else Color.White))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    MapPanel.STRUCTURES -> {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(if (isFarsiMode) "نوع ساختار زمین‌شناختی:" else "Structure Type:", fontSize = 11.sp, color = if (isOutdoorMode) Color.DarkGray else Color.Gray, modifier = androidx.compose.ui.Modifier.fillMaxWidth())
+                            val optList = listOf("ALL" to (if (isFarsiMode) "همه" else "All"), "Bedding" to (if (isFarsiMode) "لایه‌بندی" else "Bedding"), "Joint" to (if (isFarsiMode) "درزه" else "Joint"), "Fault" to (if (isFarsiMode) "گسل" else "Fault"), "Foliation" to (if (isFarsiMode) "چین‌خوردگی" else "Foliation"))
+                            Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                optList.take(3).forEach { (field, farsi) ->
+                                        val active = structuralFilter == field
+                                        Box(modifier = androidx.compose.ui.Modifier.weight(1f).clip(RoundedCornerShape(4.dp)).background(if (active) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)) else (if (isOutdoorMode) Color(0xFFEEEEEE) else Color(0x1BFFFFFF))).clickable { onStructuralFilterChange(field) }.padding(vertical = 5.dp), contentAlignment = Alignment.Center) {
+                                            Text(farsi, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = if (active) (if (isOutdoorMode) Color.White else Color.Black) else (if (isOutdoorMode) Color.Black else Color.White))
+                                        }
+                                    }
+                            }
+                            Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                optList.drop(3).forEach { (field, farsi) ->
+                                        val active = structuralFilter == field
+                                        Box(modifier = androidx.compose.ui.Modifier.weight(1f).clip(RoundedCornerShape(4.dp)).background(if (active) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)) else (if (isOutdoorMode) Color(0xFFEEEEEE) else Color(0x1BFFFFFF))).clickable { onStructuralFilterChange(field) }.padding(vertical = 5.dp), contentAlignment = Alignment.Center) {
+                                            Text(farsi, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = if (active) (if (isOutdoorMode) Color.White else Color.Black) else (if (isOutdoorMode) Color.Black else Color.White))
+                                        }
+                                    }
+                            }
+                            Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(checked = showNonStructural, onCheckedChange = onShowNonStructuralChange, colors = CheckboxDefaults.colors(checkedColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)))
+                                Text(if (isFarsiMode) "نمایش ایستگاه‌های فاقد اطلاعات ساختاری" else "Show Non-Structural Stations", fontSize = 11.sp, color = contentColor)
+                            }
+                            Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(if (isFarsiMode) "محدوده شیب مغناطیسی: ${dipMinFilter.toInt()}° تا ${dipMaxFilter.toInt()}°" else "Dip Range: ${dipMinFilter.toInt()}° to ${dipMaxFilter.toInt()}°", fontSize = 11.sp, color = if (isOutdoorMode) Color.Black else Color.LightGray)
+                            }
+                            RangeSlider(value = dipMinFilter..dipMaxFilter, onValueChange = { range -> onDipRangeChange(range) }, valueRange = 0f..90f, steps = 8, colors = SliderDefaults.colors(activeTrackColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), thumbColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)), modifier = androidx.compose.ui.Modifier.fillMaxWidth())
+                            Text(if (isFarsiMode) "راهنمای لایه‌ها:" else "Legend:", fontSize = 10.sp, color = if (isOutdoorMode) Color.DarkGray else Color.Gray)
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                listOf(Triple(if (isFarsiMode) "لایه‌بندی" else "Bedding", "#FFEB3B", allObservationsList.count { it.observationType.lowercase().contains("bedding") || it.structureType?.contains("bed", ignoreCase = true) == true }), Triple(if (isFarsiMode) "گسل" else "Fault", "#FF3D00", allObservationsList.count { it.observationType.lowercase().contains("fault") }), Triple(if (isFarsiMode) "درزه" else "Joint", "#00E676", allObservationsList.count { it.observationType.lowercase().contains("joint") }), Triple(if (isFarsiMode) "تورُق" else "Foliation", "#E040FB", allObservationsList.count { it.observationType.lowercase().contains("structure") && (it.structureType?.contains("fol", ignoreCase = true) == true || it.structureType?.contains("schist", ignoreCase = true) == true) })).forEach { (title, hex, count) ->
+                                        Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Box(modifier = androidx.compose.ui.Modifier.size(14.dp, 3.dp).background(Color(android.graphics.Color.parseColor(hex))))
+                                            Text("$title ($count)", fontSize = 11.sp, color = contentColor)
+                                        }
+                                    }
+                            }
+                        }
+                    }
+                    MapPanel.DRAW_CONTACT -> {
+                        var draftContactName by remember { mutableStateOf("Contact 1") }
+                        var draftContactType by remember { mutableStateOf("FORMATION_CONTACT") }
+                        var selectedStations by remember { mutableStateOf(listOf<Station>()) }
+                        val context = LocalContext.current
+
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(if (isFarsiMode) "نام مرز یا خط گسل:" else "Boundary or Fault Name:", fontSize = 11.sp, color = if (isOutdoorMode) Color.DarkGray else Color.Gray)
+                            OutlinedTextField(value = draftContactName, onValueChange = { draftContactName = it }, modifier = androidx.compose.ui.Modifier.fillMaxWidth(), textStyle = MaterialTheme.typography.bodyMedium.copy(color = contentColor), placeholder = { Text(if (isFarsiMode) "مثال: خط گسل غربی" else "e.g. North Fault Line", fontSize = 12.sp, color = Color.Gray) }, maxLines = 1, colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = if (isOutdoorMode) Color.Black else Color(0xFFFF5252)))
+                            Text(if (isFarsiMode) "نوع مرز ساختاری:" else "Boundary Line Type:", fontSize = 11.sp, color = if (isOutdoorMode) Color.DarkGray else Color.Gray)
+                            Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                listOf("FORMATION_CONTACT" to (if (isFarsiMode) "سازند" else "Formation"), "FAULT_CONTACT" to (if (isFarsiMode) "گسل" else "Fault"), "GRADATIONAL_CONTACT" to (if (isFarsiMode) "تدرجی" else "Gradational")).forEach { (typeKey, typeLabel) ->
+                                        val selected = draftContactType == typeKey
+                                        Box(modifier = androidx.compose.ui.Modifier.weight(1f).clip(RoundedCornerShape(4.dp)).background(if (selected) (if (isOutdoorMode) Color.Black else Color(0xFFFF5252)) else (if (isOutdoorMode) Color(0xFFEEEEEE) else Color(0x1BFFFFFF))).clickable { draftContactType = typeKey }.padding(vertical = 5.dp), contentAlignment = Alignment.Center) {
+                                            Text(typeLabel, fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = if (selected) Color.White else (if (isOutdoorMode) Color.Black else Color.White))
+                                        }
+                                    }
+                            }
+                            Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text(if (isFarsiMode) "${selectedStations.size} ایستگاه انتخاب شده" else "${selectedStations.size} stations selected", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = contentColor)
+                                Icon(Icons.Default.Gesture, null, tint = if (isOutdoorMode) Color.Gray else Color.LightGray)
+                            }
+                            Text(if (isFarsiMode) "ایستگاه‌ها را انتخاب کنید:" else "Select stations to connect:", fontSize = 10.sp, color = if (isOutdoorMode) Color.DarkGray else Color.Gray)
+                            Box(modifier = androidx.compose.ui.Modifier.fillMaxWidth().height(90.dp).background(if (isOutdoorMode) Color(0xFFF9F9F9) else Color(0x1A000000), RoundedCornerShape(4.dp)).border(0.5.dp, Color.Gray.copy(0.3f), RoundedCornerShape(4.dp))) {
+                                LazyColumn(modifier = androidx.compose.ui.Modifier.fillMaxSize(), contentPadding = PaddingValues(3.dp)) {
+                                    items(stationsToShow) { station ->
+                                        val indexInDraft = selectedStations.indexOfFirst { it.id == station.id }
+                                        val isInDraft = indexInDraft >= 0
+                                        Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth().clickable { selectedStations = if (isInDraft) selectedStations.filter { it.id != station.id } else selectedStations + station }.padding(vertical = 3.dp, horizontal = 4.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                            if (isInDraft) Box(modifier = androidx.compose.ui.Modifier.clip(CircleShape).background(if (isOutdoorMode) Color.Black else Color(0xFFFF5252)).size(16.dp), contentAlignment = Alignment.Center) { Text((indexInDraft + 1).toString(), fontSize = 9.sp, color = Color.White, fontWeight = FontWeight.Bold) }
+                                            else Icon(Icons.Default.AddCircleOutline, null, tint = Color.Gray, modifier = androidx.compose.ui.Modifier.size(14.dp))
+                                            Text("${station.stationCode} (Lat: ${String.format(Locale.US, "%.3f", station.latitude)})", fontSize = 11.sp, color = contentColor)
+                                        }
+                                    }
+                                }
+                            }
+                            Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Button(onClick = { selectedStations = emptyList() }, colors = ButtonDefaults.buttonColors(containerColor = if (isOutdoorMode) Color(0xFFE0E0E0) else Color(0x33FFFFFF), contentColor = if (isOutdoorMode) Color.Black else Color.White), modifier = androidx.compose.ui.Modifier.weight(1f), shape = RoundedCornerShape(6.dp)) { Text(if (isFarsiMode) "پاک کردن" else "Clear", fontSize = 11.sp) }
+                                Button(onClick = { 
+                                    if (selectedStations.size < 2) { 
+                                        android.widget.Toast.makeText(context, if (isFarsiMode) "حداقل دو ایستگاه انتخاب کنید!" else "Select at least 2 stations!", android.widget.Toast.LENGTH_SHORT).show()
+                                        return@Button 
+                                    }
+                                    val color = when (draftContactType) { 
+                                        "FAULT_CONTACT" -> "#FF3D00" 
+                                        "GRADATIONAL_CONTACT" -> "#00E676" 
+                                        else -> "#00E5FF" 
+                                    }
+                                    val newContact = GeologicalContact(name = draftContactName, type = draftContactType, points = selectedStations, colorHex = color)
+                                    onContactsListChange(contactsList + newContact)
+                                    selectedStations = emptyList()
+                                    onActiveMapPanelChange(null)
+                                    android.widget.Toast.makeText(context, if (isFarsiMode) "مرزبندی زمین‌شناسی ذخیره شد!" else "Geological boundary saved!", android.widget.Toast.LENGTH_SHORT).show()
+                                }, colors = ButtonDefaults.buttonColors(containerColor = if (isOutdoorMode) Color.Black else Color(0xFFFF5252), contentColor = Color.White), modifier = androidx.compose.ui.Modifier.weight(1.3f), shape = RoundedCornerShape(6.dp)) { 
+                                    Text(if (isFarsiMode) "ذخیره مرز" else "Save Boundary", fontSize = 11.sp, fontWeight = FontWeight.Bold) 
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @OptIn(com.google.accompanist.permissions.ExperimentalPermissionsApi::class)
 @Composable
 fun MapContent(viewModel: GeologyViewModel) {
@@ -10820,12 +12356,14 @@ fun MapContent(viewModel: GeologyViewModel) {
     val isFarsiMode by viewModel.isFarsiModeSetting.collectAsStateWithLifecycle()
     
     // UI Panel Panels states
-    var isMapLayerPanelVisible by remember { mutableStateOf(false) }
-    var isSurveyorPanelVisible by remember { mutableStateOf(false) }
-    var isJournalPanelVisible by remember { mutableStateOf(false) }
-    var isSettingsPanelVisible by remember { mutableStateOf(false) }
-    var isStructuralPanelVisible by remember { mutableStateOf(false) }
-    var isGisToolboxOpen by remember { mutableStateOf(false) }
+    var activeMapPanel by remember { mutableStateOf<MapPanel?>(null) }
+    val isMapLayerPanelVisible = activeMapPanel == MapPanel.LAYERS
+    val isSurveyorPanelVisible = activeMapPanel == MapPanel.SURVEYOR
+    val isSettingsPanelVisible = activeMapPanel == MapPanel.SETTINGS
+    val isJournalPanelVisible = activeMapPanel == MapPanel.JOURNAL
+    val isStructuralPanelVisible = activeMapPanel == MapPanel.STRUCTURES
+    val isGisToolboxOpen = activeMapPanel == MapPanel.TOOLBOX
+    val isDrawingContactMode = activeMapPanel == MapPanel.DRAW_CONTACT
     var isAddPointDialogVisible by remember { mutableStateOf(false) }
     val themeSetting by viewModel.themeSetting.collectAsStateWithLifecycle()
     val isSystemDark = themeSetting == "Dark" || themeSetting == "HighContrast"
@@ -10915,6 +12453,7 @@ fun MapContent(viewModel: GeologyViewModel) {
     }
 
     val isTrackRecordingEnabled by viewModel.isTrackRecordingActive.collectAsStateWithLifecycle()
+    val isTrackRecordingPaused by viewModel.isTrackRecordingPaused.collectAsStateWithLifecycle()
     val activePointsList by viewModel.activePoints.collectAsStateWithLifecycle()
     val recordingDurationSec by viewModel.recordingDurationSec.collectAsStateWithLifecycle()
     val liveLocation by viewModel.liveLocation.collectAsStateWithLifecycle()
@@ -11203,7 +12742,6 @@ fun MapContent(viewModel: GeologyViewModel) {
 
     // Geological Boundary Lines list
     var contactsList by remember { mutableStateOf(listOf<GeologicalContact>()) }
-    var isDrawingContactMode by remember { mutableStateOf(false) }
     var newContactName by remember { mutableStateOf("Contact 1") }
     var newContactType by remember { mutableStateOf("FORMATION_CONTACT") } // "FORMATION_CONTACT", "FAULT_CONTACT", "GRADATIONAL_CONTACT"
     var draftContactPoints by remember { mutableStateOf(listOf<Station>()) }
@@ -11350,6 +12888,8 @@ fun MapContent(viewModel: GeologyViewModel) {
                 rulerAnchor = rulerAnchor,
                 pannedCenterLat = pannedCenterLat,
                 pannedCenterLon = pannedCenterLon,
+                savedTracks = savedTracks,
+                showTracksOverlay = showTracksOverlay,
                 modifier = Modifier.fillMaxSize()
             )
         } else {
@@ -11781,165 +13321,204 @@ fun MapContent(viewModel: GeologyViewModel) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-            // Live Go-To Navigation Arrow Card (AlpineQuest Navigation HUD)
-            navigationTargetStation?.let { target ->
-                val dist = calculateDistance(currentLat, currentLon, target.latitude, target.longitude)
-                val targetAzimuth = calculateBearing(currentLat, currentLon, target.latitude, target.longitude)
-                val relArrowAngle = (targetAzimuth - currentHeading + 360.0) % 360.0
+                // Live Go-To Navigation Arrow Card (AlpineQuest Navigation HUD)
+                navigationTargetStation?.let { target ->
+                    val dist = calculateDistance(currentLat, currentLon, target.latitude, target.longitude)
+                    val targetAzimuth = calculateBearing(currentLat, currentLon, target.latitude, target.longitude)
+                    val relArrowAngle = (targetAzimuth - currentHeading + 360.0) % 360.0
 
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isOutdoorMode) Color(0xFFFFEB3B).copy(0.9f) else Color(0xDD1E0035)
-                    ),
-                    border = BorderStroke(1.5.dp, if (isOutdoorMode) Color.Black.copy(0.8f) else Color(0xFFE040FB)),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier
-                        .width(280.dp)
-                ) {
-                    Row(
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (isOutdoorMode) Color(0xFFFFEB3B).copy(0.9f) else Color(0xDD1E0035)
+                        ),
+                        border = BorderStroke(1.5.dp, if (isOutdoorMode) Color.Black.copy(0.8f) else Color(0xFFE040FB)),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            .width(280.dp)
                     ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = if (isFarsiMode) "مسیریابی ایستگاه: ${target.stationCode}" else "NAV TO STATION: ${target.stationCode}",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (isOutdoorMode) Color.Black else Color(0xFFE040FB)
-                            )
-                            val distNavStr = if (dist >= 1000.0) String.format(Locale.US, "%.2f km", dist / 1000.0) else String.format(Locale.US, "%.1f m", dist)
-                            Text(
-                                text = if (isFarsiMode) "فاصله: $distNavStr" else "Distance: $distNavStr",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isOutdoorMode) Color.Black else Color.White
-                             )
-                            Text(
-                                text = if (isFarsiMode) "گرای مسیر: ${String.format(Locale.US, "%.1f°", targetAzimuth)} (اختلاف: ${String.format(Locale.US, "%+d°", (relArrowAngle - 180).toInt())})" else "Azimuth: ${String.format(Locale.US, "%.1f°", targetAzimuth)} (Sight: ${String.format(Locale.US, "%+d°", (relArrowAngle - 180).toInt())})",
-                                fontSize = 9.sp,
-                                fontFamily = FontFamily.Monospace,
-                                color = if (isOutdoorMode) Color.DarkGray else Color.LightGray
-                            )
-                        }
-
-                        // Rotating navigational arrow
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            IconButton(
-                                onClick = { navigationTargetStation = null },
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .background(Color.Red.copy(0.2f), CircleShape)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Cancel Navigation",
-                                    tint = Color.Red,
-                                    modifier = Modifier.size(12.dp)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (isFarsiMode) "مسیریابی ایستگاه: ${target.stationCode}" else "NAV TO STATION: ${target.stationCode}",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (isOutdoorMode) Color.Black else Color(0xFFE040FB)
+                                )
+                                val distNavStr = if (dist >= 1000.0) String.format(Locale.US, "%.2f km", dist / 1000.0) else String.format(Locale.US, "%.1f m", dist)
+                                Text(
+                                    text = if (isFarsiMode) "فاصله: $distNavStr" else "Distance: $distNavStr",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isOutdoorMode) Color.Black else Color.White
+                                 )
+                                Text(
+                                    text = if (isFarsiMode) "گرای مسیر: ${String.format(Locale.US, "%.1f°", targetAzimuth)} (اختلاف: ${String.format(Locale.US, "%+d°", (relArrowAngle - 180).toInt())})" else "Azimuth: ${String.format(Locale.US, "%.1f°", targetAzimuth)} (Sight: ${String.format(Locale.US, "%+d°", (relArrowAngle - 180).toInt())})",
+                                    fontSize = 9.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = if (isOutdoorMode) Color.DarkGray else Color.LightGray
                                 )
                             }
-                            
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .background(if (isOutdoorMode) Color.Black else Color(0xFFE040FB).copy(alpha = 0.2f), CircleShape)
-                                    .padding(4.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Navigation,
-                                    contentDescription = "Distance Compass Direction",
-                                    tint = if (isOutdoorMode) Color(0xFFFFEB3B) else Color(0xFFE040FB),
+
+                            // Rotating navigational arrow
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                IconButton(
+                                    onClick = { navigationTargetStation = null },
                                     modifier = Modifier
-                                        .size(22.dp)
-                                        .graphicsLayer(rotationZ = relArrowAngle.toFloat())
-                                )
+                                        .size(24.dp)
+                                        .background(Color.Red.copy(0.2f), CircleShape)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Cancel Navigation",
+                                        tint = Color.Red,
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                }
+                                
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .background(if (isOutdoorMode) Color.Black else Color(0xFFE040FB).copy(alpha = 0.2f), CircleShape)
+                                        .padding(4.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Navigation,
+                                        contentDescription = "Distance Compass Direction",
+                                        tint = if (isOutdoorMode) Color(0xFFFFEB3B) else Color(0xFFE040FB),
+                                        modifier = Modifier
+                                            .size(22.dp)
+                                            .graphicsLayer(rotationZ = relArrowAngle.toFloat())
+                                    )
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            // AlpineQuest Target Sight Coordinates Bar
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(if (isOutdoorMode) Color.White.copy(0.9f) else Color(0xEE0F1512))
-                    .border(1.5.dp, if (isOutdoorMode) Color.Black.copy(0.8f) else Color(0xFF00E5FF).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                    .clickable { 
-                        val nextMode = when (coordinateFormatMode) {
-                            0 -> "WGS84_DMS"
-                            1 -> "UTM"
-                            2 -> "WGS84_DDM"
-                            3 -> "MGRS"
-                            else -> "WGS84_DECIMAL"
+                // AlpineQuest Target Sight Coordinates Bar
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (isOutdoorMode) Color.White.copy(0.9f) else Color(0xEE0F1512))
+                        .border(1.5.dp, if (isOutdoorMode) Color.Black.copy(0.8f) else Color(0xFF00E5FF).copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                        .clickable { 
+                            val nextMode = when (coordinateFormatMode) {
+                                0 -> "WGS84_DMS"
+                                1 -> "UTM"
+                                2 -> "WGS84_DDM"
+                                3 -> "MGRS"
+                                else -> "WGS84_DECIMAL"
+                            }
+                            viewModel.setCoordSystemSetting(nextMode)
                         }
-                        viewModel.setCoordSystemSetting(nextMode)
-                    }
-                    .padding(horizontal = 12.dp, vertical = 8.dp)
-            ) {
-                val utmResult = UtmConverter.convertLatLngToUtm(pannedCenterLat, pannedCenterLon)
-                
-                Column(horizontalAlignment = Alignment.Start, verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                    val formatLabel = when (coordinateFormatMode) {
-                        0 -> if (isFarsiMode) "درجه اعشاری" else "DECIMAL DEGREES / اعشاری"
-                        1 -> if (isFarsiMode) "درجه دقیقه ثانیه" else "DMS FORMAT / ثانیه"
-                        2 -> if (isFarsiMode) "سامانه متریک UTM" else "UTM METRIC ZONE / قائم"
-                        3 -> if (isFarsiMode) "درجه دقیقه اعشاری" else "DEGREES MINS (DDM) / دقیقه‌دار"
-                        else -> if (isFarsiMode) "سیستم نظامی MGRS" else "MGRS SYSTEM / نظامی"
-                    }
-                    Text(
-                        text = if (isFarsiMode) "هدف: $formatLabel (تغییر با ضربه)" else "TARGET: $formatLabel (TAP TO CHANGE)",
-                        fontSize = 8.sp,
-                        color = if (isOutdoorMode) Color.DarkGray else Color.Gray,
-                        fontWeight = FontWeight.Bold
-                    )
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    val utmResult = UtmConverter.convertLatLngToUtm(pannedCenterLat, pannedCenterLon)
                     
-                    val formattedCoords = when (coordinateFormatMode) {
-                        0 -> if (isFarsiMode) "عرض: ${String.format(Locale.US, "%.8f°", pannedCenterLat)}\nطول: ${String.format(Locale.US, "%.8f°", pannedCenterLon)}" else "LAT: ${String.format(Locale.US, "%.8f°N", pannedCenterLat)}\nLON: ${String.format(Locale.US, "%.8f°E", pannedCenterLon)}"
-                        1 -> if (isFarsiMode) "عرض: ${formatDMS(pannedCenterLat, true)}\nطول: ${formatDMS(pannedCenterLon, false)}" else "LAT: ${formatDMS(pannedCenterLat, true)}\nLON: ${formatDMS(pannedCenterLon, false)}"
-                        2 -> if (isFarsiMode) "مختصات یوتی‌ام: $utmResult" else "UTM Grid: $utmResult"
-                        3 -> if (isFarsiMode) "عرض: ${formatDDM(pannedCenterLat, true)}\nطول: ${formatDDM(pannedCenterLon, false)}" else "LAT: ${formatDDM(pannedCenterLat, true)}\nLON: ${formatDDM(pannedCenterLon, false)}"
-                        else -> "MGRS: ${formatMGRS(pannedCenterLat, pannedCenterLon)}"
-                    }
-                    
-                    Text(
-                        text = formattedCoords,
-                        fontSize = 11.sp,
-                        color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0),
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        lineHeight = 13.sp
-                    )
-
-                    // Target details
-                    val distanceToCenter = calculateDistance(currentLat, currentLon, pannedCenterLat, pannedCenterLon)
-                    val bearingToCenter = calculateBearing(currentLat, currentLon, pannedCenterLat, pannedCenterLon)
-                    val distStr = if (distanceToCenter >= 1000) String.format(Locale.US, "%.2f km", distanceToCenter / 1000) else String.format(Locale.US, "%.1f m", distanceToCenter)
-                    
-                    Text(
-                        text = if (isFarsiMode) "فاصله‌ تا هدف: $distStr | گرای مسیر: ${String.format(Locale.US, "%d°", bearingToCenter.toInt())}" else "Dist: $distStr | Azimuth: ${String.format(Locale.US, "%d°", bearingToCenter.toInt())}",
-                        fontSize = 9.sp,
-                        color = if (isOutdoorMode) Color.Black else Color.White.copy(0.8f),
-                        fontFamily = FontFamily.Monospace
-                    )
-
-                    val rAnchor = rulerAnchor
-                    if (rAnchor != null) {
-                        val rulerDist = calculateDistance(rAnchor.lat, rAnchor.lon, pannedCenterLat, pannedCenterLon)
-                        val rulerBearing = calculateBearing(rAnchor.lat, rAnchor.lon, pannedCenterLat, pannedCenterLon)
-                        val rDistStr = if (rulerDist >= 1000) String.format(Locale.US, "%.2f km", rulerDist / 1000) else String.format(Locale.US, "%.1f m", rulerDist)
+                    Column(horizontalAlignment = Alignment.Start, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        val formatLabel = when (coordinateFormatMode) {
+                            0 -> if (isFarsiMode) "درجه اعشاری" else "DECIMAL DEGREES / اعشاری"
+                            1 -> if (isFarsiMode) "درجه دقیقه ثانیه" else "DMS FORMAT / ثانیه"
+                            2 -> if (isFarsiMode) "سامانه متریک UTM" else "UTM METRIC ZONE / قائم"
+                            3 -> if (isFarsiMode) "درجه دقیقه اعشاری" else "DEGREES MINS (DDM) / دقیقه‌دار"
+                            else -> if (isFarsiMode) "سیستم نظامی MGRS" else "MGRS SYSTEM / نظامی"
+                        }
+                        
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Icon(
+                                imageVector = Icons.Default.Adjust,
+                                contentDescription = "Target icon",
+                                tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00FFE0),
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Text(
+                                text = if (isFarsiMode) "هدف: $formatLabel" else "SIGHT TARGET: $formatLabel",
+                                fontSize = 8.sp,
+                                color = if (isOutdoorMode) Color.DarkGray else Color.Gray,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        
+                        val formattedCoords = when (coordinateFormatMode) {
+                            0 -> if (isFarsiMode) "عرض: ${String.format(Locale.US, "%.8f°", pannedCenterLat)}\nطول: ${String.format(Locale.US, "%.8f°", pannedCenterLon)}" else "LAT: ${String.format(Locale.US, "%.8f°N", pannedCenterLat)}\nLON: ${String.format(Locale.US, "%.8f°E", pannedCenterLon)}"
+                            1 -> if (isFarsiMode) "عرض: ${formatDMS(pannedCenterLat, true)}\nطول: ${formatDMS(pannedCenterLon, false)}" else "LAT: ${formatDMS(pannedCenterLat, true)}\nLON: ${formatDMS(pannedCenterLon, false)}"
+                            2 -> if (isFarsiMode) "موقعیت یوتی‌ام: $utmResult" else "UTM Grid: $utmResult"
+                            3 -> if (isFarsiMode) "عرض: ${formatDDM(pannedCenterLat, true)}\nطول: ${formatDDM(pannedCenterLon, false)}" else "LAT: ${formatDDM(pannedCenterLat, true)}\nLON: ${formatDDM(pannedCenterLon, false)}"
+                            else -> "MGRS: ${formatMGRS(pannedCenterLat, pannedCenterLon)}"
+                        }
+                        
                         Text(
-                            text = if (isFarsiMode) "📐 متر: $rDistStr | گرا: ${String.format(Locale.US, "%d°", rulerBearing.toInt())}" else "📐 Tape: $rDistStr | Az: ${String.format(Locale.US, "%d°", rulerBearing.toInt())}",
-                            fontSize = 9.5.sp,
+                            text = formattedCoords,
+                            fontSize = 11.sp,
                             color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0),
+                            fontWeight = FontWeight.Bold,
                             fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold
+                            lineHeight = 13.sp
                         )
+
+                        if (isRealPositionEnabled) {
+                            val formattedGps = when (coordinateFormatMode) {
+                                0 -> if (isFarsiMode) "GPS: ${String.format(Locale.US, "%.8f°", currentLat)} , ${String.format(Locale.US, "%.8f°", currentLon)}" else "GPS: ${String.format(Locale.US, "%.8f°N", currentLat)} , ${String.format(Locale.US, "%.8f°E", currentLon)}"
+                                1 -> if (isFarsiMode) "GPS: ${formatDMS(currentLat, true)} , ${formatDMS(currentLon, false)}" else "GPS: ${formatDMS(currentLat, true)} , ${formatDMS(currentLon, false)}"
+                                2 -> {
+                                    val gpsUtm = UtmConverter.convertLatLngToUtm(currentLat, currentLon)
+                                    "GPS UTM: $gpsUtm"
+                                }
+                                3 -> if (isFarsiMode) "GPS: ${formatDDM(currentLat, true)} , ${formatDDM(currentLon, false)}" else "GPS: ${formatDDM(currentLat, true)} , ${formatDDM(currentLon, false)}"
+                                else -> "GPS MGRS: ${formatMGRS(currentLat, currentLon)}"
+                            }
+                            
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Icon(
+                                    imageVector = Icons.Default.MyLocation,
+                                    contentDescription = "GPS icon",
+                                    tint = Color.Green,
+                                    modifier = Modifier.size(9.dp)
+                                )
+                                Text(
+                                    text = formattedGps,
+                                    fontSize = 8.5.sp,
+                                    color = if (isOutdoorMode) Color.DarkGray else Color.LightGray.copy(0.8f),
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                        
+                        // Target details
+                        val distanceToCenter = calculateDistance(currentLat, currentLon, pannedCenterLat, pannedCenterLon)
+                        val bearingToCenter = calculateBearing(currentLat, currentLon, pannedCenterLat, pannedCenterLon)
+                        val distStr = if (distanceToCenter >= 1000) String.format(Locale.US, "%.2f km", distanceToCenter / 1000) else String.format(Locale.US, "%.1f m", distanceToCenter)
+                        
+                        Text(
+                            text = if (isFarsiMode) "فاصله‌ تا هدف: $distStr | گرای مسیر: ${String.format(Locale.US, "%d°", bearingToCenter.toInt())}" else "Dist: $distStr | Azimuth: ${String.format(Locale.US, "%d°", bearingToCenter.toInt())}",
+                            fontSize = 9.sp,
+                            color = if (isOutdoorMode) Color.Black else Color.White.copy(0.8f),
+                            fontFamily = FontFamily.Monospace
+                        )
+
+                        val rAnchor = rulerAnchor
+                        if (rAnchor != null) {
+                            val rulerDist = calculateDistance(rAnchor.lat, rAnchor.lon, pannedCenterLat, pannedCenterLon)
+                            val rulerBearing = calculateBearing(rAnchor.lat, rAnchor.lon, pannedCenterLat, pannedCenterLon)
+                            val rDistStr = if (rulerDist >= 1000) String.format(Locale.US, "%.2f km", rulerDist / 1000) else String.format(Locale.US, "%.1f m", rulerDist)
+                            Text(
+                                text = if (isFarsiMode) "📐 متر: $rDistStr | گرا: ${String.format(Locale.US, "%d°", rulerBearing.toInt())}" else "📐 Tape: $rDistStr | Az: ${String.format(Locale.US, "%d°", rulerBearing.toInt())}",
+                                fontSize = 9.5.sp,
+                                color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0),
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
 
@@ -12015,7 +13594,6 @@ fun MapContent(viewModel: GeologyViewModel) {
                 }
             }
         }
-    }
 
         // -------------------------------------------------------------
         // LAYER 4: GNSS TELEMETRY HEADS-UP DISPLAY (TOP-LEFT FLOATING CARD)
@@ -12027,7 +13605,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                 currentAccuracy <= 3.0 -> if (isOutdoorMode) Color(0xFF0D47A1) else Color(0xFF00E5FF) // 3D DGPS tech cyan/blue
                 else -> Color(0xFFFF5252) // poor accuracy red
             }
-            var isTelemetryExpanded by remember { mutableStateOf(true) }
+            var isTelemetryExpanded by remember { mutableStateOf(false) }
             
             Card(
                 modifier = Modifier
@@ -12232,20 +13810,12 @@ fun MapContent(viewModel: GeologyViewModel) {
                 // GIS COLLAPSIBLE TOOLBOX TRIGGER
                 IconButton(
                     onClick = { 
-                        isGisToolboxOpen = !isGisToolboxOpen 
-                        if (isGisToolboxOpen) {
-                            isMapLayerPanelVisible = false
-                            isStructuralPanelVisible = false
-                            isSurveyorPanelVisible = false
-                            isSettingsPanelVisible = false
-                            isJournalPanelVisible = false
-                            isDrawingContactMode = false
-                        }
+                        activeMapPanel = if (activeMapPanel == MapPanel.TOOLBOX) null else MapPanel.TOOLBOX
                     },
                     modifier = Modifier
                         .size(38.dp)
                         .background(
-                            if (isGisToolboxOpen) {
+                            if (activeMapPanel == MapPanel.TOOLBOX) {
                                 (if (isOutdoorMode) Color(0xFF00796B).copy(alpha = 0.15f) else Color(0xFF00E5FF).copy(alpha = 0.15f))
                             } else Color.Transparent, 
                             CircleShape
@@ -12253,9 +13823,9 @@ fun MapContent(viewModel: GeologyViewModel) {
                         .testTag("gis_toolbox_toggle")
                 ) {
                     Icon(
-                        imageVector = if (isGisToolboxOpen) Icons.Default.Close else Icons.Default.Apps,
+                        imageVector = if (activeMapPanel == MapPanel.TOOLBOX) Icons.Default.Close else Icons.Default.Apps,
                         contentDescription = "GIS Instrument Toolbox",
-                        tint = if (isGisToolboxOpen) {
+                        tint = if (activeMapPanel == MapPanel.TOOLBOX) {
                             if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)
                         } else toolbarIconColorClosed,
                         modifier = Modifier.size(20.dp)
@@ -12305,1763 +13875,108 @@ fun MapContent(viewModel: GeologyViewModel) {
             }
         }
 
-        // -------------------------------------------------------------
-        // DYNAMIC OVERLAY: FLOATING GIS TOOLBOX COMPACT PANEL
-        // -------------------------------------------------------------
-        AnimatedVisibility(
-            visible = isGisToolboxOpen,
-            enter = fadeIn() + slideInHorizontally { it / 2 },
-            exit = fadeOut() + slideOutHorizontally { it / 2 },
-            modifier = Modifier
-                .padding(top = 12.dp, end = 70.dp)
-                .align(Alignment.TopEnd)
-        ) {
-            Card(
-                modifier = Modifier.width(280.dp),
-                colors = CardDefaults.cardColors(containerColor = if (isOutdoorMode) Color.White else Color(0xFA141A17)),
-                border = BorderStroke(1.5.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF).copy(alpha = 0.8f)),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = if (isFarsiMode) "ابزارهای صحرایی" else "FIELD INSTRUMENTS",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.5.sp,
-                            color = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
-                            fontFamily = FontFamily.Monospace
-                        )
-                        IconButton(
-                            onClick = { isGisToolboxOpen = false },
-                            modifier = Modifier.size(20.dp)
-                        ) {
-                            Icon(Icons.Default.Close, contentDescription = "Close Toolbox", tint = if (isOutdoorMode) Color.Black else Color.Gray, modifier = Modifier.size(14.dp))
-                        }
-                    }
-
-                    // 3x3 Grid of Tools
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            // Map Layer tool
-                            Box(modifier = Modifier.weight(1f)) {
-                                ToolboxTile(
-                                    icon = Icons.Default.Layers,
-                                    label = if (isFarsiMode) "لایه‌های نقشه" else "Map Layer",
-                                    isActive = isMapLayerPanelVisible,
-                                    activeColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
-                                    isOutdoor = isOutdoorMode,
-                                    onClick = {
-                                        isMapLayerPanelVisible = !isMapLayerPanelVisible
-                                        isSurveyorPanelVisible = false
-                                        isJournalPanelVisible = false
-                                        isSettingsPanelVisible = false
-                                        isStructuralPanelVisible = false
-                                        isGisToolboxOpen = false
-                                    }
-                                )
-                            }
-                            // Track recorder tool
-                            Box(modifier = Modifier.weight(1f)) {
-                                ToolboxTile(
-                                    icon = if (isTrackRecordingEnabled) Icons.Default.Stop else Icons.Default.RadioButtonChecked,
-                                    label = if (isTrackRecordingEnabled) {
-                                        if (isFarsiMode) "درحال ضبط..." else "Logging..."
-                                    } else {
-                                        if (isFarsiMode) "ضبط مسیر" else "Rec Track"
-                                    },
-                                    isActive = isTrackRecordingEnabled,
-                                    activeColor = Color(0xFFFF3030),
-                                    isOutdoor = isOutdoorMode,
-                                    onClick = {
-                                        onTrackRecordingChanged(!isTrackRecordingEnabled)
-                                    }
-                                )
-                            }
-                            // Walk simulator tool
-                            Box(modifier = Modifier.weight(1f)) {
-                                ToolboxTile(
-                                    icon = Icons.Default.DirectionsWalk,
-                                    label = if (isFarsiMode) "شبیه‌ساز گام" else "Simulator",
-                                    isActive = showSimulator,
-                                    activeColor = if (isOutdoorMode) Color(0xFF0288D1) else Color(0xFF00B0FF),
-                                    isOutdoor = isOutdoorMode,
-                                    onClick = {
-                                        showSimulator = !showSimulator
-                                    }
-                                )
-                            }
-                        }
-
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            // Calculator tool
-                            Box(modifier = Modifier.weight(1f)) {
-                                ToolboxTile(
-                                    icon = Icons.Default.Explore,
-                                    label = if (isFarsiMode) "سنجش فاصله" else "Surveyor",
-                                    isActive = isSurveyorPanelVisible,
-                                    activeColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
-                                    isOutdoor = isOutdoorMode,
-                                    onClick = {
-                                        isSurveyorPanelVisible = !isSurveyorPanelVisible
-                                        isMapLayerPanelVisible = false
-                                        isJournalPanelVisible = false
-                                        isSettingsPanelVisible = false
-                                        isStructuralPanelVisible = false
-                                        isGisToolboxOpen = false
-                                    }
-                                )
-                            }
-                            // Journal records list
-                            Box(modifier = Modifier.weight(1f)) {
-                                ToolboxTile(
-                                    icon = Icons.Default.List,
-                                    label = if (isFarsiMode) "تاریخچه لاگ" else "Logs Traves",
-                                    isActive = isJournalPanelVisible,
-                                    activeColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
-                                    isOutdoor = isOutdoorMode,
-                                    onClick = {
-                                        isJournalPanelVisible = !isJournalPanelVisible
-                                        isMapLayerPanelVisible = false
-                                        isSurveyorPanelVisible = false
-                                        isSettingsPanelVisible = false
-                                        isStructuralPanelVisible = false
-                                        isGisToolboxOpen = false
-                                    }
-                                )
-                            }
-                            // Advanced config settings
-                            Box(modifier = Modifier.weight(1f)) {
-                                ToolboxTile(
-                                    icon = Icons.Default.Settings,
-                                    label = if (isFarsiMode) "تنظیمات نقشه" else "Geodetic Set",
-                                    isActive = isSettingsPanelVisible,
-                                    activeColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
-                                    isOutdoor = isOutdoorMode,
-                                    onClick = {
-                                        isSettingsPanelVisible = !isSettingsPanelVisible
-                                        isMapLayerPanelVisible = false
-                                        isSurveyorPanelVisible = false
-                                        isJournalPanelVisible = false
-                                        isStructuralPanelVisible = false
-                                        isGisToolboxOpen = false
-                                    }
-                                )
-                            }
-                        }
-
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            // Structure filtration toggle
-                            Box(modifier = Modifier.weight(1f)) {
-                                ToolboxTile(
-                                    icon = Icons.Default.FilterAlt,
-                                    label = if (isFarsiMode) "فیلتر لایه‌ها" else "Geology Filt",
-                                    isActive = isStructuralPanelVisible,
-                                    activeColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
-                                    isOutdoor = isOutdoorMode,
-                                    onClick = {
-                                        isStructuralPanelVisible = !isStructuralPanelVisible
-                                        isMapLayerPanelVisible = false
-                                        isSurveyorPanelVisible = false
-                                        isJournalPanelVisible = false
-                                        isSettingsPanelVisible = false
-                                        isGisToolboxOpen = false
-                                    }
-                                )
-                            }
-                            // Geological trace line pencil tool
-                            Box(modifier = Modifier.weight(1f)) {
-                                ToolboxTile(
-                                    icon = Icons.Default.Brush,
-                                    label = if (isFarsiMode) "ترسیم مرزها" else "Bound Pencil",
-                                    isActive = isDrawingContactMode,
-                                    activeColor = Color(0xFFD50000),
-                                    isOutdoor = isOutdoorMode,
-                                    onClick = {
-                                        isDrawingContactMode = !isDrawingContactMode
-                                        if (isDrawingContactMode) {
-                                            isStructuralPanelVisible = false
-                                            isMapLayerPanelVisible = false
-                                            isSurveyorPanelVisible = false
-                                            isJournalPanelVisible = false
-                                            isSettingsPanelVisible = false
-                                        }
-                                    }
-                                )
-                            }
-                            // Direct light high-contrast mode toggle
-                            Box(modifier = Modifier.weight(1f)) {
-                                ToolboxTile(
-                                    icon = if (isOutdoorMode) Icons.Default.WbSunny else Icons.Default.BrightnessMedium,
-                                    label = if (isFarsiMode) "نور آفتاب" else "Sunsight",
-                                    isActive = isOutdoorMode,
-                                    activeColor = Color(0xFFFFD54F),
-                                    isOutdoor = isOutdoorMode,
-                                    onClick = {
-                                        isOutdoorMode = !isOutdoorMode
-                                    }
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-                        androidx.compose.material3.HorizontalDivider(
-                            color = if (isOutdoorMode) Color.LightGray.copy(alpha = 0.5f) else Color.DarkGray.copy(alpha = 0.5f),
-                            thickness = 1.dp
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        androidx.compose.material3.Text(
-                            text = if (isFarsiMode) "لایه‌های کمکی مکانی (KML/KMZ)" else "GEOSPATIAL OVERLAYS (KML/KMZ)",
-                            fontSize = 8.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isOutdoorMode) Color.DarkGray else Color.LightGray,
-                            modifier = Modifier.padding(horizontal = 4.dp)
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            androidx.compose.material3.Button(
-                                onClick = {
-                                    kmlPickerLauncher.launch(
-                                        arrayOf(
-                                            "application/vnd.google-earth.kml+xml",
-                                            "application/vnd.google-earth.kmz",
-                                            "application/octet-stream",
-                                            "*/*"
-                                        )
-                                    )
-                                },
-                                modifier = Modifier.weight(1f).height(38.dp).testTag("import_kml_button"),
-                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                                    containerColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
-                                    contentColor = if (isOutdoorMode) Color.White else Color(0xFF0C100D)
-                                ),
-                                shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp)
-                            ) {
-                                androidx.compose.material3.Icon(
-                                    imageVector = Icons.Default.CloudUpload,
-                                    contentDescription = "Import KML",
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                androidx.compose.material3.Text(
-                                    text = if (isFarsiMode) "وارد کردن فایل" else "Import File",
-                                    fontSize = 10.sp, 
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-
-                            if (importedFeaturesList.isNotEmpty()) {
-                                androidx.compose.material3.OutlinedButton(
-                                    onClick = {
-                                        viewModel.clearImportedFeatures()
-                                        Toast.makeText(context, if (isFarsiMode) "مرزبندی KML پاک شد" else "KML Overlay cleared.", Toast.LENGTH_SHORT).show()
-                                    },
-                                    modifier = Modifier.weight(1f).height(38.dp).testTag("clear_kml_button"),
-                                    border = androidx.compose.foundation.BorderStroke(
-                                        1.dp,
-                                        if (isOutdoorMode) Color(0xFFC62828) else Color(0xFFFF5252)
-                                    ),
-                                    colors = androidx.compose.material3.ButtonDefaults.outlinedButtonColors(
-                                        contentColor = if (isOutdoorMode) Color(0xFFC62828) else Color(0xFFFF5252)
-                                    ),
-                                    shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp),
-                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp)
-                                ) {
-                                    androidx.compose.material3.Icon(
-                                        imageVector = Icons.Default.Delete,
-                                        contentDescription = "Clear Overlay",
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    androidx.compose.material3.Text(
-                                        text = if (isFarsiMode) "حذف لایه‌ها (${importedFeaturesList.size})" else "Clear Overlay (${importedFeaturesList.size})",
-                                        fontSize = 10.sp, 
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // -------------------------------------------------------------
-        // LAYER 6: FLOATING SIMULATED WALK D-PAD CONTROLLER (CENTER-LEFT)
-        // Re-positioned to CenterStart to completely eliminate any collisions with bottom HUDs
-        // -------------------------------------------------------------
-        AnimatedVisibility(
-            visible = showSimulator,
-            enter = fadeIn() + expandIn(),
-            exit = fadeOut() + shrinkOut(),
-            modifier = Modifier
-                .padding(start = 12.dp)
-                .align(Alignment.CenterStart)
-        ) {
-            Card(
-                modifier = Modifier.width(135.dp),
-                colors = CardDefaults.cardColors(containerColor = if (isOutdoorMode) Color.White else Color(0xE61E2522)),
-                border = BorderStroke(2.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF).copy(alpha = 0.2f)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(6.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = "WALK SIMULATOR", 
-                        fontSize = 7.5.sp, 
-                        fontWeight = FontWeight.Bold, 
-                        color = if (isOutdoorMode) Color.Black else Color.LightGray
-                    )
-                    
-                    // N key on top row
-                    IconButton(
-                        onClick = { simulateWalkMove("NORTH") },
-                        modifier = Modifier
-                            .size(34.dp)
-                            .background(Color(0xFF263238), CircleShape)
-                    ) {
-                        Text("N", fontSize = 11.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
-                    }
-                    
-                    // West and East middle row
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconButton(
-                            onClick = { simulateWalkMove("WEST") },
-                            modifier = Modifier
-                                .size(34.dp)
-                                .background(Color(0xFF263238), CircleShape)
-                        ) {
-                            Text("W", fontSize = 11.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
-                        }
-                        Spacer(modifier = Modifier.width(4.dp))
-                        IconButton(
-                            onClick = { simulateWalkMove("EAST") },
-                            modifier = Modifier
-                                .size(34.dp)
-                                .background(Color(0xFF263238), CircleShape)
-                        ) {
-                            Text("E", fontSize = 11.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
-                        }
-                    }
-                    
-                    // South key on bottom row
-                    IconButton(
-                        onClick = { simulateWalkMove("SOUTH") },
-                        modifier = Modifier
-                            .size(34.dp)
-                            .background(Color(0xFF263238), CircleShape)
-                    ) {
-                        Text("S", fontSize = 11.sp, color = Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
-                    }
-
-                    Spacer(modifier = Modifier.height(2.dp))
-
-                    Button(
-                        onClick = {
-                            simulatorLat = pannedCenterLat
-                            simulatorLon = pannedCenterLon
-                            Toast.makeText(context, "Simulator snapped to map target!", Toast.LENGTH_SHORT).show()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)),
-                        shape = RoundedCornerShape(4.dp),
-                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
-                        modifier = Modifier.fillMaxWidth().height(24.dp)
-                    ) {
-                        Text("TELEPORT HERE", fontSize = 7.5.sp, color = if (isOutdoorMode) Color.White else Color.Black, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-
-        // Removed bottom-left info badge to keep the layout extremely clean and decluttered
-
-        // -------------------------------------------------------------
-        // DYNAMIC OVERLAY 1: FLOATING MAP LAYER SWITCHER PANEL
-        // Standardized top/end paddings to prevent central and bottom screen collisions
-        // -------------------------------------------------------------
-        AnimatedVisibility(
-            visible = isMapLayerPanelVisible,
-            enter = fadeIn() + slideInVertically { it / 2 },
-            exit = fadeOut() + slideOutVertically { it / 2 },
-            modifier = Modifier
-                .padding(top = 72.dp, end = 70.dp)
-                .align(Alignment.TopEnd)
-        ) {
-            Card(
-                modifier = Modifier.width(260.dp),
-                colors = CardDefaults.cardColors(containerColor = if (isOutdoorMode) Color.White else Color(0xFA1A201C)),
-                border = BorderStroke(1.5.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text(
-                        text = if (isFarsiMode) "مدیریت لایه‌های نقشه" else "Map Layer Provider",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
-                        color = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)
-                    )
-                    
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(if (isOutdoorMode) Color(0xFFF1F1F1) else Color.Black.copy(0.3f), RoundedCornerShape(6.dp))
-                            .padding(4.dp)
-                    ) {
-                        Button(
-                            onClick = { mapMode = MapMode.ONLINE },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (mapMode == MapMode.ONLINE) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)) else Color.Transparent,
-                                contentColor = if (mapMode == MapMode.ONLINE) (if (isOutdoorMode) Color.White else Color.Black) else (if (isOutdoorMode) Color.Black else Color.White)
-                            ),
-                            contentPadding = PaddingValues(0.dp),
-                            shape = RoundedCornerShape(4.dp)
-                        ) {
-                            Text(
-                                text = if (isFarsiMode) "آنلاین وب" else "Online Webs",
-                                fontSize = 10.sp, 
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Button(
-                            onClick = { mapMode = MapMode.OFFLINE },
-                            modifier = Modifier.weight(1f),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (mapMode == MapMode.OFFLINE) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)) else Color.Transparent,
-                                contentColor = if (mapMode == MapMode.OFFLINE) (if (isOutdoorMode) Color.White else Color.Black) else (if (isOutdoorMode) Color.Black else Color.White)
-                            ),
-                            contentPadding = PaddingValues(0.dp),
-                            shape = RoundedCornerShape(4.dp)
-                        ) {
-                            Text(
-                                text = if (isFarsiMode) "شبکه آفلاین" else "Offline Grid",
-                                fontSize = 10.sp, 
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-
-                    if (mapMode == MapMode.ONLINE) {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(
-                                text = if (isFarsiMode) "لایه‌های نقشه اینترنتی:" else "Standard Map Layers:",
-                                fontSize = 9.sp, 
-                                color = Color.Gray, 
-                                fontWeight = FontWeight.Bold
-                            )
-                            val visibleLayers = MapLayerProvider.values()
-                            visibleLayers.forEach { provider ->
-                                val selected = mapLayer == provider
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { 
-                                            mapLayer = provider 
-                                            isMapLayerPanelVisible = false
-                                        }
-                                        .background(
-                                            if (selected) (if (isOutdoorMode) Color(0xFF00796B).copy(0.12f) else Color(0xFF00E5FF).copy(0.12f)) else Color.Transparent,
-                                            RoundedCornerShape(4.dp)
-                                        )
-                                        .padding(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = if (selected) Icons.Default.CheckCircle else Icons.Default.Layers,
-                                        contentDescription = null,
-                                        tint = if (selected) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)) else Color.Gray,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = provider.label,
-                                        fontSize = 11.sp,
-                                        color = if (selected) (if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0)) else (if (isOutdoorMode) Color.Black else Color.White)
-                                    )
-                                }
-                            }
-                        }
+        if (isTrackRecordingEnabled) {
+            LiveTrackRecordingHUD(
+                isFarsiMode = isFarsiMode,
+                isOutdoorMode = isOutdoorMode,
+                durationSec = recordingDurationSec,
+                trackPoints = activePointsList,
+                liveLocation = liveLocation,
+                isPaused = isTrackRecordingPaused,
+                onPauseToggle = {
+                    if (isTrackRecordingPaused) {
+                        viewModel.resumeRecordingTrack()
                     } else {
-                        // Offline specifications
-                        Column(modifier = Modifier.padding(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(
-                                text = if (isFarsiMode) "شبکه آفلاین بدون ماهواره فعال است" else "Offline Vector Grid Mode Active",
-                                fontSize = 10.sp, 
-                                color = if (isOutdoorMode) Color.Black else Color.LightGray,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = if (isFarsiMode) "امکان ثبت فواصل، برداشت‌های ساختاری و فیلترهای زمین‌شناختی بدون آتن‌دهی فراهم می‌باشد." else "Allows field recording of tracks and targets cleanly without high-resolution base layers if remote signal is offline.",
-                                fontSize = 9.sp, 
-                                color = Color.Gray, 
-                                lineHeight = 13.sp
-                            )
-                        }
+                        viewModel.pauseRecordingTrack()
                     }
-                    
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { showUtmGrid = !showUtmGrid }
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.GridView,
-                                contentDescription = null,
-                                tint = if (showUtmGrid) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)) else Color.Gray,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = if (isFarsiMode) "نمایش خطوط شبکه UTM" else "UTM Grid Overlay",
-                                fontSize = 11.sp,
-                                color = if (isOutdoorMode) Color.Black else Color.White
-                            )
-                        }
-                        Checkbox(
-                            checked = showUtmGrid,
-                            onCheckedChange = { showUtmGrid = it },
-                            colors = CheckboxDefaults.colors(
-                                checkedColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)
-                            )
-                        )
-                    }
-                    
-                    Divider(color = if (isOutdoorMode) Color.LightGray else Color.White.copy(0.15f))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = if (isFarsiMode) "دسترسی بیرونی به نقشه‌ها:" else "Outdoor External Maps:",
-                            fontSize = 8.5.sp, 
-                            color = Color.Gray
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            IconButton(
-                                onClick = { openBrowserLink(context, "https://www.google.com/maps/search/?api=1&query=$currentLat,$currentLon") },
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Icon(Icons.Default.Language, contentDescription = "Google Maps Web", tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), modifier = Modifier.size(14.dp))
-                            }
-                            IconButton(
-                                onClick = { openBrowserLink(context, "https://www.openstreetmap.org/#map=17/$currentLat/$currentLon") },
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Icon(Icons.Default.Explore, contentDescription = "OSM Web", tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), modifier = Modifier.size(14.dp))
-                            }
-                        }
-                    }
-                }
-            }
+                },
+                onQuickLogStation = {
+                    isAddPointDialogVisible = true
+                },
+                onStopRecording = {
+                    onTrackRecordingChanged(false)
+                },
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
         }
 
         // -------------------------------------------------------------
-        // DYNAMIC OVERLAY 1.5: GEOLOGICAL FILTERS & LEGEND PANEL
-        // Standardized top/end paddings to prevent central and bottom screen collisions
+        // DYNAMIC OVERLAY: FLOATING GIS TOOLBOX COMPACT PANEL (UNIFIED CONTAINER)
         // -------------------------------------------------------------
-        AnimatedVisibility(
-            visible = isStructuralPanelVisible,
-            enter = fadeIn() + slideInVertically { it / 2 },
-            exit = fadeOut() + slideOutVertically { it / 2 },
-            modifier = Modifier
-                .padding(top = 72.dp, end = 70.dp)
-                .align(Alignment.TopEnd)
-        ) {
-            Card(
-                modifier = Modifier
-                    .width(280.dp)
-                    .border(1.dp, if (isOutdoorMode) Color.DarkGray else Color(0xFF00E5FF).copy(alpha = 0.5f), RoundedCornerShape(12.dp)),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isOutdoorMode) Color.White else Color(0xF20F1512)
-                ),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = if (isFarsiMode) "فیلتر ساختارهای زمین‌شناسی" else "Geological Structures Filter",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Divider(color = if (isOutdoorMode) Color.LightGray else Color.White.copy(0.15f))
-
-                    // Structure pick buttons
-                    Text(
-                        text = if (isFarsiMode) "نوع ساختار زمین‌شناختی:" else "Structure Type:",
-                        fontSize = 11.sp,
-                        color = if (isOutdoorMode) Color.DarkGray else Color.Gray,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    
-                    val optList = listOf(
-                        "ALL" to (if (isFarsiMode) "همه" else "All"), 
-                        "Bedding" to (if (isFarsiMode) "لایه‌بندی" else "Bedding"), 
-                        "Joint" to (if (isFarsiMode) "درزه" else "Joint"), 
-                        "Fault" to (if (isFarsiMode) "گسل" else "Fault"), 
-                        "Foliation" to (if (isFarsiMode) "چین‌خوردگی" else "Foliation")
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        optList.take(3).forEach { (field, farsi) ->
-                            val active = structuralFilter == field
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(if (active) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)) else (if (isOutdoorMode) Color(0xFFEEEEEE) else Color(0x1BFFFFFF)))
-                                    .clickable { structuralFilter = field }
-                                    .padding(vertical = 6.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(farsi, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = if (active) (if (isOutdoorMode) Color.White else Color.Black) else (if (isOutdoorMode) Color.Black else Color.White))
-                            }
-                        }
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        optList.drop(3).forEach { (field, farsi) ->
-                            val active = structuralFilter == field
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(if (active) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)) else (if (isOutdoorMode) Color(0xFFEEEEEE) else Color(0x1BFFFFFF)))
-                                    .clickable { structuralFilter = field }
-                                    .padding(vertical = 6.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(farsi, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = if (active) (if (isOutdoorMode) Color.White else Color.Black) else (if (isOutdoorMode) Color.Black else Color.White))
-                            }
-                        }
-                    }
-
-                    // Show non structural stations
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Checkbox(
-                            checked = showNonStructural,
-                            onCheckedChange = { showNonStructural = it },
-                            colors = CheckboxDefaults.colors(
-                                checkedColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)
-                            )
-                        )
-                        Text(
-                            text = if (isFarsiMode) "نمایش ایستگاه‌های فاقد اطلاعات ساختاری" else "Show Non-Structural Stations",
-                            fontSize = 11.sp,
-                            color = if (isOutdoorMode) Color.Black else Color.White
-                        )
-                    }
-
-                    // Dip range filter sliders
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = if (isFarsiMode) "محدوده شیب مغناطیسی: ${dipMinFilter.toInt()}° تا ${dipMaxFilter.toInt()}°" else "Dip Range: ${dipMinFilter.toInt()}° to ${dipMaxFilter.toInt()}°", 
-                            fontSize = 11.sp, 
-                            color = if (isOutdoorMode) Color.Black else Color.LightGray
-                        )
-                    }
-                    RangeSlider(
-                        value = dipMinFilter..dipMaxFilter,
-                        onValueChange = { range ->
-                            dipMinFilter = range.start
-                            dipMaxFilter = range.endInclusive
-                        },
-                        valueRange = 0f..90f,
-                        steps = 8,
-                        colors = SliderDefaults.colors(
-                            activeTrackColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
-                            thumbColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    // Legend and Stats
-                    Text(
-                        text = if (isFarsiMode) "راهنمای لایه‌ها و آمار برداشت‌ها:" else "Legend & Statistics:",
-                        fontSize = 10.sp,
-                        color = if (isOutdoorMode) Color.DarkGray else Color.Gray,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    val obsStats = remember(allObservationsList, isFarsiMode) {
-                        val bedCount = allObservationsList.count { it.observationType.lowercase().contains("bedding") || it.structureType?.contains("bed", ignoreCase = true) == true }
-                        val faultCount = allObservationsList.count { it.observationType.lowercase().contains("fault") }
-                        val jointCount = allObservationsList.count { it.observationType.lowercase().contains("joint") }
-                        val foliationCount = allObservationsList.count { it.observationType.lowercase().contains("structure") && (it.structureType?.contains("fol", ignoreCase = true) == true || it.structureType?.contains("schist", ignoreCase = true) == true) }
-                        listOf(
-                            Triple(if (isFarsiMode) "لایه‌بندی (Bedding)" else "Bedding", "#FFEB3B", bedCount),
-                            Triple(if (isFarsiMode) "گسل (Fault)" else "Fault", "#FF3D00", faultCount),
-                            Triple(if (isFarsiMode) "درزه (Joint)" else "Joint", "#00E676", jointCount),
-                            Triple(if (isFarsiMode) "سازند و تورُق (Foliation)" else "Foliation", "#E040FB", foliationCount)
-                        )
-                    }
-
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        obsStats.forEach { (title, hex, count) ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(14.dp, 3.dp)
-                                        .background(Color(android.graphics.Color.parseColor(hex)))
-                                )
-                                Text(
-                                    text = "$title ($count)",
-                                    fontSize = 11.sp,
-                                    color = if (isOutdoorMode) Color.Black else Color.White
-                                )
-                            }
-                        }
-                    }
+        UnifiedMapPanelContainer(
+            activeMapPanel = activeMapPanel,
+            onActiveMapPanelChange = { activeMapPanel = it },
+            isOutdoorMode = isOutdoorMode,
+            onOutdoorModeChange = { isOutdoorMode = it },
+            isFarsiMode = isFarsiMode,
+            isTrackRecordingEnabled = isTrackRecordingEnabled,
+            onTrackRecordingChange = { onTrackRecordingChanged(it) },
+            showSimulator = showSimulator,
+            onShowSimulatorChange = { showSimulator = it },
+            importedFeaturesCount = importedFeaturesList.size,
+            onImportKmlClick = { kmlPickerLauncher.launch(arrayOf("application/vnd.google-earth.kml+xml", "application/vnd.google-earth.kmz", "application/xml", "text/xml")) },
+            onClearKmlClick = { viewModel.clearImportedFeatures() },
+            mapMode = mapMode,
+            onMapModeChange = { mapMode = it },
+            mapLayer = mapLayer,
+            onMapLayerChange = { mapLayer = it },
+            showUtmGrid = showUtmGrid,
+            onShowUtmGridChange = { showUtmGrid = it },
+            currentLat = currentLat,
+            currentLon = currentLon,
+            stationsToShow = stationsToShow,
+            filteredStations = filteredStations,
+            allObservationsList = allObservationsList,
+            navigationTargetStation = navigationTargetStation,
+            onNavigationTargetStationChange = { navigationTargetStation = it },
+            onLocateStation = { s -> 
+                pannedCenterLat = s.latitude
+                pannedCenterLon = s.longitude
+                lockGpsCenter = false
+            },
+            onDeleteStation = { s -> 
+                activeProject?.id?.let { projId ->
+                    viewModel.deleteStation(s.id, projId)
                 }
-            }
-        }
+            },
+            mapboxTokenInput = mapboxTokenInput,
+            onMapboxTokenInputChange = { mapboxTokenInput = it },
+            gpsAccuracy = gpsAccuracy,
+            onGpsAccuracyChange = { gpsAccuracy = it },
+            satelliteCount = satelliteCount,
+            onSatelliteCountChange = { satelliteCount = it },
+            savedTracks = savedTracks,
+            onDeleteTrack = { t ->
+                viewModel.deleteTrack(t.id)
+            },
+            onEditTrack = { t ->
+                // Noop
+            },
+            onShareTrack = { t ->
+                shareTrackTarget = t
+                showFormatSelectDialog = true
+            },
+            exportFormatChoice = exportFormatChoice,
+            onExportFormatChoiceChange = { exportFormatChoice = it },
+            structuralFilter = structuralFilter,
+            onStructuralFilterChange = { structuralFilter = it },
+            showNonStructural = showNonStructural,
+            onShowNonStructuralChange = { showNonStructural = it },
+            dipMinFilter = dipMinFilter,
+            dipMaxFilter = dipMaxFilter,
+            onDipRangeChange = { range ->
+                dipMinFilter = range.start
+                dipMaxFilter = range.endInclusive
+            },
+            contactsList = contactsList,
+            onContactsListChange = { contactsList = it },
+            isRealPositionEnabled = isRealPositionEnabled,
+            onRealPositionChanged = { isRealPositionEnabled = it },
+            showStationsOverlay = showStationsOverlay,
+            onShowStationsOverlayChange = { showStationsOverlay = it }
+        )
 
-        // -------------------------------------------------------------
-        // DYNAMIC OVERLAY 1.7: GEOLOGICAL FAULTS & CONTACT DRAW PANEL
-        // -------------------------------------------------------------
-        AnimatedVisibility(
-            visible = isDrawingContactMode,
-            enter = fadeIn() + slideInHorizontally { -it / 2 },
-            exit = fadeOut() + slideOutHorizontally { -it / 2 },
-            modifier = Modifier
-                .padding(top = 170.dp, start = 12.dp)
-                .align(Alignment.TopStart)
-        ) {
-            Card(
-                modifier = Modifier
-                    .width(320.dp)
-                    .border(1.dp, if (isOutdoorMode) Color.DarkGray else Color(0xFFFF5252).copy(alpha = 0.5f), RoundedCornerShape(12.dp)),
-                colors = CardDefaults.cardColors(
-                    containerColor = if (isOutdoorMode) Color.White else Color(0xF2160F0F)
-                ),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "Draw Geological Boundaries",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                        color = if (isOutdoorMode) Color(0xFFC62828) else Color(0xFFFF5252),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Divider(color = if (isOutdoorMode) Color.LightGray else Color.White.copy(0.15f))
-
-                    // Contact Name
-                    Text("Boundary or Fault Name:", fontSize = 11.sp, color = if (isOutdoorMode) Color.DarkGray else Color.Gray, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(
-                        value = newContactName,
-                        onValueChange = { newContactName = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = if (isOutdoorMode) Color.Black else Color.White),
-                        placeholder = { Text("e.g. North Fault Line", fontSize = 12.sp, color = Color.Gray) },
-                        maxLines = 1,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = if (isOutdoorMode) Color.Black else Color(0xFFFF5252)
-                        )
-                    )
-
-                    // Line Type selector
-                    Text("Boundary Line Type:", fontSize = 11.sp, color = if (isOutdoorMode) Color.DarkGray else Color.Gray, modifier = Modifier.fillMaxWidth())
-                    val types = listOf(
-                        "FORMATION_CONTACT" to "Formation (Solid)",
-                        "FAULT_CONTACT" to "Fault (Dashed)",
-                        "GRADATIONAL_CONTACT" to "Gradational (Dotted)"
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        types.forEach { (typeKey, typeLabel) ->
-                            val selected = newContactType == typeKey
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(if (selected) (if (isOutdoorMode) Color.Black else Color(0xFFFF5252)) else (if (isOutdoorMode) Color(0xFFEEEEEE) else Color(0x1BFFFFFF)))
-                                    .clickable { newContactType = typeKey }
-                                    .padding(vertical = 6.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = typeLabel,
-                                    fontSize = 8.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (selected) Color.White else (if (isOutdoorMode) Color.Black else Color.White)
-                                )
-                            }
-                        }
-                    }
-
-                    // Draw draft status
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "${draftContactPoints.size} stations selected",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isOutdoorMode) Color.Black else Color.White
-                        )
-                        Icon(Icons.Default.Gesture, contentDescription = null, tint = if (isOutdoorMode) Color.Gray else Color.LightGray)
-                    }
-
-                    // Stations list to click and connect
-                    Text("Select stations to connect:", fontSize = 10.5.sp, color = if (isOutdoorMode) Color.DarkGray else Color.Gray, modifier = Modifier.fillMaxWidth())
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(115.dp)
-                            .background(if (isOutdoorMode) Color(0xFFF9F9F9) else Color(0x1A000000), RoundedCornerShape(4.dp))
-                            .border(0.5.dp, Color.Gray.copy(0.3f), RoundedCornerShape(4.dp))
-                    ) {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(4.dp)
-                        ) {
-                            items(stationsToShow) { station ->
-                                val indexInDraft = draftContactPoints.indexOfFirst { it.id == station.id }
-                                val isInDraft = indexInDraft >= 0
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            if (isInDraft) {
-                                                draftContactPoints = draftContactPoints.filter { it.id != station.id }
-                                            } else {
-                                                draftContactPoints = draftContactPoints + station
-                                            }
-                                        }
-                                        .padding(vertical = 4.dp, horizontal = 6.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    if (isInDraft) {
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(CircleShape)
-                                                .background(if (isOutdoorMode) Color.Black else Color(0xFFFF5252))
-                                                .size(18.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Text((indexInDraft + 1).toString(), fontSize = 9.5.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                                        }
-                                    } else {
-                                        Icon(Icons.Default.AddCircleOutline, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(16.dp))
-                                    }
-                                    Text(
-                                        text = "${station.stationCode} (Lat: ${String.format(Locale.US, "%.4f", station.latitude)})",
-                                        fontSize = 11.sp,
-                                        color = if (isOutdoorMode) Color.Black else Color.White
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // Action save
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = {
-                                draftContactPoints = emptyList()
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isOutdoorMode) Color(0xFFE0E0E0) else Color(0x33FFFFFF),
-                                contentColor = if (isOutdoorMode) Color.Black else Color.White
-                            ),
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(6.dp)
-                        ) {
-                            Text("Clear", fontSize = 11.sp)
-                        }
-
-                        Button(
-                            onClick = {
-                                if (draftContactPoints.size < 2) {
-                                    Toast.makeText(context, "Select at least 2 stations!", Toast.LENGTH_SHORT).show()
-                                    return@Button
-                                }
-                                val color = when (newContactType) {
-                                    "FAULT_CONTACT" -> "#FF3D00" // Red
-                                    "GRADATIONAL_CONTACT" -> "#00E676" // Green/Gray dotted
-                                    else -> "#00E5FF" // cyan solid formation contact
-                                }
-                                val c = GeologicalContact(
-                                    name = newContactName,
-                                    type = newContactType,
-                                    points = draftContactPoints,
-                                    colorHex = color
-                                )
-                                contactsList = contactsList + c
-                                draftContactPoints = emptyList()
-                                isDrawingContactMode = false
-                                Toast.makeText(context, "Geological boundary saved!", Toast.LENGTH_SHORT).show()
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isOutdoorMode) Color.Black else Color(0xFFFF5252),
-                                contentColor = Color.White
-                            ),
-                            modifier = Modifier.weight(1.3f),
-                            shape = RoundedCornerShape(6.dp)
-                        ) {
-                            Text("Save Boundary", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-        }
-
-        // -------------------------------------------------------------
-        // DYNAMIC OVERLAY 2: SURVEYOR COORDINATE SYSTEM & AZIMUTH TOOL
-        // Standardized top/end paddings to prevent central and bottom screen collisions
-        // -------------------------------------------------------------
-        AnimatedVisibility(
-            visible = isSurveyorPanelVisible,
-            enter = fadeIn() + slideInVertically { it / 2 },
-            exit = fadeOut() + slideOutVertically { it / 2 },
-            modifier = Modifier
-                .padding(top = 72.dp, end = 70.dp)
-                .align(Alignment.TopEnd)
-        ) {
-            var targetLatStr by remember { mutableStateOf("35.7000") }
-            var targetLonStr by remember { mutableStateOf("51.4300") }
-
-            val targetLatVal = targetLatStr.toDoubleOrNull() ?: 35.7
-            val targetLonVal = targetLonStr.toDoubleOrNull() ?: 51.43
-
-            // Great circle distance (Haversine formula in meters)
-            val lat1Rad = Math.toRadians(currentLat)
-            val lat2Rad = Math.toRadians(targetLatVal)
-            val deltaLatRad = Math.toRadians(targetLatVal - currentLat)
-            val deltaLonRad = Math.toRadians(targetLonVal - currentLon)
-            val a = Math.sin(deltaLatRad / 2.0) * Math.sin(deltaLatRad / 2.0) +
-                    Math.cos(lat1Rad) * Math.cos(lat2Rad) *
-                    Math.sin(deltaLonRad / 2.0) * Math.sin(deltaLonRad / 2.0)
-            val cVal = 2.0 * Math.atan2(Math.sqrt(a), Math.sqrt(1.0 - a))
-            val computedDistanceMeters = 6371000.0 * cVal
-
-            // Forward Azimuth Bearing (degrees)
-            val yAzimuth = Math.sin(deltaLonRad) * Math.cos(lat2Rad)
-            val xAzimuth = Math.cos(lat1Rad) * Math.sin(lat2Rad) -
-                    Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(deltaLonRad)
-            val bearingDeg = (Math.toDegrees(Math.atan2(yAzimuth, xAzimuth)) + 360.0) % 360.0
-
-            Card(
-                modifier = Modifier.width(280.dp),
-                colors = CardDefaults.cardColors(containerColor = if (isOutdoorMode) Color.White else Color(0xFF161C19)),
-                border = BorderStroke(1.5.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Icon(Icons.Default.Explore, contentDescription = null, tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), modifier = Modifier.size(18.dp))
-                            Text("Bearing & Distance Surveyor", fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = if (isOutdoorMode) Color.Black else Color.White)
-                        }
-                        IconButton(onClick = { isSurveyorPanelVisible = false }, modifier = Modifier.size(20.dp)) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray, modifier = Modifier.size(16.dp))
-                        }
-                    }
-                    
-                    Text(
-                        text = "High-precision geodesic distance to borehole target",
-                        fontSize = 9.sp,
-                        color = if (isOutdoorMode) Color.DarkGray else Color.LightGray,
-                        lineHeight = 13.sp
-                    )
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                        OutlinedTextField(
-                            value = targetLatStr,
-                            onValueChange = { targetLatStr = it },
-                            label = { Text("Target Lat (°)", fontSize = 8.sp, color = if (isOutdoorMode) Color.Black else Color.LightGray) },
-                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp, color = if (isOutdoorMode) Color.Black else Color.White, fontFamily = FontFamily.Monospace),
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF),
-                                unfocusedBorderColor = Color.Gray.copy(0.5f),
-                                focusedLabelColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF),
-                                focusedContainerColor = if (isOutdoorMode) Color(0xFFF1F1F1) else Color.Black.copy(0.2f),
-                                unfocusedContainerColor = if (isOutdoorMode) Color(0xFFF5F5F5) else Color.Black.copy(0.2f)
-                            )
-                        )
-                        OutlinedTextField(
-                            value = targetLonStr,
-                            onValueChange = { targetLonStr = it },
-                            label = { Text("Target Lng (°)", fontSize = 8.sp, color = if (isOutdoorMode) Color.Black else Color.LightGray) },
-                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 11.sp, color = if (isOutdoorMode) Color.Black else Color.White, fontFamily = FontFamily.Monospace),
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF),
-                                unfocusedBorderColor = Color.Gray.copy(0.5f),
-                                focusedLabelColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF),
-                                focusedContainerColor = if (isOutdoorMode) Color(0xFFF1F1F1) else Color.Black.copy(0.2f),
-                                unfocusedContainerColor = if (isOutdoorMode) Color(0xFFF5F5F5) else Color.Black.copy(0.2f)
-                            )
-                        )
-                    }
-
-                    if (stationsToShow.isNotEmpty()) {
-                        var snapExpanded by remember { mutableStateOf(false) }
-                        Box {
-                            OutlinedButton(
-                                onClick = { snapExpanded = !snapExpanded },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(6.dp),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF)),
-                                border = BorderStroke(0.5.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF).copy(0.6f)),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                            ) {
-                                Text("Snap targeting to mapped station", fontSize = 10.sp)
-                                Spacer(modifier = Modifier.weight(1f))
-                                Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(16.dp))
-                            }
-                            
-                            DropdownMenu(
-                                expanded = snapExpanded,
-                                onDismissRequest = { snapExpanded = false },
-                                modifier = Modifier.background(if (isOutdoorMode) Color.White else Color(0xFF161C19)).border(1.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF))
-                            ) {
-                                stationsToShow.forEach { s ->
-                                    DropdownMenuItem(
-                                        text = { Text("${s.stationCode} (Lat: ${s.latitude})", fontSize = 11.sp, color = if (isOutdoorMode) Color.Black else Color.White) },
-                                        onClick = {
-                                            targetLatStr = s.latitude.toString()
-                                            targetLonStr = s.longitude.toString()
-                                            snapExpanded = false
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = if (isOutdoorMode) Color(0xFFEEEEEE) else Color.Black.copy(0.4f)),
-                        border = BorderStroke(0.5.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF).copy(alpha = 0.2f))
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(8.dp),
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Spheroidal Dist", fontSize = 8.5.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                                val dStr = if (computedDistanceMeters >= 1000.0) {
-                                    "${String.format(Locale.US, "%.3f", computedDistanceMeters / 1000.0)} km"
-                                } else {
-                                    "${computedDistanceMeters.toInt()} m"
-                                }
-                                Text(dStr, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0))
-                            }
-                            Box(modifier = Modifier.width(1.dp).height(24.dp).background(Color.Gray.copy(0.5f)))
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("True Bearing", fontSize = 8.5.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                                Text("${String.format(Locale.US, "%.1f° N", bearingDeg)}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // -------------------------------------------------------------
-        // DYNAMIC OVERLAY 3: FLOATING SENSOR & MAPBOX CONFIG SETTINGS PANEL
-        // Standardized top/end paddings to prevent central and bottom screen collisions
-        // -------------------------------------------------------------
-        AnimatedVisibility(
-            visible = isSettingsPanelVisible,
-            enter = fadeIn() + slideInVertically { it / 2 },
-            exit = fadeOut() + slideOutVertically { it / 2 },
-            modifier = Modifier
-                .padding(top = 72.dp, end = 70.dp)
-                .align(Alignment.TopEnd)
-        ) {
-            Card(
-                modifier = Modifier.width(280.dp),
-                colors = CardDefaults.cardColors(containerColor = if (isOutdoorMode) Color.White else Color(0xFF151817)),
-                border = BorderStroke(1.5.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(
-                    modifier = Modifier.padding(12.dp).verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Icon(Icons.Default.Settings, contentDescription = null, tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), modifier = Modifier.size(18.dp))
-                            Text("Advanced GIS Configs", fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = if (isOutdoorMode) Color.Black else Color.White)
-                        }
-                        IconButton(onClick = { isSettingsPanelVisible = false }, modifier = Modifier.size(20.dp)) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray, modifier = Modifier.size(16.dp))
-                        }
-                    }
-
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("MAPPING TELEMETRIES:", fontSize = 9.sp, color = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
-                        
-                        Row(
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Live GNSS lock positioning", fontSize = 10.5.sp, color = if (isOutdoorMode) Color.Black else Color.White)
-                            Checkbox(
-                                checked = isRealPositionEnabled, 
-                                onCheckedChange = { onRealPositionChanged(it) },
-                                colors = CheckboxDefaults.colors(checkedColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF))
-                            )
-                        }
-                        
-                        Row(
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Compass map auto orientation", fontSize = 10.5.sp, color = if (isOutdoorMode) Color.Black else Color.White)
-                            Checkbox(
-                                checked = rotateMapUsingGnss, 
-                                onCheckedChange = { rotateMapUsingGnss = it },
-                                colors = CheckboxDefaults.colors(checkedColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF))
-                            )
-                        }
-
-                        Row(
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Line of sight dashed indicator", fontSize = 10.5.sp, color = if (isOutdoorMode) Color.Black else Color.White)
-                            Checkbox(
-                                checked = displayLineFromPosition, 
-                                onCheckedChange = { displayLineFromPosition = it },
-                                colors = CheckboxDefaults.colors(checkedColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF))
-                            )
-                        }
-
-                        Row(
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Telemetry status overlays", fontSize = 10.5.sp, color = if (isOutdoorMode) Color.Black else Color.White)
-                            Checkbox(
-                                checked = positioningStatus, 
-                                onCheckedChange = { positioningStatus = it },
-                                colors = CheckboxDefaults.colors(checkedColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF))
-                            )
-                        }
-                    }
-
-                    Divider(color = if (isOutdoorMode) Color.LightGray else Color.White.copy(0.12f))
-
-                    // HIGH-ACCURACY GEODETIC OPTIMIZATION / تنظیمات دقت و کالیبراسیون لوکیشن
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            text = if (isFarsiMode) "کالیبراسیون و دقت مکانی" else "GEODETIC SENSOR CALIBRATION",
-                            fontSize = 9.sp,
-                            color = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF),
-                            fontWeight = FontWeight.Bold
-                        )
-
-                        // 1. Hardware GPS Detection & Resolution Launcher
-                        Row(
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = if (isFarsiMode) "وضعیت جی‌پی‌اس سخت‌افزار" else "Hardware GPS Status",
-                                    fontSize = 10.5.sp,
-                                    color = if (isOutdoorMode) Color.Black else Color.White
-                                )
-                                Text(
-                                    text = if (isDeviceGpsEnabled) {
-                                        if (isFarsiMode) "موقعیت‌یاب ماهواره فعال" else "GPS receiver active"
-                                    } else {
-                                        if (isFarsiMode) "لوکیشن خاموش است!" else "Device GPS turned OFF!"
-                                    },
-                                    fontSize = 8.5.sp,
-                                    color = if (isDeviceGpsEnabled) Color(0xFF4CAF50) else Color(0xFFFF5252)
-                                )
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .background(
-                                        if (isDeviceGpsEnabled) Color(0xFF00FF00) else Color(0xFFFF0000),
-                                        CircleShape
-                                    )
-                            )
-                        }
-
-                        if (!isDeviceGpsEnabled) {
-                            Button(
-                                onClick = {
-                                    try {
-                                        val intent = android.content.Intent(android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS)
-                                        context.startActivity(intent)
-                                    } catch (e: Exception) {
-                                        android.widget.Toast.makeText(context, "خطا در باز کردن تنظیمات لوکیشن", android.widget.Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color(0xFFFF5252),
-                                    contentColor = Color.White
-                                ),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 4.dp, horizontal = 8.dp),
-                                shape = RoundedCornerShape(6.dp)
-                            ) {
-                                Icon(Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(12.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = if (isFarsiMode) "روشن کردن موقعیت‌یاب گوشی" else "Enable Phone GPS",
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-
-                        // 2. Kalman Filter Smoothing Toggle
-                        Row(
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = if (isFarsiMode) "فیلتر کالمن لوکیشن" else "Kalman Smooth Tracks",
-                                    fontSize = 10.5.sp,
-                                    color = if (isOutdoorMode) Color.Black else Color.White
-                                )
-                                Text(
-                                    text = if (isFarsiMode) "کاهش خطای پرش آنتن و لرزه جهت‌ها" else "Smoothens route & limits jump drift",
-                                    fontSize = 8.sp,
-                                    color = Color.Gray,
-                                    lineHeight = 11.sp
-                                )
-                            }
-                            Switch(
-                                checked = isKalmanSmoothingEnabled,
-                                onCheckedChange = { viewModel.setKalmanSmoothingEnabled(it) },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = Color.White,
-                                    checkedTrackColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)
-                                ),
-                                modifier = Modifier.scale(0.8f)
-                            )
-                        }
-
-                        // 3. Background tracking permission helper (for screen-off walks)
-                        Button(
-                            onClick = {
-                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                                    val hasBackgroundPermission = androidx.core.content.ContextCompat.checkSelfPermission(
-                                        context,
-                                        Manifest.permission.ACCESS_BACKGROUND_LOCATION
-                                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
-                                    if (hasBackgroundPermission) {
-                                        android.widget.Toast.makeText(context, if (isFarsiMode) "مجوز پس‌زمینه از قبل تایید شده است." else "Background location already active.", android.widget.Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        showBackgroundLocationRationaleDialog = true
-                                    }
-                                } else {
-                                    android.widget.Toast.makeText(context, if (isFarsiMode) "ردیابی پس‌زمینه در سیستم شما اتوماتیک فعال است." else "Background mapping automatically supported.", android.widget.Toast.LENGTH_SHORT).show()
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0x3300FFE0),
-                                contentColor = if (isOutdoorMode) Color.White else Color(0xFF00FFE0)
-                            ),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 4.dp, horizontal = 8.dp),
-                            border = if (isOutdoorMode) null else BorderStroke(1.dp, Color(0xFF00E5FF).copy(0.4f)),
-                            shape = RoundedCornerShape(6.dp)
-                        ) {
-                            Icon(Icons.Default.DirectionsWalk, contentDescription = null, modifier = Modifier.size(12.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = if (isFarsiMode) "ردیابی در زمان قفل بودن صفحه" else "Record With Screen Off",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(2.dp))
-
-                    Divider(color = if (isOutdoorMode) Color.LightGray else Color.White.copy(0.12f))
-
-                    // Mapbox details
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("MAPBOX TILES INTEGRATION API:", fontSize = 9.sp, color = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
-                        Text("Required for outdoor satellite topo overlays:", fontSize = 8.5.sp, color = Color.Gray, lineHeight = 12.sp)
-                        
-                        OutlinedTextField(
-                            value = mapboxTokenInput,
-                            onValueChange = { mapboxTokenInput = it },
-                            label = { Text("Mapbox Private Key", fontSize = 8.5.sp, color = if (isOutdoorMode) Color.Black else Color.LightGray) },
-                            singleLine = true,
-                            textStyle = androidx.compose.ui.text.TextStyle(fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = if (isOutdoorMode) Color.Black else Color.White),
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF),
-                                unfocusedBorderColor = Color.Gray.copy(0.4f),
-                                focusedLabelColor = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF)
-                            ),
-                            trailingIcon = {
-                                IconButton(onClick = { mapboxTokenInput = "pk.eyJ1IjoiZmFyemFkZiIsImEiOiJjbHpiaXdwZ3cwMTF5MndzYzhvdzBoMHp1In0.6R0R9z84Vd-M208r_6oY7g" }) {
-                                    Icon(Icons.Default.Refresh, contentDescription = "Default Token", tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), modifier = Modifier.size(16.dp))
-                                }
-                            }
-                        )
-                    }
-                    
-                    Divider(color = if (isOutdoorMode) Color.LightGray else Color.White.copy(0.12f))
-
-                    // Simulated settings
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("SIMULATED CONSTELLATION:", fontSize = 9.sp, color = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), fontWeight = FontWeight.Bold)
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                            Text("Sats lock count: $satelliteCount", fontSize = 10.sp, color = if (isOutdoorMode) Color.Black else Color.White, modifier = Modifier.weight(1f))
-                            Slider(
-                                value = satelliteCount.toFloat(),
-                                onValueChange = { satelliteCount = it.toInt() },
-                                valueRange = 4f..24f,
-                                modifier = Modifier.width(130.dp),
-                                colors = SliderDefaults.colors(activeTrackColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), thumbColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF))
-                            )
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                            val errorRadiusStr = if (gpsAccuracy < 1.0) {
-                                String.format(Locale.US, "%.0f cm", gpsAccuracy * 100.0)
-                            } else {
-                                String.format(Locale.US, "%.1f m", gpsAccuracy)
-                            }
-                            Text("GPS error radius: ±$errorRadiusStr", fontSize = 10.sp, color = if (isOutdoorMode) Color.Black else Color.White, modifier = Modifier.weight(1f))
-                            Slider(
-                                value = gpsAccuracy.toFloat(),
-                                onValueChange = { gpsAccuracy = it.toDouble() },
-                                valueRange = 0.02f..12.0f,
-                                modifier = Modifier.width(130.dp),
-                                colors = SliderDefaults.colors(activeTrackColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), thumbColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF))
-                            )
-                        }
-                        
-                        // RTK/GNSS Level Quick Presets
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
-                        ) {
-                            val presets = listOf(
-                                Triple("RTK FIXED", 0.02, 22),
-                                Triple("RTK FLOAT", 0.35, 18),
-                                Triple("3D DGPS", 1.8, 14),
-                                Triple("POOR GPS", 6.5, 6)
-                            )
-                            presets.forEach { (name, acc, sats) ->
-                                val isSelected = Math.abs(gpsAccuracy - acc) < 0.1
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(
-                                            if (isSelected) {
-                                                if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)
-                                            } else {
-                                                if (isOutdoorMode) Color(0xFFEEEEEE) else Color(0xFF222522)
-                                            }
-                                        )
-                                        .clickable {
-                                            gpsAccuracy = acc
-                                            satelliteCount = sats
-                                        }
-                                        .padding(vertical = 6.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = name,
-                                        fontSize = 7.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) {
-                                            if (isOutdoorMode) Color.White else Color.Black
-                                        } else {
-                                            if (isOutdoorMode) Color.DarkGray else Color.LightGray
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // -------------------------------------------------------------
-        // DYNAMIC OVERLAY 4: FLOATING MAPPED TRACK JOURNAL JOURNAL PANEL
-        // Standardized top/end paddings to prevent central and bottom screen collisions
-        // -------------------------------------------------------------
-        AnimatedVisibility(
-            visible = isJournalPanelVisible,
-            enter = fadeIn() + slideInVertically { it / 2 },
-            exit = fadeOut() + slideOutVertically { it / 2 },
-            modifier = Modifier
-                .padding(top = 72.dp, end = 70.dp)
-                .align(Alignment.TopEnd)
-        ) {
-            Card(
-                modifier = Modifier.width(310.dp),
-                colors = CardDefaults.cardColors(containerColor = if (isOutdoorMode) Color.White else Color(0xFC111513)),
-                border = BorderStroke(1.5.dp, if (isOutdoorMode) Color.Black else Color(0xFF00E5FF)),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Icon(Icons.Default.List, contentDescription = null, tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), modifier = Modifier.size(18.dp))
-                            Text("Saved Paths Journal", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = if (isOutdoorMode) Color.Black else Color.White)
-                        }
-                        IconButton(onClick = { isJournalPanelVisible = false }, modifier = Modifier.size(20.dp)) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray, modifier = Modifier.size(16.dp))
-                        }
-                    }
-
-                    Divider(color = if (isOutdoorMode) Color.LightGray else Color.White.copy(0.12f))
-
-                    var journalTabChoice by remember { mutableStateOf("Tracks") } // "Tracks" or "Stations"
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        listOf("Tracks" to "Saved Tracks", "Stations" to "Stations Log").forEach { (tabKey, tabLabel) ->
-                            val active = journalTabChoice == tabKey
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(if (active) (if (isOutdoorMode) Color.Black else Color(0x3300E5FF)) else (if (isOutdoorMode) Color(0xFFE0E0E0) else Color(0x11FFFFFF)))
-                                    .border(1.dp, if (active) (if (isOutdoorMode) Color.Black else Color(0xFF00E5FF)) else Color.Transparent, RoundedCornerShape(6.dp))
-                                    .clickable { journalTabChoice = tabKey }
-                                    .padding(vertical = 4.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = tabLabel,
-                                    fontSize = 9.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (active) (if (isOutdoorMode) Color.White else Color(0xFF00E5FF)) else (if (isOutdoorMode) Color.Black else Color.LightGray)
-                                )
-                            }
-                        }
-                    }
-
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(260.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        if (journalTabChoice == "Tracks") {
-                        if (savedTracks.isEmpty()) {
-                            item {
-                                Box(
-                                    modifier = Modifier.fillMaxSize().padding(16.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        text = "No saved field GPS paths. Tap the red record indicator widget to log walks.",
-                                        fontSize = 10.sp,
-                                        color = if (isOutdoorMode) Color.DarkGray else Color.LightGray,
-                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                                    )
-                                }
-                            }
-                        } else {
-                            items(savedTracks) { track ->
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(containerColor = if (isOutdoorMode) Color(0xFFEEEEEE) else Color(0xFF1E2521)),
-                                    border = BorderStroke(0.5.dp, if (isOutdoorMode) Color.Gray else Color(0xFF00E5FF).copy(alpha = 0.2f))
-                                ) {
-                                    Column(modifier = Modifier.padding(8.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(track.name, fontWeight = FontWeight.Bold, fontSize = 11.5.sp, color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00E5FF))
-                                            val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(track.createdAt))
-                                            Text(dateStr, fontSize = 8.sp, color = if (isOutdoorMode) Color.DarkGray else Color.Gray, fontFamily = FontFamily.Monospace)
-                                        }
-                                        
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text("Len: ${track.lengthMeters.toInt()}m | Dur: ${track.durationSeconds / 60}m ${track.durationSeconds % 60}s", fontSize = 9.sp, color = if (isOutdoorMode) Color.Black else Color.LightGray)
-                                            IconButton(
-                                                onClick = { viewModel.deleteTrack(track.id) },
-                                                modifier = Modifier.size(24.dp)
-                                            ) {
-                                                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFFF5252), modifier = Modifier.size(14.dp))
-                                            }
-                                        }
-
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.End,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            TextButton(
-                                                onClick = {
-                                                    editTrackItem = track
-                                                    editTrackItemName = track.name
-                                                    showEditDialog = true
-                                                },
-                                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 1.dp),
-                                                modifier = Modifier.height(24.dp)
-                                            ) {
-                                                Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(10.dp), tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00FFE0))
-                                                Spacer(Modifier.width(2.dp))
-                                                Text("Rename", fontSize = 9.sp, color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0))
-                                            }
-                                            Spacer(Modifier.width(8.dp))
-                                            TextButton(
-                                                onClick = {
-                                                    val points = parsePointsJson(track.pointsJson)
-                                                    val fileString = when (exportFormatChoice) {
-                                                        "GPX" -> generateGpxString(track.name, points)
-                                                        "KML" -> generateKmlString(track.name, points)
-                                                        "GeoJSON" -> generateGeoJsonString(track.name, points)
-                                                        else -> generateTxtString(track.name, points, track.lengthMeters, track.durationSeconds)
-                                                    }
-                                                    val extension = exportFormatChoice.lowercase(Locale.US)
-                                                    val mime = if (exportFormatChoice == "GeoJSON") "application/json" else "application/xml"
-                                                    shareFileWithApps(context, "${track.name}.$extension", mime, fileString)
-                                                },
-                                                contentPadding = PaddingValues(horizontal = 4.dp, vertical = 1.dp),
-                                                modifier = Modifier.height(24.dp)
-                                            ) {
-                                                Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(10.dp), tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00FFE0))
-                                                Spacer(Modifier.width(2.dp))
-                                                Text("Share ($exportFormatChoice)", fontSize = 9.sp, color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0))
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        } } else {
-                            if (filteredStations.isEmpty()) {
-                                item {
-                                    Box(
-                                        modifier = Modifier.fillMaxSize().padding(16.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "No saved stations in this area.",
-                                            fontSize = 10.sp,
-                                            color = if (isOutdoorMode) Color.DarkGray else Color.LightGray,
-                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                                        )
-                                    }
-                                }
-                            } else {
-                                items(filteredStations) { station ->
-                                    val distanceToMyPos = calculateDistance(currentLat, currentLon, station.latitude, station.longitude)
-                                    Card(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        colors = CardDefaults.cardColors(containerColor = if (isOutdoorMode) Color(0xFFEEEEEE) else Color(0xFF1E2521)),
-                                        border = BorderStroke(0.5.dp, if (isOutdoorMode) Color.Gray else Color(0xFF00E5FF).copy(alpha = 0.2f))
-                                    ) {
-                                        Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(
-                                                        text = "STATION: ${station.stationCode}",
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontSize = 11.5.sp,
-                                                        color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00E5FF)
-                                                    )
-                                                    Text(
-                                                        text = "Dist: ${if (distanceToMyPos >= 1000.0) String.format(Locale.US, "%.2f km", distanceToMyPos / 1000.0) else String.format(Locale.US, "%.1f m", distanceToMyPos)}",
-                                                        fontSize = 9.sp,
-                                                        color = Color.Gray
-                                                    )
-                                                }
-                                                // Action tools: Navigate, Locate, Delete
-                                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                    // GPS target "Go-To" pointer toggle
-                                                    IconButton(
-                                                        onClick = {
-                                                            if (navigationTargetStation?.id == station.id) {
-                                                                navigationTargetStation = null
-                                                            } else {
-                                                                navigationTargetStation = station
-                                                            }
-                                                            isJournalPanelVisible = false
-                                                        },
-                                                        modifier = Modifier
-                                                            .size(28.dp)
-                                                            .background(if (navigationTargetStation?.id == station.id) (if (isOutdoorMode) Color.Black else Color(0x3300E5FF)) else Color.Transparent, CircleShape)
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.Navigation,
-                                                            contentDescription = "Target Go-To navigation",
-                                                            tint = if (navigationTargetStation?.id == station.id) (if (isOutdoorMode) Color.White else Color(0xFF00E5FF)) else Color.Gray,
-                                                            modifier = Modifier.size(14.dp)
-                                                        )
-                                                    }
-
-                                                    // Centering map location
-                                                    IconButton(
-                                                        onClick = {
-                                                            pannedCenterLat = station.latitude
-                                                            pannedCenterLon = station.longitude
-                                                            lockGpsCenter = false
-                                                            isJournalPanelVisible = false
-                                                        },
-                                                        modifier = Modifier.size(28.dp)
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.MyLocation,
-                                                            contentDescription = "Locate on map",
-                                                            tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00FFE0),
-                                                            modifier = Modifier.size(14.dp)
-                                                        )
-                                                    }
-                                                    
-                                                    // Delete
-                                                    IconButton(
-                                                        onClick = {
-                                                            activeProject?.id?.let { projId ->
-                                                                viewModel.deleteStation(station.id, projId)
-                                                            }
-                                                        },
-                                                        modifier = Modifier.size(28.dp)
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.Delete,
-                                                            contentDescription = "Delete Station",
-                                                            tint = Color(0xFFFF5252),
-                                                            modifier = Modifier.size(14.dp)
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                            val obsList = allObservationsList.filter { it.stationId == station.id }
-                                            if (obsList.isNotEmpty()) {
-                                                Column(verticalArrangement = Arrangement.spacedBy(2.dp), modifier = Modifier.padding(start = 4.dp)) {
-                                                    obsList.forEach { obs ->
-                                                        val dipText = if (obs.strike != null && obs.dip != null) "S: ${obs.strike}°/D: ${obs.dip}°" else ""
-                                                        val notesText = obs.notes?.take(45) ?: ""
-                                                        Text(
-                                                            text = "• ${obs.observationType}: $dipText $notesText",
-                                                            fontSize = 8.5.sp,
-                                                            color = if (isOutdoorMode) Color.Black else Color.White.copy(0.7f)
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Export Layout Format:", fontSize = 8.5.sp, color = Color.Gray)
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            listOf("GPX", "KML", "GeoJSON", "TXT").forEach { format ->
-                                FilterChip(
-                                    selected = exportFormatChoice == format,
-                                    onClick = { exportFormatChoice = format },
-                                    label = { Text(format, fontSize = 8.sp, fontWeight = FontWeight.Bold) },
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00E5FF),
-                                        selectedLabelColor = if (isOutdoorMode) Color.White else Color.Black,
-                                        containerColor = if (isOutdoorMode) Color(0xFFE0E0E0) else Color.White.copy(0.1f),
-                                        labelColor = if (isOutdoorMode) Color.Black else Color.White
-                                    )
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        
 
         // -------------------------------------------------------------
         // DYNAMIC OVERLAY 5: ADD GEOLOGICAL POINT QUICK-LOG DIALOG
@@ -14456,6 +14371,237 @@ fun MapContent(viewModel: GeologyViewModel) {
             )
         }
 
+        if (showFormatSelectDialog && shareTrackTarget != null) {
+            val track = shareTrackTarget!!
+            var editName by remember(track) { mutableStateOf(track.name) }
+            var selectedColorHex by remember(track) { mutableStateOf(track.colorHex) }
+            var selectedStrokeWidth by remember(track) { mutableStateOf(track.strokeWidth) }
+            var selectedFormat by remember { mutableStateOf("GPX") }
+
+            AlertDialog(
+                onDismissRequest = { showFormatSelectDialog = false },
+                title = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(Icons.Default.SettingsInputAntenna, null, tint = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00FFE0))
+                        Text(
+                            text = if (isFarsiMode) "تنظیمات و خروجی مسیر" else "Track Settings & Export",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isOutdoorMode) Color.Black else Color.White
+                        )
+                    }
+                },
+                text = {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = if (isOutdoorMode) Color(0xFFEEEEEE) else Color.Black.copy(0.3f))
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = "${if (isFarsiMode) "طول تخمینی:" else "Length:"} ${track.lengthMeters.toInt()} ${if (isFarsiMode) "متر" else "meters"}",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0)
+                                )
+                                Text(
+                                    text = "${if (isFarsiMode) "مدت زمان:" else "Duration:"} ${track.durationSeconds / 60}m ${track.durationSeconds % 60}s",
+                                    fontSize = 10.5.sp,
+                                    color = if (isOutdoorMode) Color.DarkGray else Color.LightGray
+                                )
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = editName,
+                            onValueChange = { editName = it },
+                            label = { Text(if (isFarsiMode) "نام مسیر" else "Track Name", fontSize = 11.sp) },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00FFE0),
+                                unfocusedBorderColor = Color.Gray
+                            ),
+                            textStyle = TextStyle(fontSize = 13.sp, color = if (isOutdoorMode) Color.Black else Color.White),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Text(
+                            text = if (isFarsiMode) "انتخاب رنگ خط روی نقشه:" else "Select Line Color on Map:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isOutdoorMode) Color.DarkGray else Color.Gray
+                        )
+                        val colorChoices = listOf(
+                            "#ff3d00" to Color(0xFFFF3D00),
+                            "#00ffe0" to Color(0xFF00FFE0),
+                            "#ffeb3b" to Color(0xFFFFEB3B),
+                            "#4caf50" to Color(0xFF4CAF50),
+                            "#2196f3" to Color(0xFF2196F3),
+                            "#e91e63" to Color(0xFFE91E63)
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            colorChoices.forEach { (hex, uiColor) ->
+                                val isColorSelected = selectedColorHex.lowercase() == hex.lowercase()
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .background(uiColor, CircleShape)
+                                        .border(
+                                            width = if (isColorSelected) 3.dp else 1.dp,
+                                            color = if (isColorSelected) (if (isOutdoorMode) Color.Black else Color.White) else Color.Transparent,
+                                            shape = CircleShape
+                                        )
+                                        .clickable { selectedColorHex = hex },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (isColorSelected) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = if (hex == "#ffeb3b" || hex == "#00ffe0") Color.Black else Color.White,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (isFarsiMode) "ضخامت خط روی نقشه:" else "Line Thickness:",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isOutdoorMode) Color.DarkGray else Color.Gray
+                            )
+                            Text(
+                                text = "${String.format(Locale.US, "%.1f", selectedStrokeWidth)} px",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00FFE0)
+                            )
+                        }
+                        Slider(
+                            value = selectedStrokeWidth,
+                            onValueChange = { selectedStrokeWidth = it },
+                            valueRange = 1f..12f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00FFE0),
+                                activeTrackColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00FFE0)
+                            )
+                        )
+
+                        Button(
+                            onClick = {
+                                viewModel.updateTrackStyling(track.id, editName, selectedColorHex, selectedStrokeWidth)
+                                Toast.makeText(context, if (isFarsiMode) "تغییرات ظاهری مسیر ذخیره شد" else "Track style changes saved to DB", Toast.LENGTH_SHORT).show()
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00382E),
+                                contentColor = if (isOutdoorMode) Color.White else Color(0xFF00FFE0)
+                            ),
+                            border = BorderStroke(1.dp, (if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0)).copy(0.4f)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (isFarsiMode) "ذخیره نام و تنظیمات ظاهری" else "Save Styling & Name", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        }
+
+                        Divider(color = (if (isOutdoorMode) Color.Black else Color.White).copy(alpha = 0.1f))
+
+                        Text(
+                            text = if (isFarsiMode) "قالب خروجی اشتراک‌گذاری:" else "Export Layout Format:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isOutdoorMode) Color.DarkGray else Color.Gray
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            listOf("GPX", "KML", "KMZ", "GeoJSON", "TXT").forEach { format ->
+                                val isFormatSelected = selectedFormat == format
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(if (isFormatSelected) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00FFE0)) else (if (isOutdoorMode) Color(0xFFEEEEEE) else Color(0x1BFFFFFF)))
+                                        .clickable { selectedFormat = format }
+                                        .padding(vertical = 6.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = format,
+                                        fontSize = 9.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isFormatSelected) (if (isOutdoorMode) Color.White else Color.Black) else (if (isOutdoorMode) Color.Black else Color.White)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            val parsedPoints = parsePointsJson(track.pointsJson)
+                            if (parsedPoints.isEmpty()) {
+                                Toast.makeText(context, "No points in track to export", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            
+                            when (selectedFormat) {
+                                "GPX" -> {
+                                    val gpxContent = generateGpxString(editName, parsedPoints)
+                                    shareFileWithApps(context, "${editName.replace(" ", "_")}.gpx", "application/gpx+xml", gpxContent)
+                                }
+                                "KML" -> {
+                                    val kmlContent = generateKmlString(editName, parsedPoints)
+                                    shareFileWithApps(context, "${editName.replace(" ", "_")}.kml", "application/vnd.google-earth.kml+xml", kmlContent)
+                                }
+                                "KMZ" -> {
+                                    val kmlContent = generateKmlString(editName, parsedPoints)
+                                    shareKmzFileWithApps(context, "${editName.replace(" ", "_")}.kmz", kmlContent)
+                                }
+                                "GeoJSON" -> {
+                                    val geoJsonContent = generateGeoJsonString(editName, parsedPoints)
+                                    shareFileWithApps(context, "${editName.replace(" ", "_")}.geojson", "application/geo+json", geoJsonContent)
+                                }
+                                "TXT" -> {
+                                    val txtContent = generateTxtString(editName, parsedPoints, track.lengthMeters, track.durationSeconds)
+                                    shareFileWithApps(context, "${editName.replace(" ", "_")}.txt", "text/plain", txtContent)
+                                }
+                            }
+                            showFormatSelectDialog = false
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00FFE0), contentColor = if (isOutdoorMode) Color.White else Color.Black)
+                    ) {
+                        Icon(Icons.Default.Share, null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(if (isFarsiMode) "اشتراک‌گذاری خروجی" else "Share & Export")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showFormatSelectDialog = false }) {
+                        Text(if (isFarsiMode) "انصراف" else "Cancel", color = if (isOutdoorMode) Color.Black else Color.White)
+                    }
+                },
+                containerColor = if (isOutdoorMode) Color.White else Color(0xFF161B18),
+                textContentColor = if (isOutdoorMode) Color.Black else Color.White,
+                titleContentColor = if (isOutdoorMode) Color.Black else Color.White
+            )
+        }
+
         // -------------------------------------------------------------
         // IMMERSIVE ACTIVE TAB PANEL OVERLAY
         // -------------------------------------------------------------
@@ -14774,13 +14920,12 @@ fun MapContent(viewModel: GeologyViewModel) {
                                             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                                 IconButton(
                                                     onClick = {
-                                                        editTrackItem = track
-                                                        editTrackItemName = track.name
-                                                        showEditDialog = true
+                                                        shareTrackTarget = track
+                                                        showFormatSelectDialog = true
                                                     },
                                                     modifier = Modifier.size(28.dp)
                                                 ) {
-                                                    Icon(Icons.Default.Edit, contentDescription = "Edit name", tint = accentColor, modifier = Modifier.size(16.dp))
+                                                    Icon(Icons.Default.Edit, contentDescription = "Edit name & style", tint = accentColor, modifier = Modifier.size(16.dp))
                                                 }
                                                 IconButton(
                                                     onClick = {
@@ -15175,104 +15320,4 @@ fun MapContent(viewModel: GeologyViewModel) {
         }
     }
 }
-}
 
-// -------------------------------------------------------------------------
-// 5. GPS EXPORT SHAPE TRANSLATORS HELPER FUNCTIONS
-// -------------------------------------------------------------------------
-fun generateGpxString(name: String, points: List<TrackPoint>): String {
-    val sb = java.lang.StringBuilder()
-    sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
-    sb.append("<gpx version=\"1.1\" creator=\"GeoField Platform\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n")
-    sb.append("  <metadata>\n")
-    sb.append("    <name>$name</name>\n")
-    sb.append("    <desc>Geotechnical Field Mapping Route</desc>\n")
-    sb.append("  </metadata>\n")
-    sb.append("  <trk>\n")
-    sb.append("    <name>$name</name>\n")
-    sb.append("    <trkseg>\n")
-    points.forEach { pt ->
-        val isoTime = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).format(Date(pt.time))
-        sb.append("      <trkpt lat=\"${pt.lat}\" lon=\"${pt.lon}\">\n")
-        sb.append("        <ele>${pt.ele}</ele>\n")
-        sb.append("        <time>$isoTime</time>\n")
-        sb.append("      </trkpt>\n")
-    }
-    sb.append("    </trkseg>\n")
-    sb.append("  </trk>\n")
-    sb.append("</gpx>\n")
-    return sb.toString()
-}
-
-fun generateKmlString(name: String, points: List<TrackPoint>): String {
-    val sb = java.lang.StringBuilder()
-    sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
-    sb.append("<kml xmlns=\"http://www.opengis.net/kml/2.2\">\n")
-    sb.append("  <Document>\n")
-    sb.append("    <name>$name</name>\n")
-    sb.append("    <description>Geofield GIS Track Path</description>\n")
-    sb.append("    <Style id=\"redLinePoly\">\n")
-    sb.append("      <LineStyle>\n")
-    sb.append("        <color>ff0000ff</color>\n") // red
-    sb.append("        <width>4</width>\n")
-    sb.append("      </LineStyle>\n")
-    sb.append("    </Style>\n")
-    sb.append("    <Placemark>\n")
-    sb.append("      <name>Recorded Route Path</name>\n")
-    sb.append("      <styleUrl>#redLinePoly</styleUrl>\n")
-    sb.append("      <LineString>\n")
-    sb.append("        <coordinates>\n")
-    points.forEach { pt ->
-        sb.append("          ${pt.lon},${pt.lat},${pt.ele}\n")
-    }
-    sb.append("        </coordinates>\n")
-    sb.append("      </LineString>\n")
-    sb.append("    </Placemark>\n")
-    sb.append("  </Document>\n")
-    sb.append("</kml>\n")
-    return sb.toString()
-}
-
-fun generateGeoJsonString(name: String, points: List<TrackPoint>): String {
-    val sb = java.lang.StringBuilder()
-    sb.append("{\n")
-    sb.append("  \"type\": \"FeatureCollection\",\n")
-    sb.append("  \"features\": [\n")
-    sb.append("    {\n")
-    sb.append("      \"type\": \"Feature\",\n")
-    sb.append("      \"properties\": {\n")
-    sb.append("        \"name\": \"$name\",\n")
-    sb.append("        \"type\": \"GPS_Track_Log\"\n")
-    sb.append("      },\n")
-    sb.append("      \"geometry\": {\n")
-    sb.append("        \"type\": \"LineString\",\n")
-    sb.append("        \"coordinates\": [\n")
-    points.forEachIndexed { i, pt ->
-        sb.append("          [${pt.lon}, ${pt.lat}, ${pt.ele}]")
-        if (i < points.size - 1) sb.append(",")
-        sb.append("\n")
-    }
-    sb.append("        ]\n")
-    sb.append("      }\n")
-    sb.append("    }\n")
-    sb.append("  ]\n")
-    sb.append("}\n")
-    return sb.toString()
-}
-
-fun generateTxtString(name: String, points: List<TrackPoint>, length: Double, duration: Long): String {
-    val sb = java.lang.StringBuilder()
-    sb.append("=========================================\n")
-    sb.append("GEOFIELD FIELD TRACK LOG REPORT SUMMARY  \n")
-    sb.append("=========================================\n")
-    sb.append("Track Name: $name\n")
-    sb.append("Total Distance Estimate: ${length.toInt()} meters\n")
-    sb.append("Recording duration time: ${duration / 60} minutes, ${duration % 60} seconds\n")
-    sb.append("Recorded GPS Coordinates point captures: ${points.size}\n\n")
-    sb.append("Point Coordinates Matrix List:\n")
-    points.forEachIndexed { idx, pt ->
-        val tm = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(pt.time))
-        sb.append("${idx + 1}. Lat: ${pt.lat}, Lon: ${pt.lon}, Alt: ${pt.ele}m, Heading: ${pt.heading}deg, Time: $tm\n")
-    }
-    return sb.toString()
-}
