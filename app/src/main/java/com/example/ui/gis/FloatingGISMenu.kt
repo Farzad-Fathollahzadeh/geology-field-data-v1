@@ -70,13 +70,14 @@ fun FloatingGISMenu(
                         RoundedCornerShape(12.dp)
                     )
                     .padding(8.dp)
-                    .width(220.dp)
+                    .width(250.dp)
                     .heightIn(max = 280.dp)
                     .verticalScroll(rememberScrollState())
             ) {
                 Text(
-                    text = "FIELD GIS CONSOLE",
+                    text = "کنسول ابزار نقشه | GIS CONSOLE",
                     fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
                     color = accentColor,
                     style = MaterialTheme.typography.labelMedium,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -86,7 +87,7 @@ fun FloatingGISMenu(
 
                 // Observation tool
                 GISMenuButton(
-                    label = "Log Obs Station",
+                    label = "ایستگاه مشاهداتی | Log Station",
                     icon = Icons.Default.AddLocationAlt,
                     accentColor = accentColor,
                     textColor = fontColor,
@@ -98,7 +99,7 @@ fun FloatingGISMenu(
 
                 // Sample collector tool
                 GISMenuButton(
-                    label = "Draw Sample Core",
+                    label = "برداشت مغزه نمونه | Core Sample",
                     icon = Icons.Default.Science,
                     accentColor = accentColor,
                     textColor = fontColor,
@@ -110,7 +111,7 @@ fun FloatingGISMenu(
 
                 // Structural structural strike/dip tool
                 GISMenuButton(
-                    label = "Structural Compass",
+                    label = "کمپاس و شیب‌یاب | Strike & Dip",
                     icon = Icons.Default.Explore,
                     accentColor = accentColor,
                     textColor = fontColor,
@@ -122,7 +123,7 @@ fun FloatingGISMenu(
 
                 // Borehole tool
                 GISMenuButton(
-                    label = "Plan Borehole Collar",
+                    label = "گمانه اکتشافی | Borehole Collar",
                     icon = Icons.Default.Layers,
                     accentColor = accentColor,
                     textColor = fontColor,
@@ -136,7 +137,7 @@ fun FloatingGISMenu(
 
                 // Track Recording Trigger (Saves GPS walk paths)
                 GISMenuButton(
-                    label = if (isTrackRecording) "Stop Logging Walk" else "Record GPS Path",
+                    label = if (isTrackRecording) "توقف ثبت مسیر | Stop Logging" else "ضبط مسیر جی‌پی‌اس | GPS Track",
                     icon = if (isTrackRecording) Icons.Default.StopCircle else Icons.Default.PlayCircle,
                     accentColor = if (isTrackRecording) Color.Red else Color.Green,
                     textColor = fontColor,
@@ -150,7 +151,7 @@ fun FloatingGISMenu(
 
                 // Distance tool
                 GISMenuButton(
-                    label = "Measure Distance",
+                    label = "اندازه‌گیری فاصله | Measure Dist",
                     icon = Icons.Default.Straighten,
                     accentColor = accentColor,
                     textColor = fontColor,
@@ -162,7 +163,7 @@ fun FloatingGISMenu(
 
                 // Area tool
                 GISMenuButton(
-                    label = "Calculate Area Map",
+                    label = "سنجش مساحت | Measure Area",
                     icon = Icons.Default.AllOut,
                     accentColor = accentColor,
                     textColor = fontColor,
@@ -172,9 +173,9 @@ fun FloatingGISMenu(
                     }
                 )
 
-                // Import GPX
+                // Import GPX/KML/KMZ
                 GISMenuButton(
-                    label = "Import GPX Track",
+                    label = "ورود فایل (GPX/KML/KMZ) | Import GIS",
                     icon = Icons.Default.CloudUpload,
                     accentColor = accentColor,
                     textColor = fontColor,
@@ -184,9 +185,9 @@ fun FloatingGISMenu(
                     }
                 )
 
-                // Export GPX
+                // Export GPX/KML/KMZ
                 GISMenuButton(
-                    label = "Export Geo-Data",
+                    label = "خروجی اطلاعات (GPX/KML/KMZ) | Export GIS",
                     icon = Icons.Default.CloudDownload,
                     accentColor = accentColor,
                     textColor = fontColor,
@@ -200,7 +201,7 @@ fun FloatingGISMenu(
 
                 // Layers Managers Catalog
                 GISMenuButton(
-                    label = "Manage Base Layers",
+                    label = "مدیریت لایه‌ها | Manage Layers",
                     icon = Icons.Default.Layers,
                     accentColor = accentColor,
                     textColor = fontColor,

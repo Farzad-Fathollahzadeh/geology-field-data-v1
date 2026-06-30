@@ -130,6 +130,7 @@ class GeologyViewModel(
 
     private var fusedLocationClient: FusedLocationProviderClient? = null
     private var locationCallback: LocationCallback? = null
+    private var isCallbackRegistered = false
     private val gpsKalmanFilter = GpsKalmanFilter()
     private var recordingJob: Job? = null
     private var startRecordingTimeMs = 0L
@@ -381,15 +382,27 @@ class GeologyViewModel(
             }
         }
         locationCallback = callback
+        isCallbackRegistered = false
 
         try {
             client.requestLocationUpdates(locationRequest, callback, android.os.Looper.getMainLooper())
+                .addOnSuccessListener {
+                    isCallbackRegistered = true
+                }
+                .addOnFailureListener {
+                    isCallbackRegistered = false
+                    if (locationCallback == callback) {
+                        locationCallback = null
+                    }
+                }
         } catch (e: java.lang.SecurityException) {
             // Clean up state if registration fails to avoid AppOps warnings on removal
+            isCallbackRegistered = false
             locationCallback = null
             fusedLocationClient = null
         } catch (e: Exception) {
             // Clean up state if registration fails
+            isCallbackRegistered = false
             locationCallback = null
             fusedLocationClient = null
         }
@@ -397,12 +410,15 @@ class GeologyViewModel(
 
     fun stopLocationTracking() {
         try {
-            locationCallback?.let {
-                fusedLocationClient?.removeLocationUpdates(it)
+            if (isCallbackRegistered) {
+                locationCallback?.let {
+                    fusedLocationClient?.removeLocationUpdates(it)
+                }
             }
         } catch (e: Exception) {
             // Handled gracefully
         } finally {
+            isCallbackRegistered = false
             locationCallback = null
             fusedLocationClient = null
         }
@@ -678,12 +694,18 @@ class GeologyViewModel(
     fun importMapFile(context: Context, uri: android.net.Uri) {
         viewModelScope.launch {
             try {
-                val isKmz = uri.toString().endsWith(".kmz", ignoreCase = true) ||
-                        (context.contentResolver.getType(uri)?.contains("kmz", ignoreCase = true) == true)
+                val uriStr = uri.toString()
+                val mimeType = context.contentResolver.getType(uri) ?: ""
+                val isGpx = uriStr.endsWith(".gpx", ignoreCase = true) || mimeType.contains("gpx", ignoreCase = true)
+                val isKmz = uriStr.endsWith(".kmz", ignoreCase = true) || mimeType.contains("kmz", ignoreCase = true)
                 
                 val features = withContext(Dispatchers.IO) {
                     context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                        KmlParser.parse(inputStream, isKmz)
+                        if (isGpx) {
+                            GpxParser.parse(inputStream)
+                        } else {
+                            KmlParser.parse(inputStream, isKmz)
+                        }
                     } ?: emptyList()
                 }
 

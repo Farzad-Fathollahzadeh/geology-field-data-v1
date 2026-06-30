@@ -33,7 +33,7 @@ class MapViewModel : ViewModel() {
     private val _activeBaseMap = MutableStateFlow("OpenStreetMap")
     val activeBaseMap: StateFlow<String> = _activeBaseMap.asStateFlow()
 
-    private val _isOutdoorMode = MutableStateFlow(false)
+    private val _isOutdoorMode = MutableStateFlow(true)
     val isOutdoorMode: StateFlow<Boolean> = _isOutdoorMode.asStateFlow()
 
     private val _simWalkStepSize = MutableStateFlow(20f)
@@ -42,6 +42,12 @@ class MapViewModel : ViewModel() {
     // Overlay Switches
     private val _showGrids = MutableStateFlow(true)
     val showGrids: StateFlow<Boolean> = _showGrids.asStateFlow()
+
+    private val _gridSizeSetting = MutableStateFlow(0) // 0 means auto
+    val gridSizeSetting: StateFlow<Int> = _gridSizeSetting.asStateFlow()
+
+    private val _gridColorSetting = MutableStateFlow("") // "" means auto/default
+    val gridColorSetting: StateFlow<String> = _gridColorSetting.asStateFlow()
 
     private val _showStations = MutableStateFlow(true)
     val showStations: StateFlow<Boolean> = _showStations.asStateFlow()
@@ -279,6 +285,14 @@ class MapViewModel : ViewModel() {
 
     fun toggleGrids(visible: Boolean) {
         _showGrids.value = visible
+    }
+
+    fun setGridSizeSetting(size: Int) {
+        _gridSizeSetting.value = size
+    }
+
+    fun setGridColorSetting(color: String) {
+        _gridColorSetting.value = color
     }
 
     fun toggleStations(visible: Boolean) {

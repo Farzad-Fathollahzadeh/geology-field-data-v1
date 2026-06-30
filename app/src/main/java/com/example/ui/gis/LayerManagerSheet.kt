@@ -23,6 +23,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.Date
 
 @Composable
 fun LayerManagerSheet(
@@ -55,6 +58,12 @@ fun LayerManagerSheet(
     currentLat: Double,
     currentLon: Double,
 
+    // Tracks library parameters
+    savedTracks: List<com.example.Track> = emptyList(),
+    onDeleteTrack: (Int) -> Unit = {},
+    onSelectTrackForElevationProfile: (com.example.Track) -> Unit = {},
+    onExportTrack: (com.example.Track) -> Unit = {},
+
     modifier: Modifier = Modifier,
     isOutdoorMode: Boolean = false
 ) {
@@ -64,7 +73,7 @@ fun LayerManagerSheet(
     val textColor = if (isOutdoorMode) Color.Black else Color.White
 
     val mapProviders = listOf("Esri Satellite (No-Key)", "Google Satellite", "OpenTopoMap", "OpenStreetMap", "Offline Topo-Raster")
-    var selectedTab by remember { mutableStateOf(0) } // 0: Layers & Opacity, 1: Offline Caching
+    var selectedTab by remember { mutableStateOf(0) } // 0: Layers & Opacity, 1: Offline Caching, 2: Tracks
     val scrollState = rememberScrollState()
 
     Column(
@@ -90,7 +99,7 @@ fun LayerManagerSheet(
                     fontFamily = FontFamily.Monospace
                 )
                 Text(
-                    text = if (selectedTab == 0) "Configure Layers / لایه‌های نقشه" else "Offline Cache / ذخیره آفلاین",
+                    text = if (selectedTab == 0) "Configure Layers / لایه‌های نقشه" else if (selectedTab == 1) "Offline Cache / ذخیره آفلاین" else "Logged Walks / کتابخانه مسیرها",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = textColor
@@ -127,12 +136,21 @@ fun LayerManagerSheet(
                 modifier = Modifier.weight(1f)
             )
             TabButton(
-                text = "Offline / ذخیره آفلاین",
+                text = "Offline / ذخیره",
                 icon = Icons.Default.OfflineBolt,
                 isSelected = selectedTab == 1,
                 activeColor = accentColor,
                 textColor = textColor,
                 onClick = { selectedTab = 1 },
+                modifier = Modifier.weight(1f)
+            )
+            TabButton(
+                text = "Walks / مسیرها",
+                icon = Icons.Default.DirectionsWalk,
+                isSelected = selectedTab == 2,
+                activeColor = accentColor,
+                textColor = textColor,
+                onClick = { selectedTab = 2 },
                 modifier = Modifier.weight(1f)
             )
         }
@@ -350,7 +368,7 @@ fun LayerManagerSheet(
                     }
                 }
 
-            } else {
+            } else if (selectedTab == 1) {
                 // TAB 1: LOCAL OFFLINE CACHE STORAGE ENGINE
                 
                 // FORCE OFFLINE DISCONNECT / SYSTEM STATUS CARD
@@ -584,6 +602,161 @@ fun LayerManagerSheet(
                                 cardColor = cardColor,
                                 textColor = textColor
                             )
+                        }
+                    }
+                }
+            } else {
+                // TAB 2: SAVED TRACKS & EXPORTS
+                if (savedTracks.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(BorderStroke(1.dp, textColor.copy(alpha = 0.05f)), RoundedCornerShape(8.dp))
+                            .background(cardColor.copy(alpha = 0.5f))
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.DirectionsWalk, contentDescription = null, tint = textColor.copy(alpha = 0.2f), modifier = Modifier.size(32.dp))
+                            Text(
+                                text = "هیچ مسیر حرکت ذخیره شده‌ای یافت نشد",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = textColor
+                            )
+                            Text(
+                                text = "جهت شروع ضبط مسیر، از منوی ابزار نقشه اقدام کنید.",
+                                fontSize = 9.5.sp,
+                                color = textColor.copy(alpha = 0.5f)
+                            )
+                        }
+                    }
+                } else {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        savedTracks.forEach { track ->
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = cardColor),
+                                border = BorderStroke(0.5.dp, textColor.copy(alpha = 0.1f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(34.dp)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(accentColor.copy(alpha = 0.15f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.DirectionsWalk,
+                                                contentDescription = null,
+                                                tint = accentColor,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+
+                                        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                            Text(
+                                                text = track.name,
+                                                fontSize = 11.5.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = textColor
+                                            )
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                val km = track.lengthMeters / 1000.0
+                                                val distText = if (track.lengthMeters >= 1000.0) String.format(Locale.US, "%.2f km", km) else "${track.lengthMeters.toInt()} m"
+                                                Text(
+                                                    text = distText,
+                                                    fontSize = 10.sp,
+                                                    color = accentColor,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontFamily = FontFamily.Monospace
+                                                )
+                                                val h = track.durationSeconds / 3600
+                                                val m = (track.durationSeconds % 3600) / 60
+                                                val s = track.durationSeconds % 60
+                                                val durationText = if (h > 0) "${h}h ${m}m" else "${m}m ${s}s"
+                                                Text(
+                                                    text = durationText,
+                                                    fontSize = 10.sp,
+                                                    color = textColor.copy(alpha = 0.5f),
+                                                    fontFamily = FontFamily.Monospace
+                                                )
+                                                val dateText = SimpleDateFormat("yyyy/MM/dd", Locale.US).format(Date(track.createdAt))
+                                                Text(
+                                                    text = "• $dateText",
+                                                    fontSize = 9.sp,
+                                                    color = textColor.copy(alpha = 0.4f)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // Action buttons row
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // Elevation Profile Action
+                                        IconButton(
+                                            onClick = { onSelectTrackForElevationProfile(track) },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Terrain,
+                                                contentDescription = "نمودار ارتفاعی",
+                                                tint = accentColor,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+
+                                        // GPX Export Action
+                                        IconButton(
+                                            onClick = { onExportTrack(track) },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Share,
+                                                contentDescription = "اشتراک‌گذاری GPX",
+                                                tint = accentColor,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+
+                                        // Delete Action
+                                        IconButton(
+                                            onClick = { onDeleteTrack(track.id) },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.DeleteForever,
+                                                contentDescription = "حذف مسیر",
+                                                tint = Color(0xFFEF5350).copy(alpha = 0.8f),
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

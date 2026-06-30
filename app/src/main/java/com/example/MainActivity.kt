@@ -9769,7 +9769,10 @@ fun generateLeafletHtml(
     downloadedRegions: List<com.example.ui.gis.OfflineRegion> = emptyList(),
     importedFeatures: List<ImportedFeature> = emptyList(),
     savedTracks: List<Track> = emptyList(),
-    showTracksOverlay: Boolean = true
+    showTracksOverlay: Boolean = true,
+    isSimpleMode: Boolean = false,
+    gridSizeSetting: Int = 0,
+    gridColorSetting: String = ""
 ): String {
     val savedTracksJson = if (showTracksOverlay) {
         savedTracks.joinToString(prefix = "[", postfix = "]") { track ->
@@ -9815,8 +9818,8 @@ fun generateLeafletHtml(
 
     val leafZoom = zoom.coerceIn(3, 21)
 
-    val bgColor = if (isOutdoorMode) "#FFFFFF" else "#0B100E"
-    val gridColor = if (isOutdoorMode) "rgba(0,121,107,0.12)" else "rgba(0,255,224,0.12)"
+    val bgColor = "#FFFFFF"
+    val gridColor = "rgba(0,121,107,0.12)"
 
     val isSatellite = tileUrl.contains("lyrs=s") || tileUrl.contains("lyrs=y") || tileUrl.contains("World_Imagery") || tileUrl.contains("satellite")
 
@@ -9833,22 +9836,22 @@ fun generateLeafletHtml(
         """.trimIndent()
     } else {
         val filterVal = if (isSatellite) {
-            "brightness(60%) contrast(110%) saturate(120%)"
+            "brightness(85%) contrast(105%) saturate(110%)"
         } else {
-            "invert(90%) hue-rotate(180deg) brightness(85%) contrast(120%) saturate(140%) sepia(20%)"
+            "none"
         }
         """
-        .leaflet-container { background-color: #0B100E !important; }
+        .leaflet-container { background-color: #ffffff !important; }
         .leaflet-tile {
             filter: $filterVal;
             -webkit-filter: $filterVal;
         }
-        .leaflet-bar { border: 1.5px solid #00FFE0 !important; background-color: #141A17 !important; }
-        .leaflet-bar a { background-color: #141A17 !important; color: #00FFE0 !important; border-bottom: 1.5px solid rgba(0, 255, 224, 0.25) !important; }
-        .leaflet-bar a:hover { background-color: #00FFE0 !important; color: #141A17 !important; }
-        .leaflet-popup-content-wrapper, .leaflet-popup-tip { background-color: #141A17 !important; color: #E0E0E0 !important; border: 1.5px solid #00FFE0 !important; box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important; }
+        .leaflet-bar { border: 1.5px solid #00FFE0 !important; background-color: #ffffff !important; }
+        .leaflet-bar a { background-color: #ffffff !important; color: #007A78 !important; border-bottom: 1.5px solid rgba(0, 121, 107, 0.25) !important; }
+        .leaflet-bar a:hover { background-color: #007A78 !important; color: #ffffff !important; }
+        .leaflet-popup-content-wrapper, .leaflet-popup-tip { background-color: #ffffff !important; color: #333333 !important; border: 1.5px solid #007a78 !important; box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important; }
         .leaflet-popup-content { font-family: monospace !important; font-size: 11px !important; }
-        .leaflet-control-attribution, .leaflet-control-scale { background: rgba(20, 26, 23, 0.85) !important; color: #00FFE0 !important; font-size: 9px !important; text-shadow: none !important; }
+        .leaflet-control-attribution, .leaflet-control-scale { background: rgba(255, 255, 255, 0.85) !important; color: #007a78 !important; font-size: 9px !important; text-shadow: none !important; }
         .leaflet-control-zoom-in, .leaflet-control-zoom-out { font-weight: bold; }
         """.trimIndent()
     }
@@ -9857,20 +9860,40 @@ fun generateLeafletHtml(
     val scaleBorderColor = if (isOutdoorMode) "#007A78" else "#00FFE0"
     val scaleTextColor = if (isOutdoorMode) "#004D40" else "#00FFE0"
 
+    val coordinatesDisplay = if (isSimpleMode) "none" else "flex"
+    val toolsDisplay = if (isSimpleMode) "none" else "flex"
+    val scaleDisplay = if (isSimpleMode) "none" else "block"
+
     return """
         <!DOCTYPE html>
         <html>
         <head>
             <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
-            <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-            <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+            <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
             <style>
                 body { padding: 0; margin: 0; background-color: $bgColor; }
-                html, body, #map { height: 100%; width: 100%; overflow: hidden; }
+                html, body { height: 100%; width: 100%; overflow: hidden; }
+                #map { 
+                    height: 100%; 
+                    width: 100%; 
+                    overflow: hidden; 
+                    background-color: #ffffff !important; 
+                    background-image: 
+                        linear-gradient(rgba(0,121,107,0.18) 1.5px, transparent 1.5px),
+                        linear-gradient(90deg, rgba(0,121,107,0.18) 1.5px, transparent 1.5px),
+                        linear-gradient(rgba(0,121,107,0.08) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(0,121,107,0.08) 1px, transparent 1px) !important;
+                    background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px !important;
+                }
                 .leaflet-container { 
-                    background-color: $bgColor; 
-                    background-image: radial-gradient($gridColor 1px, transparent 1px);
-                    background-size: 20px 20px;
+                    background-color: #ffffff !important; 
+                    background-image: 
+                        linear-gradient(rgba(0,121,107,0.18) 1.5px, transparent 1.5px),
+                        linear-gradient(90deg, rgba(0,121,107,0.18) 1.5px, transparent 1.5px),
+                        linear-gradient(rgba(0,121,107,0.08) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(0,121,107,0.08) 1px, transparent 1px) !important;
+                    background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px !important;
                 }
                 .custom-div-icon {
                     background-color: #ffb300;
@@ -9926,43 +9949,13 @@ fun generateLeafletHtml(
             </div>
 
             <!-- Dynamic coordinates overlay (WGS84 + UTM) -->
-            <div id="center-coordinates" style="position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 1000; background: $scaleBg; border: 1.5px solid $scaleBorderColor; padding: 6px 14px; border-radius: 20px; box-shadow: 0 3px 10px rgba(0,0,0,0.25); font-family: monospace; font-size: 10px; font-weight: bold; color: $scaleTextColor; white-space: nowrap; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 2px;">
+            <div id="center-coordinates" style="position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 1000; background: $scaleBg; border: 1.5px solid $scaleBorderColor; padding: 6px 14px; border-radius: 20px; box-shadow: 0 3px 10px rgba(0,0,0,0.25); font-family: monospace; font-size: 10px; font-weight: bold; color: $scaleTextColor; white-space: nowrap; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 2px; display: none !important;">
                 <div id="latlon-label">Lat: 0.00000° | Lon: 0.00000°</div>
                 <div id="utm-label" style="font-size: 8.5px; opacity: 0.85;">UTM: Zone -- • 0 E • 0 N</div>
             </div>
 
-            <!-- Geological Map Legend Panel -->
-            <div id="map-legend" style="position: absolute; top: 12px; right: 12px; z-index: 1000; background: $scaleBg; border: 1.5px solid $scaleBorderColor; border-radius: 6px; box-shadow: 0 3px 10px rgba(0,0,0,0.25); font-family: system-ui, -apple-system; font-size: 10px; color: $scaleTextColor; width: 145px; overflow: hidden; transition: all 0.3s ease;">
-                <div id="legend-header" style="padding: 6px 10px; background: rgba(0,0,0,0.06); border-bottom: 1px solid rgba(0,121,107,0.15); font-weight: bold; cursor: pointer; display: flex; justify-content: space-between; align-items: center;" onclick="toggleLegend()">
-                    <span>🗺️ راهنمای نمادها</span>
-                    <span id="legend-toggle-icon">▼</span>
-                </div>
-                <div id="legend-content" style="padding: 8px 10px; display: flex; flex-direction: column; gap: 6px; direction: rtl;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <div style="width: 14px; height: 14px; background: #ffeb3b; border: 1px solid #000; border-radius: 2px; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: bold; color: #000;">├</div>
-                        <span>لایه‌بندی (Bedding)</span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <div style="width: 14px; height: 14px; background: #00e676; border: 1px solid #000; border-radius: 2px; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #000;">┼</div>
-                        <span>درزه (Joint)</span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <div style="width: 14px; height: 4px; background: #ff3d00;"></div>
-                        <span>گسل (Fault)</span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <div style="width: 14px; height: 14px; background: #e040fb; border: 1px solid #000; border-radius: 2px; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #fff;">┿</div>
-                        <span>شیستوزیته (Foliation)</span>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <div style="width: 14px; height: 14px; background: #00b0ff; border: 1px solid #000; border-radius: 2px; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #000;">═</div>
-                        <span>رگه (Vein)</span>
-                    </div>
-                </div>
-            </div>
-
             <!-- Interactive Measurement tools -->
-            <div id="map-tools" style="position: absolute; bottom: 95px; left: 12px; z-index: 1000; display: flex; flex-direction: column; gap: 8px;">
+            <div id="map-tools" style="position: absolute; bottom: 95px; left: 12px; z-index: 1000; display: $toolsDisplay; flex-direction: column; gap: 8px;">
                 <button id="ruler-btn" style="width: 32px; height: 32px; border-radius: 4px; border: 1.5px solid $scaleBorderColor; background: $scaleBg; color: $scaleTextColor; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,0.2); transition: all 0.2s;" title="خط‌کش اندازه‌گیری مسافت" onclick="toggleRulerMode()">📏</button>
                 <button id="area-btn" style="width: 32px; height: 32px; border-radius: 4px; border: 1.5px solid $scaleBorderColor; background: $scaleBg; color: $scaleTextColor; font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,0.2); transition: all 0.2s;" title="مساحی و اندازه‌گیری مساحت" onclick="toggleAreaMode()">📐</button>
                 <button id="clear-ruler-btn" style="width: 32px; height: 32px; border-radius: 4px; border: 1.5px solid $scaleBorderColor; background: $scaleBg; color: $scaleTextColor; font-size: 14px; cursor: pointer; display: none; align-items: center; justify-content: center; box-shadow: 0 2px 6px rgba(0,0,0,0.2); transition: all 0.2s;" title="پاک کردن اندازه‌گیری‌ها" onclick="clearMeasurements()">🧹</button>
@@ -9976,7 +9969,7 @@ fun generateLeafletHtml(
             <!-- Custom Toast container -->
             <div id="map-toast" style="position: absolute; bottom: 85px; left: 50%; transform: translateX(-50%); z-index: 1002; background: rgba(0,0,0,0.85); color: #ffffff; padding: 6px 16px; border-radius: 20px; font-family: system-ui, -apple-system; font-size: 11px; font-weight: bold; pointer-events: none; opacity: 0; transition: opacity 0.3s; text-align: center; white-space: nowrap; direction: rtl; box-shadow: 0 2px 8px rgba(0,0,0,0.35);"></div>
 
-            <div id="dual-scale-container" style="position: absolute; bottom: 35px; left: 12px; z-index: 1000; background: $scaleBg; border: 1.5px solid $scaleBorderColor; padding: 4px 10px; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); font-family: monospace; font-size: 10px; font-weight: bold; color: $scaleTextColor; pointer-events: none;">
+            <div id="dual-scale-container" style="position: absolute; bottom: 35px; left: 12px; z-index: 1000; background: $scaleBg; border: 1.5px solid $scaleBorderColor; padding: 4px 10px; border-radius: 4px; box-shadow: 0 2px 6px rgba(0,0,0,0.15); font-family: monospace; font-size: 10px; font-weight: bold; color: $scaleTextColor; pointer-events: none; display: $scaleDisplay;">
                 <div id="dual-scale-label" style="text-align: center; margin-bottom: 2px;">0 m ⇄ 0 km</div>
                 <div style="height: 5px; border: 1.5px solid $scaleBorderColor; border-top: none; margin: 0 auto; width: 100px;" id="dual-scale-bar"></div>
             </div>
@@ -10239,6 +10232,8 @@ fun generateLeafletHtml(
                             var eEnd = Math.ceil(Math.max(swUtm.easting, neUtm.easting) / spacingUtm) * spacingUtm;
                             var nStart = Math.floor(Math.min(swUtm.northing, neUtm.northing) / spacingUtm) * spacingUtm;
                             var nEnd = Math.ceil(Math.max(swUtm.northing, neUtm.northing) / spacingUtm) * spacingUtm;
+                            
+                            if (isNaN(eStart) || isNaN(eEnd) || isNaN(nStart) || isNaN(nEnd) || eEnd - eStart <= 0 || nEnd - nStart <= 0) return;
                             
                             ctx.strokeStyle = isOutdoor ? '#007A78' : '#00E5FF';
                             ctx.lineWidth = 0.5;
@@ -11258,31 +11253,45 @@ fun generateLeafletHtml(
                 // --- UTM Grid Overlay Implementation ---
                 var utmGridLayer = L.layerGroup().addTo(map);
                 var utmGridEnabled = true;
+                window.utmGridSpacingSetting = $gridSizeSetting;
+                window.utmGridColorSetting = '$gridColorSetting';
+
+                window.setUtmGridStyle = function(spacing, color) {
+                    window.utmGridSpacingSetting = spacing;
+                    window.utmGridColorSetting = color;
+                    updateUtmGrid();
+                };
 
                 function updateUtmGrid() {
                     utmGridLayer.clearLayers();
                     if (!utmGridEnabled) return;
 
                     var zoom = map.getZoom();
-                    if (zoom < 8) return;
+                    if (zoom < 3) return;
 
                     var bounds = map.getBounds();
                     var sw = bounds.getSouthWest();
                     var ne = bounds.getNorthEast();
 
-                    var spacing = 10000;
-                    if (zoom >= 18) {
-                        spacing = 100;
-                    } else if (zoom >= 16) {
-                        spacing = 500;
-                    } else if (zoom >= 14) {
-                        spacing = 1000;
-                    } else if (zoom >= 11) {
-                        spacing = 5000;
-                    } else if (zoom >= 9) {
-                        spacing = 10000;
-                    } else {
-                        spacing = 50000;
+                    var spacing = window.utmGridSpacingSetting || 0;
+                    if (spacing <= 0) {
+                        if (zoom >= 18) {
+                            spacing = 100;
+                        } else if (zoom >= 16) {
+                            spacing = 500;
+                        } else if (zoom >= 14) {
+                            spacing = 1000;
+                        } else if (zoom >= 11) {
+                            spacing = 5000;
+                        } else if (zoom >= 9) {
+                            spacing = 10000;
+                        } else if (zoom >= 7) {
+                            spacing = 50000;
+                        } else if (zoom >= 5) {
+                            spacing = 100000;
+                        } else {
+                            spacing = 500000;
+                        }
                     }
 
                     var swUtm = latLngToUtm(sw.lat, sw.lng);
@@ -11296,13 +11305,17 @@ fun generateLeafletHtml(
                     var nStart = Math.floor(Math.min(swUtm.northing, neUtm.northing) / spacing) * spacing;
                     var nEnd = Math.ceil(Math.max(swUtm.northing, neUtm.northing) / spacing) * spacing;
 
+                    if (isNaN(eStart) || isNaN(eEnd) || isNaN(nStart) || isNaN(nEnd) || eEnd - eStart <= 0 || nEnd - nStart <= 0) return;
                     if ((eEnd - eStart) / spacing > 120 || (nEnd - nStart) / spacing > 120) return;
 
+                    var defaultColor = '${if (isOutdoorMode) "#007A78" else "#00e5ff"}';
+                    var activeColor = window.utmGridColorSetting || defaultColor;
+
                     var lineStyle = {
-                        color: '${if (isOutdoorMode) "#007A78" else "#00e5ff"}',
-                        weight: 0.65,
-                        opacity: ${if (isOutdoorMode) "0.65" else "0.45"},
-                        dashArray: '3, 4',
+                        color: activeColor,
+                        weight: 1.2,
+                        opacity: ${if (isOutdoorMode) "0.85" else "0.75"},
+                        dashArray: '',
                         interactive: false
                     };
 
@@ -11321,9 +11334,9 @@ fun generateLeafletHtml(
                             L.marker([lblPt.lat, lblPt.lon], {
                                 icon: L.divIcon({
                                     className: 'utm-grid-label',
-                                    html: '<div style="color: ${if (isOutdoorMode) "#004D40" else "#00FFE0"}; font-family: monospace; font-size: 8px; background: ${if (isOutdoorMode) "rgba(255,255,255,0.85)" else "rgba(15,21,18,0.75)"}; border: 1px solid ${if (isOutdoorMode) "rgba(0,121,107,0.3)" else "rgba(0,229,255,0.3)"}; padding: 1px 3px; border-radius: 3px; white-space: nowrap;">' + text + '</div>',
-                                    iconSize: [40, 12],
-                                    iconAnchor: [20, 6]
+                                    html: '<div style="color: ' + activeColor + '; font-family: monospace; font-size: 8px; background: ${if (isOutdoorMode) "rgba(255,255,255,0.9)" else "rgba(15,21,18,0.75)"}; border: 1.5px solid ' + (window.utmGridColorSetting ? (activeColor + "66") : '${if (isOutdoorMode) "rgba(128,161,160,0.4)" else "rgba(0,229,255,0.3)"}') + '; padding: 1.5px 4px; border-radius: 2px; white-space: nowrap; font-weight: bold; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">' + text + '</div>',
+                                    iconSize: [45, 14],
+                                    iconAnchor: [22, 7]
                                 }),
                                 interactive: false
                             }).addTo(utmGridLayer);
@@ -11345,9 +11358,9 @@ fun generateLeafletHtml(
                             L.marker([lblPt.lat, lblPt.lon], {
                                 icon: L.divIcon({
                                     className: 'utm-grid-label',
-                                    html: '<div style="color: ${if (isOutdoorMode) "#004D40" else "#00FFE0"}; font-family: monospace; font-size: 8px; background: ${if (isOutdoorMode) "rgba(255,255,255,0.85)" else "rgba(15,21,18,0.75)"}; border: 1px solid ${if (isOutdoorMode) "rgba(0,121,107,0.3)" else "rgba(0,229,255,0.3)"}; padding: 1px 3px; border-radius: 3px; white-space: nowrap;">' + text + '</div>',
-                                    iconSize: [40, 12],
-                                    iconAnchor: [20, 6]
+                                    html: '<div style="color: ' + activeColor + '; font-family: monospace; font-size: 8px; background: ${if (isOutdoorMode) "rgba(255,255,255,0.9)" else "rgba(15,21,18,0.75)"}; border: 1.5px solid ' + (window.utmGridColorSetting ? (activeColor + "66") : '${if (isOutdoorMode) "rgba(128,161,160,0.4)" else "rgba(0,229,255,0.3)"}') + '; padding: 1.5px 4px; border-radius: 2px; white-space: nowrap; font-weight: bold; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">' + text + '</div>',
+                                    iconSize: [45, 14],
+                                    iconAnchor: [22, 7]
                                 }),
                                 interactive: false
                             }).addTo(utmGridLayer);
@@ -11417,6 +11430,9 @@ fun WebViewMap(
     pannedCenterLon: Double = 0.0,
     savedTracks: List<Track> = emptyList(),
     showTracksOverlay: Boolean = true,
+    isSimpleMode: Boolean = false,
+    gridSizeSetting: Int = 0,
+    gridColorSetting: String = "",
     modifier: Modifier = Modifier
 ) {
     val resolvedTileUrl = if (tileUrl.contains("{token}")) {
@@ -11430,7 +11446,7 @@ fun WebViewMap(
     val initialLat = remember(isDefaultCoordinates) { currentLat }
     val initialLon = remember(isDefaultCoordinates) { currentLon }
     
-    val htmlContent = remember(stations, observations, contactsList, resolvedTileUrl, isOutdoorMode, baseMapOpacity, offlineModeForce, showOfflineBoundaries, downloadedRegions, importedFeatures, savedTracks, showTracksOverlay) {
+    val htmlContent = remember(stations, observations, contactsList, resolvedTileUrl, isOutdoorMode, baseMapOpacity, offlineModeForce, showOfflineBoundaries, downloadedRegions, importedFeatures, savedTracks, showTracksOverlay, isSimpleMode, gridSizeSetting, gridColorSetting) {
         generateLeafletHtml(
             stations = stations,
             observations = observations,
@@ -11450,7 +11466,10 @@ fun WebViewMap(
             downloadedRegions = downloadedRegions,
             importedFeatures = importedFeatures,
             savedTracks = savedTracks,
-            showTracksOverlay = showTracksOverlay
+            showTracksOverlay = showTracksOverlay,
+            isSimpleMode = isSimpleMode,
+            gridSizeSetting = gridSizeSetting,
+            gridColorSetting = gridColorSetting
         )
     }
 
@@ -11603,6 +11622,7 @@ fun WebViewMap(
                     settings.builtInZoomControls = true
                     settings.displayZoomControls = false
                     settings.setSupportZoom(true)
+                    setBackgroundColor(android.graphics.Color.WHITE)
                     tag = htmlContent
                     loadDataWithBaseURL("https://localhost", htmlContent, "text/html", "UTF-8", null)
                 }
@@ -11626,6 +11646,10 @@ fun WebViewMap(
                 )
                 webView.evaluateJavascript(
                     "if (typeof setUtmGridVisible !== 'undefined') { setUtmGridVisible($showUtmGrid); }",
+                    null
+                )
+                webView.evaluateJavascript(
+                    "if (typeof setUtmGridStyle !== 'undefined') { setUtmGridStyle($gridSizeSetting, '$gridColorSetting'); }",
                     null
                 )
                 val navTarget = navigationTargetStation
@@ -12515,6 +12539,7 @@ fun MapContent(viewModel: GeologyViewModel) {
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.stopLocationTracking()
         }
     }
 
@@ -15319,5 +15344,6 @@ fun MapContent(viewModel: GeologyViewModel) {
             }
         }
     }
+}
 }
 
