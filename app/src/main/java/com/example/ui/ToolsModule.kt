@@ -5,8 +5,17 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -40,6 +49,9 @@ import androidx.compose.ui.unit.sp
 import com.example.GeologyViewModel
 import com.example.QAPFClassifierPanel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
 import java.text.DecimalFormat
 import java.util.Locale
 import kotlinx.coroutines.launch
@@ -58,6 +70,9 @@ fun ToolsContent(
     modifier: Modifier = Modifier
 ) {
     var selectedToolTab by remember { mutableStateOf(0) } // 0 = Mineral ID, 1 = Lithology, 2 = QAPF Plotter, 3 = Converter, 4 = Developer Profile
+    val isFarsiMode by viewModel.isFarsiModeSetting.collectAsStateWithLifecycle()
+
+    val primaryColor = MaterialTheme.colorScheme.primary
 
     Column(
         modifier = modifier
@@ -65,42 +80,86 @@ fun ToolsContent(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Main Tab Title
+        // Main Tab Title - Beautiful custom topographic/geological layered background
         Card(
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .drawBehind {
+                    val path = Path()
+                    val w = size.width
+                    val h = size.height
+                    
+                    // Layer 1 - Deep stratigraphic layer
+                    path.moveTo(0f, h * 0.65f)
+                    path.quadraticTo(w * 0.25f, h * 0.45f, w * 0.5f, h * 0.75f)
+                    path.quadraticTo(w * 0.75f, h * 0.95f, w, h * 0.55f)
+                    path.lineTo(w, h)
+                    path.lineTo(0f, h)
+                    path.close()
+                    drawPath(path = path, color = primaryColor.copy(alpha = 0.05f))
+
+                    // Layer 2 - Shaded soil/fault boundary
+                    val path2 = Path()
+                    path2.moveTo(0f, h * 0.8f)
+                    path2.quadraticTo(w * 0.3f, h * 0.65f, w * 0.6f, h * 0.85f)
+                    path2.quadraticTo(w * 0.8f, h * 0.92f, w, h * 0.7f)
+                    path2.lineTo(w, h)
+                    path2.lineTo(0f, h)
+                    path2.close()
+                    drawPath(path = path2, color = primaryColor.copy(alpha = 0.09f))
+                },
+            colors = CardDefaults.cardColors(containerColor = Color.Transparent),
             shape = RoundedCornerShape(16.dp),
-            modifier = Modifier.fillMaxWidth()
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.18f))
         ) {
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            Box(
+                modifier = Modifier
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.22f),
+                                MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.12f)
+                            )
+                        )
+                    )
+                    .padding(16.dp)
             ) {
-                Icon(
-                     imageVector = Icons.Default.Build,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(36.dp)
-                )
-                Column {
-                    Text(
-                        text = "Geotech Field Tools",
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = "Handy micro-tools to accelerate field estimations and diagnostic classification",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), RoundedCornerShape(12.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Build,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = if (isFarsiMode) "ابزارهای تخصصی ژئوتکنیک" else "Geotech Field Tools",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = if (isFarsiMode) "مجموعه ابزارهای کاربردی جهت تخمین صحرایی و رده‌بندی توصیفی ویژگی‌های زمین‌شناسی" else "Handy micro-tools to accelerate field estimations and diagnostic classification",
+                            fontSize = 11.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 15.sp
+                        )
+                    }
                 }
             }
         }
 
-        // Tab selection row
+        // Tab selection row - bilingual and styled beautifully
         ScrollableTabRow(
             selectedTabIndex = selectedToolTab,
             edgePadding = 0.dp,
@@ -110,31 +169,31 @@ fun ToolsContent(
             Tab(
                 selected = selectedToolTab == 0,
                 onClick = { selectedToolTab = 0 },
-                text = { Text("Mineralogy", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                text = { Text(if (isFarsiMode) "کانی‌شناسی" else "Mineralogy", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                 icon = { Icon(Icons.Default.Diamond, contentDescription = null, modifier = Modifier.size(18.dp)) }
             )
             Tab(
                 selected = selectedToolTab == 1,
                 onClick = { selectedToolTab = 1 },
-                text = { Text("Lithology", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                text = { Text(if (isFarsiMode) "سنگ‌شناسی" else "Lithology", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                 icon = { Icon(Icons.Default.Layers, contentDescription = null, modifier = Modifier.size(18.dp)) }
             )
             Tab(
                 selected = selectedToolTab == 2,
                 onClick = { selectedToolTab = 2 },
-                text = { Text("QAPF Plotter", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                text = { Text(if (isFarsiMode) "پلاتر QAPF" else "QAPF Plotter", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                 icon = { Icon(Icons.Default.Category, contentDescription = null, modifier = Modifier.size(18.dp)) }
             )
             Tab(
                 selected = selectedToolTab == 3,
                 onClick = { selectedToolTab = 3 },
-                text = { Text("Unit Converter", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                text = { Text(if (isFarsiMode) "تبدیل واحد" else "Converter", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                 icon = { Icon(Icons.Default.SyncAlt, contentDescription = null, modifier = Modifier.size(18.dp)) }
             )
             Tab(
                 selected = selectedToolTab == 4,
                 onClick = { selectedToolTab = 4 },
-                text = { Text("Developer", fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                text = { Text(if (isFarsiMode) "توسعه‌دهنده" else "Developer", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                 icon = { Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(18.dp)) }
             )
         }
@@ -181,6 +240,44 @@ private fun formatLuster(luster: String, isFarsi: Boolean): String {
         "submetallic" -> if (isFarsi) "نیمه‌فلزی (Submetallic)" else "Submetallic"
         "non_metallic" -> if (isFarsi) "غیرفلزی (Non-metallic)" else "Non-metallic"
         else -> luster
+    }
+}
+
+fun getMineralGroup(mineral: GeotechMineral, isFarsi: Boolean): String {
+    val name = mineral.nameEn.lowercase()
+    return when {
+        name.contains("quartz") || name.contains("feldspar") || name.contains("orthoclase") || name.contains("plagioclase") || 
+        name.contains("talc") || name.contains("biotite") || name.contains("muscovite") || name.contains("olivine") || 
+        name.contains("garnet") || name.contains("chlorite") || name.contains("epidote") || name.contains("actinolite") || 
+        name.contains("kaolinite") || name.contains("tourmaline") || name.contains("sericite") || name.contains("wollastonite") || 
+        name.contains("spodumene") -> {
+            if (isFarsi) "سیلیکات‌ها (Silicates)" else "Silicates"
+        }
+        name.contains("calcite") || name.contains("dolomite") || name.contains("siderite") || name.contains("azurite") || name.contains("malachite") -> {
+            if (isFarsi) "کربنات‌ها (Carbonates)" else "Carbonates"
+        }
+        name.contains("pyrite") || name.contains("chalcopyrite") || name.contains("galena") || name.contains("sphalerite") || 
+        name.contains("bornite") || name.contains("chalcocite") || name.contains("arsenopyrite") || name.contains("pyrrhotite") || 
+        name.contains("pentlandite") || name.contains("cinnabar") || name.contains("stibnite") || name.contains("molybdenite") || name.contains("jarosite") -> {
+            if (isFarsi) "سولفیدها / سولفات‌ها (Sulfides)" else "Sulfides"
+        }
+        name.contains("gypsum") || name.contains("alunite") || name.contains("barite") || name.contains("celestine") -> {
+            if (isFarsi) "سولفات‌ها (Sulfates)" else "Sulfates"
+        }
+        name.contains("hematite") || name.contains("magnetite") || name.contains("chromite") || name.contains("cassiterite") || 
+        name.contains("limonite") || name.contains("goethite") || name.contains("bauxite") || name.contains("ilmenite") || 
+        name.contains("rutile") || name.contains("scheelite") || name.contains("wolframite") -> {
+            if (isFarsi) "اکسیدها / هیدروکسیدها (Oxides)" else "Oxides & Hydroxides"
+        }
+        name.contains("halite") || name.contains("sylvite") || name.contains("fluorite") -> {
+            if (isFarsi) "هالیدها (Halides)" else "Halides"
+        }
+        name.contains("gold") || name.contains("silver") || name.contains("copper") || name.contains("graphite") || name.contains("sulfur") -> {
+            if (isFarsi) "عناصر طبیعی (Elements)" else "Native Elements"
+        }
+        else -> {
+            if (isFarsi) "سایر گروه‌ها" else "Other Groups"
+        }
     }
 }
 
@@ -253,7 +350,11 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
 
     // Tab control
     var activeMineralTab by remember { mutableStateOf(0) } // 0 = Wizard, 1 = Manual Catalog, 2 = AI Co-Database (500+ Minerals)
+    var selectedMineralForLab by remember { mutableStateOf<GeotechMineral?>(null) }
     var isQuickMode by remember { mutableStateOf(true) } // true = Easy 4-Step Key, false = Classic 10Q
+
+    var selectedGroupFilter by remember { mutableStateOf(if (isFarsiMode) "همه کانی‌ها" else "All") }
+    var mohsScaleExpanded by remember { mutableStateOf(false) }
 
     // Quick Mode Selection parameters
     var quickHardness by remember { mutableStateOf("any") } // "any", "nail", "coin", "knife", "glass"
@@ -444,7 +545,7 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
     }
 
     // Dynamic candidates calculated for manual filter tab
-    val filteredCatalogList = remember(searchHardness, filterLuster, filterAcid, filterMagnet) {
+    val filteredCatalogList = remember(searchHardness, filterLuster, filterAcid, filterMagnet, selectedGroupFilter) {
         val targetHardness = searchHardness.toDoubleOrNull()
         minerals.filter { min ->
             val matchesHardness = if (targetHardness != null) {
@@ -463,7 +564,24 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
             val matchesAcid = if (filterAcid) min.acidReaction else true
             val matchesMagnet = if (filterMagnet) min.magnetic else true
 
-            matchesHardness && matchesLuster && matchesAcid && matchesMagnet
+            val matchesGroup = if (selectedGroupFilter != "All" && selectedGroupFilter != "همه کانی‌ها") {
+                val groupText = getMineralGroup(min, isFarsiMode)
+                groupText.contains(selectedGroupFilter) || selectedGroupFilter.contains(groupText) || 
+                (selectedGroupFilter == "Sulfides" && groupText.contains("Sulfides")) ||
+                (selectedGroupFilter == "Sulfates" && groupText.contains("Sulfates")) ||
+                (selectedGroupFilter == "Oxides" && groupText.contains("Oxides")) ||
+                (selectedGroupFilter == "Halides" && groupText.contains("Halides")) ||
+                (selectedGroupFilter == "Elements" && groupText.contains("Elements")) ||
+                (selectedGroupFilter == "سولفیدها" && groupText.contains("سولفیدها")) ||
+                (selectedGroupFilter == "سولفات‌ها" && groupText.contains("سولفات‌ها")) ||
+                (selectedGroupFilter == "کربنات‌ها" && groupText.contains("کربنات‌ها")) ||
+                (selectedGroupFilter == "سیلیکات‌ها" && groupText.contains("سیلیکات‌ها")) ||
+                (selectedGroupFilter == "اکسیدها" && groupText.contains("اکسیدها")) ||
+                (selectedGroupFilter == "هالیدها" && groupText.contains("هالیدها")) ||
+                (selectedGroupFilter == "عناصر طبیعی" && groupText.contains("عناصر طبیعی"))
+            } else true
+
+            matchesHardness && matchesLuster && matchesAcid && matchesMagnet && matchesGroup
         }
     }
 
@@ -566,6 +684,139 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
                 Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = if (activeMineralTab == 2) Color.Yellow else MaterialTheme.colorScheme.onSurface, modifier = Modifier.size(12.dp))
                 Spacer(modifier = Modifier.width(2.dp))
                 Text(if (isFarsiMode) "جستجوی ۵۰۰ کانی" else "AI 500+ Minerals", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+
+        // Collapsible Mohs Hardness Scale & Field Reference Guide
+        Card(
+            colors = CardDefaults.cardColors(
+                containerColor = if (mohsScaleExpanded) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
+            ),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable { mohsScaleExpanded = !mohsScaleExpanded },
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.BarChart,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = if (isFarsiMode) "مقياس سختی موهس و راهنمای تست صحرایی" else "Mohs Hardness Scale & Field Scratch Guide",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Icon(
+                        imageVector = if (mohsScaleExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+
+                if (mohsScaleExpanded) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    val scaleItems = remember {
+                        listOf(
+                            Triple("1", if (isFarsiMode) "تالک (نرم‌ترین - با ناخن دست به راحتی پودر می‌شود)" else "Talc (Softest - feels soapy, easily scratched by fingernail)", Color(0xFF4CAF50)),
+                            Triple("2", if (isFarsiMode) "ژیپس (با ناخن دست خط برمی‌دارد)" else "Gypsum (Scratched by fingernail)", Color(0xFF8BC34A)),
+                            Triple("3", if (isFarsiMode) "کلسیت (با سکه مسی خراش برمی‌دارد)" else "Calcite (Scratched by copper coin)", Color(0xFFCDDC39)),
+                            Triple("4", if (isFarsiMode) "فلوریت (با چاقوی جیبی به راحتی خط می‌افتد)" else "Fluorite (Scratched easily by pocket knife)", Color(0xFFFFEB3B)),
+                            Triple("5", if (isFarsiMode) "آپاتیت (با چاقوی جیبی به سختی خط می‌افتد)" else "Apatite (Scratched with difficulty by knife)", Color(0xFFFFC107)),
+                            Triple("6", if (isFarsiMode) "ارتوکلاز (شیشه پنجره را خط می‌اندازد)" else "Orthoclase (Scratches window glass)", Color(0xFFFF9800)),
+                            Triple("7", if (isFarsiMode) "کوارتز (شیشه و فولاد چاقو را به راحتی خط می‌اندازد)" else "Quartz (Scratches steel & glass easily)", Color(0xFFFF5722)),
+                            Triple("8", if (isFarsiMode) "توپاز (شیشه را عمیق خط می‌اندازد)" else "Topaz (Scratches quartz)", Color(0xFFF44336)),
+                            Triple("9", if (isFarsiMode) "کوراندوم (فقط توسط الماس خط می‌افتد)" else "Corundum (Scratched only by diamond)", Color(0xFFE91E63)),
+                            Triple("10", if (isFarsiMode) "الماس (سخت‌ترین ماده طبیعی، همه کانی‌ها را خط می‌اندازد)" else "Diamond (Hardest - scratches all substances)", Color(0xFF9C27B0))
+                        )
+                    }
+
+                    val fieldObjects = remember {
+                        listOf(
+                            Triple(if (isFarsiMode) "💅 ناخن دست" else "💅 Fingernail", "2.5", Color(0xFF4CAF50)),
+                            Triple(if (isFarsiMode) "🪙 سکه مسی" else "🪙 Copper Coin", "3.5", Color(0xFFCDDC39)),
+                            Triple(if (isFarsiMode) "🔪 چاقوی فولادی" else "🔪 Pocket Knife", "5.5", Color(0xFFFFC107)),
+                            Triple(if (isFarsiMode) "🖥️ شیشه پنجره" else "🖥️ Window Glass", "5.5", Color(0xFFFF9800)),
+                            Triple(if (isFarsiMode) "🛠️ سوهان فولادی" else "🛠️ Steel File", "6.5", Color(0xFFFF5722)),
+                            Triple(if (isFarsiMode) "🧱 چینی بدون لعاب" else "🧱 Streak Plate", "6.5", Color(0xFFE91E63))
+                        )
+                    }
+
+                    Text(
+                        text = if (isFarsiMode) "ابزارهای صحرایی مرجع سختی:" else "Field Reference Tools:",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                    
+                    androidx.compose.foundation.layout.FlowRow(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        fieldObjects.forEach { (name, hardness, color) ->
+                            Box(
+                                modifier = Modifier
+                                    .background(color.copy(alpha = 0.12f), RoundedCornerShape(6.dp))
+                                    .border(1.dp, color.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(modifier = Modifier.size(6.dp).background(color, RoundedCornerShape(3.dp)))
+                                    Text(text = "$name: $hardness", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        scaleItems.forEach { (level, desc, color) ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .background(color, RoundedCornerShape(9.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(text = level, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .background(color.copy(alpha = 0.05f), RoundedCornerShape(4.dp))
+                                        .border(0.5.dp, color.copy(alpha = 0.1f), RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                                ) {
+                                    Text(text = desc, fontSize = 9.5.sp, color = MaterialTheme.colorScheme.onSurface, lineHeight = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -1356,6 +1607,22 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
                             fontWeight = FontWeight.SemiBold
                         )
 
+                        Spacer(modifier = Modifier.height(6.dp))
+                        OutlinedButton(
+                            onClick = { selectedMineralForLab = bestMatch.first },
+                            modifier = Modifier.fillMaxWidth().height(36.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.primary
+                            ),
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Icon(Icons.Default.Science, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(if (isFarsiMode) "آزمایشگاه صحرایی و شبیه‌ساز تست" else "Run Field Lab & Diagnostic Tests", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1410,16 +1677,24 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Column {
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(altMin.nameFa, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                         Text(altMin.nameEn, fontSize = 9.sp, fontFamily = FontFamily.Monospace, color = Color.Gray)
                                     }
-                                    Text(
-                                        text = "$altScore%",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp,
-                                        color = if (altScore >= 60) Color(0xFFE65100) else Color.Gray
-                                    )
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        IconButton(
+                                            onClick = { selectedMineralForLab = altMin },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(Icons.Default.Science, contentDescription = "Lab test", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                        }
+                                        Text(
+                                            text = "$altScore%",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp,
+                                            color = if (altScore >= 60) Color(0xFFE65100) else Color.Gray
+                                        )
+                                    }
                                 }
                                 Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
                             }
@@ -1484,6 +1759,43 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
                         }
                     }
 
+                    // Mineral Group horizontal chip row
+                    Text(
+                        text = if (isFarsiMode) "دسته‌بندی کانی‌ها (گروه شیمیایی):" else "Mineral Chemical / Structural Group:",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                    
+                    val groupFilters = if (isFarsiMode) {
+                        listOf("همه کانی‌ها", "سیلیکات‌ها", "کربنات‌ها", "سولفیدها", "سولفات‌ها", "اکسیدها", "هالیدها", "عناصر طبیعی")
+                    } else {
+                        listOf("All", "Silicates", "Carbonates", "Sulfides", "Sulfates", "Oxides", "Halides", "Elements")
+                    }
+                    
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        groupFilters.forEach { group ->
+                            val isSelected = selectedGroupFilter == group
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { selectedGroupFilter = group },
+                                label = { Text(group, fontSize = 9.sp) },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(2.dp))
+
                     // Special reactive chips bilingually
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
@@ -1504,13 +1816,14 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
                             leadingIcon = if (filterMagnet) { { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) } } else null
                         )
 
-                        if (searchHardness.isNotEmpty() || filterLuster != "All Lusters" || filterAcid || filterMagnet) {
+                        if (searchHardness.isNotEmpty() || filterLuster != "All Lusters" || filterAcid || filterMagnet || (selectedGroupFilter != "All" && selectedGroupFilter != "همه کانی‌ها")) {
                             IconButton(
                                 onClick = {
                                     searchHardness = ""
                                     filterLuster = "All Lusters"
                                     filterAcid = false
                                     filterMagnet = false
+                                    selectedGroupFilter = if (isFarsiMode) "همه کانی‌ها" else "All"
                                 },
                                 modifier = Modifier.size(32.dp).background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(16.dp))
                             ) {
@@ -1653,6 +1966,14 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
             // AI EXPLORATION DATABASE VIEW (activeMineralTab == 2)
             AiMineralExplorerView(isFarsiMode)
         }
+
+        selectedMineralForLab?.let { mineral ->
+            MineralFieldLabDialog(
+                mineral = mineral,
+                isFarsi = isFarsiMode,
+                onDismiss = { selectedMineralForLab = null }
+            )
+        }
     }
 }
 
@@ -1686,18 +2007,18 @@ private fun WizardQuestionPane(
             Card(
                 onClick = { onSelect(optionVal) },
                 colors = CardDefaults.cardColors(
-                    containerColor = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface
+                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f) else MaterialTheme.colorScheme.surface
                 ),
                 border = BorderStroke(
-                    width = if (isSelected) 1.5.dp else 1.dp,
+                    width = if (isSelected) 1.8.dp else 1.dp,
                     color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
                 ),
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
-                    modifier = Modifier.padding(10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.padding(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     RadioButton(
@@ -1723,6 +2044,805 @@ private fun WizardQuestionPane(
                 }
             }
         }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MineralFieldLabDialog(
+    mineral: GeotechMineral,
+    isFarsi: Boolean,
+    onDismiss: () -> Unit
+) {
+    var activeLabTab by remember { mutableStateOf(0) } // 0: Scratch, 1: Streak, 2: Acid, 3: Magnetism
+    
+    // 1. Scratch states
+    var selectedScratchTool by remember { mutableStateOf("nail") } // "nail", "coin", "knife", "glass"
+    var scratchResultText by remember { mutableStateOf<String?>(null) }
+    var scratchIsSuccess by remember { mutableStateOf<Boolean?>(null) }
+    
+    // 2. Streak states
+    val strokePoints = remember { mutableStateListOf<Offset>() }
+    var streakDrawnLength by remember { mutableStateOf(0) }
+    val streakColor = remember(mineral.nameEn) { getStreakHexColor(mineral.nameEn) }
+    
+    // 3. Acid states
+    var isAcidPoured by remember { mutableStateOf(false) }
+    
+    // 4. Magnet states
+    var isMagnetNear by remember { mutableStateOf(false) }
+    
+    Dialog(
+        onDismissRequest = onDismiss
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.85f),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (isFarsi) "🔬 آزمایشگاه صحرایی و شبیه‌ساز تست" else "🔬 Interactive Field Testing Lab",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "${mineral.nameFa} (${mineral.nameEn})",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.secondary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                // Tabs Row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    val tabTitles = if (isFarsi) {
+                        listOf("💅 تست سختی", "🧱 تست خاکه", "🧪 تست اسید", "🧲 مغناطيس")
+                    } else {
+                        listOf("💅 Scratch", "🧱 Streak", "🧪 Acid", "🧲 Magnet")
+                    }
+                    tabTitles.forEachIndexed { index, title ->
+                        val isSelected = activeLabTab == index
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { activeLabTab = index },
+                            label = { Text(title, fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        )
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Tab Contents
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                ) {
+                    when (activeLabTab) {
+                        0 -> {
+                            // SCRATCH TEST TAB
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(
+                                    text = if (isFarsi) "ابزار خراش صحرایی را انتخاب کرده و سختی کانی را تخمین بزنید:" else "Select a field scratch tool to estimate the mineral hardness:",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                
+                                val toolsList = listOf(
+                                    Triple("nail", if (isFarsi) "💅 ناخن دست (سختی ۲.۵)" else "💅 Fingernail (Mohs 2.5)", 2.5),
+                                    Triple("coin", if (isFarsi) "🪙 سکه مسی (سختی ۳.۵)" else "🪙 Copper Coin (Mohs 3.5)", 3.5),
+                                    Triple("knife", if (isFarsi) "🔪 چاقوی فولادی / میخ (سختی ۵.۵)" else "🔪 Steel Knife/Needle (Mohs 5.5)", 5.5),
+                                    Triple("glass", if (isFarsi) "🥛 صفحه شیشه‌ای (سختی ۶.۵)" else "🥛 Glass Plate (Mohs 6.5)", 6.5)
+                                )
+                                
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    toolsList.forEach { (id, label, hValue) ->
+                                        val isSelected = selectedScratchTool == id
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(
+                                                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f),
+                                                    shape = RoundedCornerShape(12.dp)
+                                                )
+                                                .border(
+                                                    width = if (isSelected) 1.5.dp else 1.dp,
+                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.1f),
+                                                    shape = RoundedCornerShape(12.dp)
+                                                )
+                                                .clickable { 
+                                                    selectedScratchTool = id
+                                                    scratchResultText = null
+                                                    scratchIsSuccess = null
+                                                }
+                                                .padding(12.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            RadioButton(
+                                                selected = isSelected,
+                                                onClick = { 
+                                                    selectedScratchTool = id
+                                                    scratchResultText = null
+                                                    scratchIsSuccess = null
+                                                }
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(text = label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                        }
+                                    }
+                                }
+                                
+                                Button(
+                                    onClick = {
+                                        val toolVal = toolsList.first { it.first == selectedScratchTool }.third
+                                        val minHardness = mineral.hardnessRange.start
+                                        val maxHardness = mineral.hardnessRange.endInclusive
+                                        
+                                        if (toolVal >= minHardness) {
+                                            scratchIsSuccess = true
+                                            scratchResultText = if (isFarsi) {
+                                                "خراش موفقیت‌آمیز بود! 🌟 ابزار انتخابی شما (${toolVal}) از سختی پایه کانی (${minHardness}) بیشتر است. کانی خراش برداشت."
+                                            } else {
+                                                "Scratch Successful! 🌟 The selected tool hardness (${toolVal}) is greater than or equal to the mineral's baseline hardness (${minHardness}). The specimen is scratched."
+                                            }
+                                        } else {
+                                            scratchIsSuccess = false
+                                            scratchResultText = if (isFarsi) {
+                                                "خراش ناموفق بود! ❌ ابزار انتخابی شما (${toolVal}) از سختی کانی (${minHardness} تا ${maxHardness}) نرم‌تر است. ابزار ساییده شده ولی کانی خراش برنمی‌دارد."
+                                            } else {
+                                                "Scratch Failed! ❌ The selected tool hardness (${toolVal}) is softer than the mineral's hardness (${minHardness} - ${maxHardness}). The tool itself is ground down, leaving no mark on the mineral."
+                                            }
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth().height(42.dp),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Text(if (isFarsi) "شبیه‌سازی تست خراش" else "Simulate Scratch Test", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                                
+                                scratchResultText?.let { result ->
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(
+                                                color = if (scratchIsSuccess == true) Color(0xFFE8F5E9) else Color(0xFFFFEBEE),
+                                                shape = RoundedCornerShape(12.dp)
+                                            )
+                                            .border(
+                                                width = 1.dp,
+                                                color = if (scratchIsSuccess == true) Color(0xFF2E7D32) else Color(0xFFC62828),
+                                                shape = RoundedCornerShape(12.dp)
+                                            )
+                                            .padding(12.dp)
+                                    ) {
+                                        Text(
+                                            text = result,
+                                            fontSize = 11.sp,
+                                            lineHeight = 16.sp,
+                                            color = if (scratchIsSuccess == true) Color(0xFF2E7D32) else Color(0xFFC62828),
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
+                                
+                                // Educational summary
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                                        .padding(12.dp)
+                                ) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(
+                                            text = if (isFarsi) "💡 یادداشت آموزشی سختی موهس:" else "💡 Mohs Hardness Scale Guide:",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(
+                                            text = if (isFarsi) {
+                                                "سختی این کانی در بازه ${mineral.hardnessRange.start} تا ${mineral.hardnessRange.endInclusive} تعریف می‌شود. با مالش ابزارهای استاندارد صحرایی، می‌توان مرزهای کیفی سختی کانی را بدون دیتابیس هم به سرعت تعیین کرد."
+                                            } else {
+                                                "This mineral's Mohs hardness range is ${mineral.hardnessRange.start} to ${mineral.hardnessRange.endInclusive}. By testing with qualitative baseline instruments, you can successfully narrow its identity on site."
+                                            },
+                                            fontSize = 10.sp,
+                                            lineHeight = 14.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        
+                        1 -> {
+                            // STREAK TEST TAB
+                            Column(
+                                modifier = Modifier.fillMaxSize(),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    text = if (isFarsi) "انگشت خود را روی کاشی چینی زیر بکشید تا اثر خاکه کانی مشخص شود:" else "Swipe your finger on the porcelain tile to see the mineral's diagnostic streak color:",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxWidth()
+                                        .background(Color(0xFFFCFCFC), RoundedCornerShape(16.dp))
+                                        .border(2.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), RoundedCornerShape(16.dp))
+                                        .pointerInput(mineral.nameEn) {
+                                            detectDragGestures(
+                                                onDragStart = { offset ->
+                                                    strokePoints.add(offset)
+                                                    streakDrawnLength += 5
+                                                },
+                                                onDrag = { change, dragAmount ->
+                                                    change.consume()
+                                                    val lastPoint = strokePoints.lastOrNull()
+                                                    val nextPoint = if (lastPoint != null) lastPoint + dragAmount else change.position
+                                                    strokePoints.add(nextPoint)
+                                                    streakDrawnLength += 1
+                                                }
+                                            )
+                                        }
+                                ) {
+                                    Canvas(modifier = Modifier.fillMaxSize()) {
+                                        drawRect(
+                                            color = Color(0xFFF0F0F0).copy(alpha = 0.4f)
+                                        )
+                                        
+                                        if (strokePoints.isNotEmpty()) {
+                                            for (i in 0 until strokePoints.size - 1) {
+                                                val p1 = strokePoints[i]
+                                                val p2 = strokePoints[i+1]
+                                                if ((p1 - p2).getDistance() < 60f) {
+                                                    drawLine(
+                                                        color = streakColor,
+                                                        start = p1,
+                                                        end = p2,
+                                                        strokeWidth = 16f,
+                                                        cap = StrokeCap.Round
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                    
+                                    if (strokePoints.isEmpty()) {
+                                        Box(
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                Icon(Icons.Default.TouchApp, contentDescription = null, tint = Color.Gray.copy(alpha = 0.5f), modifier = Modifier.size(36.dp))
+                                                Text(
+                                                    text = if (isFarsi) "اینجا خط بکشید..." else "Draw here with your finger...",
+                                                    fontSize = 11.sp,
+                                                    color = Color.Gray.copy(alpha = 0.7f)
+                                                )
+                                            }
+                                        }
+                                    }
+                                    
+                                    IconButton(
+                                        onClick = { 
+                                            strokePoints.clear()
+                                            streakDrawnLength = 0
+                                        },
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(8.dp)
+                                            .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
+                                            .size(32.dp)
+                                    ) {
+                                        Icon(Icons.Default.Refresh, contentDescription = "Clear plate", modifier = Modifier.size(16.dp))
+                                    }
+                                    
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.BottomStart)
+                                            .padding(10.dp)
+                                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f), RoundedCornerShape(8.dp))
+                                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            Box(modifier = Modifier.size(12.dp).background(streakColor, CircleShape).border(0.5.dp, Color.Gray, CircleShape))
+                                            Text(
+                                                text = if (isFarsi) "خاکه کانی: ${mineral.streak}" else "Streak: ${mineral.streak}",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+                                
+                                if (streakDrawnLength > 15) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                                            .padding(10.dp)
+                                    ) {
+                                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                            Text(
+                                                text = if (isFarsi) "✨ تحلیل علمی رنگ خاکه کانی:" else "✨ Mineral Scientific Streak Analysis:",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                            Text(
+                                                text = if (isFarsi) {
+                                                    "بدنه کانی ممکن است به دلیل ناخالصی‌ها تغییر رنگ دهد (رنگ ظاهری: ${mineral.color})، اما اثر پودر شده آن بر روی چینی بدون لعاب (${mineral.streak}) ویژگی بسیار دقیق‌تر و ثابت‌تری برای کانی‌شناس است."
+                                                } else {
+                                                    "While a mineral's apparent body color (${mineral.color}) varies due to structural impurities, its powdered streak color (${mineral.streak}) is extremely diagnostic and remains constant."
+                                                },
+                                                fontSize = 10.sp,
+                                                lineHeight = 14.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        2 -> {
+                            // ACID TEST TAB
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(
+                                    text = if (isFarsi) "آیا این کانی با اسید هیدروکلریک ۱۰٪ سرد واکنش می‌دهد؟ قطره اسید را بچکانید:" else "Does this mineral react with cold dilute 10% hydrochloric acid? Pour a drop:",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(180.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                                ) {
+                                    Box(modifier = Modifier.fillMaxSize()) {
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.Center)
+                                                .size(100.dp)
+                                                .background(
+                                                    brush = Brush.radialGradient(
+                                                        colors = listOf(Color(0xFF9E9E9E), Color(0xFF616161))
+                                                    ),
+                                                    shape = RoundedCornerShape(20.dp)
+                                                )
+                                                .border(2.dp, Color.DarkGray, RoundedCornerShape(20.dp)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = mineral.nameEn.take(6),
+                                                fontSize = 12.sp,
+                                                color = Color.White.copy(alpha = 0.4f),
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            
+                                            if (isAcidPoured && mineral.acidReaction) {
+                                                val infiniteTransition = rememberInfiniteTransition(label = "fizzing_anim")
+                                                val b1Scale by infiniteTransition.animateFloat(
+                                                    initialValue = 0.4f,
+                                                    targetValue = 1.3f,
+                                                    animationSpec = infiniteRepeatable(tween(700, easing = LinearEasing), RepeatMode.Restart),
+                                                    label = "b1"
+                                                )
+                                                val b1Alpha by infiniteTransition.animateFloat(
+                                                    initialValue = 1f,
+                                                    targetValue = 0f,
+                                                    animationSpec = infiniteRepeatable(tween(700, easing = LinearEasing), RepeatMode.Restart),
+                                                    label = "ba1"
+                                                )
+                                                
+                                                val b2Scale by infiniteTransition.animateFloat(
+                                                    initialValue = 0.2f,
+                                                    targetValue = 1.5f,
+                                                    animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart),
+                                                    label = "b2"
+                                                )
+                                                val b2Alpha by infiniteTransition.animateFloat(
+                                                    initialValue = 1f,
+                                                    targetValue = 0f,
+                                                    animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing), RepeatMode.Restart),
+                                                    label = "ba2"
+                                                )
+                                                
+                                                Box(modifier = Modifier.fillMaxSize()) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .align(Alignment.Center)
+                                                            .size(14.dp)
+                                                            .background(Color(0xFF81C784).copy(alpha = 0.5f), CircleShape)
+                                                    )
+                                                    
+                                                    val offsets = listOf(
+                                                        Offset(-20f, -20f), Offset(15f, 25f), Offset(-10f, 30f), Offset(25f, -15f)
+                                                    )
+                                                    offsets.forEachIndexed { i, offset ->
+                                                        val scale = if (i % 2 == 0) b1Scale else b2Scale
+                                                        val alpha = if (i % 2 == 0) b1Alpha else b2Alpha
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .offset(x = offset.x.dp, y = offset.y.dp)
+                                                                .align(Alignment.Center)
+                                                                .size((12 * scale).dp)
+                                                                .background(
+                                                                    Color(0xFFE8F5E9).copy(alpha = alpha),
+                                                                    CircleShape
+                                                                )
+                                                                .border(1.dp, Color(0xFF81C784).copy(alpha = alpha), CircleShape)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        
+                                        Column(
+                                            modifier = Modifier
+                                                .align(Alignment.TopStart)
+                                                .padding(12.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Science,
+                                                contentDescription = null,
+                                                tint = if (isAcidPoured) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(32.dp)
+                                            )
+                                            Text("HCl (10%)", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                        
+                                        if (isAcidPoured) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .align(Alignment.BottomCenter)
+                                                    .padding(8.dp)
+                                                    .background(
+                                                        if (mineral.acidReaction) Color(0xFFE8F5E9) else Color(0xFFECEFF1),
+                                                        RoundedCornerShape(8.dp)
+                                                    )
+                                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                            ) {
+                                                Text(
+                                                    text = if (mineral.acidReaction) {
+                                                        val isDolomite = mineral.nameEn.lowercase().contains("dolomite")
+                                                        if (isDolomite) {
+                                                            if (isFarsi) "⚡ جوشش ضعیف (در خاکه یا اسید داغ!)" else "⚡ Weak Effervescence (On powder/warm)"
+                                                        } else {
+                                                            if (isFarsi) "💥 جوشش شدید و گاز CO2 فورا آزاد شد!" else "💥 Highly Reactive! Rapid CO2 fizzing"
+                                                        }
+                                                    } else {
+                                                        if (isFarsi) "❌ بدون واکنش (خاکه و بدنه غیرفعال است)" else "❌ Inert (No reaction detected)"
+                                                    },
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (mineral.acidReaction) Color(0xFF2E7D32) else Color(0xFF37474F)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                Button(
+                                    onClick = { 
+                                        isAcidPoured = true 
+                                    },
+                                    modifier = Modifier.fillMaxWidth().height(42.dp),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                                ) {
+                                    Icon(Icons.Default.Science, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(if (isFarsi) "چکاندن اسید کلریدریک" else "Pour Hydrochloric Acid Drop", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                                
+                                if (isAcidPoured) {
+                                    OutlinedButton(
+                                        onClick = { isAcidPoured = false },
+                                        modifier = Modifier.fillMaxWidth().height(36.dp),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(if (isFarsi) "تمیز کردن اسید از روی کانی" else "Wash/Clean Specimen Surface")
+                                    }
+                                }
+                                
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                                        .padding(12.dp)
+                                ) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                        Text(
+                                            text = if (isFarsi) "💡 اهمیت تست اسید در صحرا:" else "💡 Importance of Acid Field Tests:",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(
+                                            text = if (isFarsi) {
+                                                "این تست تفاوت اساسی کلسیت (شدید فورا فیز می‌کند) را از دولومیت (فقط در صورت کوبیده شدن پودری فیز می‌کند) و سیلیکات‌ها (بدون هیچ واکنشی) آشکار می‌کند."
+                                            } else {
+                                                "This acid test instantly discriminates Calcite (strong rapid fizzing) from Dolomite (requires powder or heat to fizz) and inert silicates."
+                                            },
+                                            fontSize = 10.sp,
+                                            lineHeight = 14.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        
+                        3 -> {
+                            // MAGNETISM & TOUCH FEEL TAB
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(
+                                    text = if (isFarsi) "تست نزدیکی آهنربا صحرایی و لمس فیزیکی کانی:" else "Field magnet attraction and physical touch indicators:",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(180.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                                ) {
+                                    Box(modifier = Modifier.fillMaxSize()) {
+                                        val animXOffset by animateDpAsState(
+                                            targetValue = if (isMagnetNear && mineral.magnetic) (-25).dp else 0.dp,
+                                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
+                                            label = "specimen_offset"
+                                        )
+                                        
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.Center)
+                                                .offset(x = animXOffset)
+                                                .size(80.dp)
+                                                .background(Color(0xFF424242), RoundedCornerShape(16.dp))
+                                                .border(2.dp, Color.Black, RoundedCornerShape(16.dp)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = if (isFarsi) "کانی" else "Specimen",
+                                                fontSize = 11.sp,
+                                                color = Color.White.copy(alpha = 0.5f),
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                        
+                                        val magnetXOffset by animateDpAsState(
+                                            targetValue = if (isMagnetNear) 40.dp else 100.dp,
+                                            animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+                                            label = "magnet_offset"
+                                        )
+                                        
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.Center)
+                                                .offset(x = magnetXOffset)
+                                                .size(60.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                Icons.Default.OfflineBolt,
+                                                contentDescription = "Magnet",
+                                                tint = Color.Red,
+                                                modifier = Modifier.size(54.dp)
+                                            )
+                                            Text(
+                                                "N-S",
+                                                fontSize = 8.sp,
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(top = 4.dp)
+                                            )
+                                        }
+                                        
+                                        Box(
+                                            modifier = Modifier
+                                                .align(Alignment.BottomCenter)
+                                                .padding(8.dp)
+                                                .background(
+                                                    if (isMagnetNear) {
+                                                        if (mineral.magnetic) Color(0xFFE8F5E9) else Color(0xFFFFEBEE)
+                                                    } else Color(0xFFECEFF1),
+                                                    RoundedCornerShape(8.dp)
+                                                )
+                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                        ) {
+                                            Text(
+                                                text = if (isMagnetNear) {
+                                                    if (mineral.magnetic) {
+                                                        if (isFarsi) "🧲 جذب مغناطیسی قوی! کانی به آهنربا چسبید." else "🧲 Strong magnetic attraction! Specimen snapped."
+                                                    } else {
+                                                        if (isFarsi) "❌ غیرمغناطیسی: هیچ واکنشی دیده نشد." else "❌ Non-magnetic: No attraction detected."
+                                                    }
+                                                } else {
+                                                    if (isFarsi) "آهنربا را برای تست نزدیک کنید" else "Bring the magnet closer to test"
+                                                },
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isMagnetNear) {
+                                                    if (mineral.magnetic) Color(0xFF2E7D32) else Color(0xFFC62828)
+                                                } else Color(0xFF37474F)
+                                            )
+                                        }
+                                    }
+                                }
+                                
+                                Button(
+                                    onClick = { isMagnetNear = !isMagnetNear },
+                                    modifier = Modifier.fillMaxWidth().height(42.dp),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Icon(Icons.Default.OfflineBolt, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        if (isMagnetNear) {
+                                            if (isFarsi) "دور کردن آهنربا" else "Move Magnet Away"
+                                        } else {
+                                            if (isFarsi) "نزدیک کردن آهنربا صحرایی" else "Bring Magnet Close"
+                                        },
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.2f)),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Text(
+                                            text = if (isFarsi) "کارهای لمسی و ویژگی‌های فرعی:" else "Diagnostic Textures & Physical Feels:",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.secondary
+                                        )
+                                        
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                            Text(
+                                                text = if (isFarsi) "🧈 لمس بدنه (Feel): ${mineral.feel}" else "Hand Feel: ${mineral.feel}",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                            Text(
+                                                text = if (isFarsi) "📐 بلوربندی (Habit): ${mineral.shape}" else "Crystal Habit: ${mineral.shape}",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                        
+                                        if (mineral.taste != "none") {
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = if (isFarsi) "👅 ویژگی طعم در زبان: ${mineral.taste} (سوزاننده/شور)" else "👅 Taste indicators: ${mineral.taste} (Do not swallow!)",
+                                                fontSize = 10.sp,
+                                                color = MaterialTheme.colorScheme.error,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                // Footer
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer, contentColor = MaterialTheme.colorScheme.onPrimaryContainer),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(if (isFarsi) "اتمام آزمایش و بازگشت" else "Complete Lab & Return", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+fun getStreakHexColor(mineralNameEn: String): Color {
+    val name = mineralNameEn.lowercase()
+    return when {
+        name.contains("hematite") -> Color(0xFF8B2500) // Cherry red / reddish brown
+        name.contains("pyrite") || name.contains("chalcopyrite") || name.contains("pentlandite") -> Color(0xFF2E3B2E) // Dark greenish-black
+        name.contains("magnetite") || name.contains("ilmenite") -> Color(0xFF222222) // Iron Black
+        name.contains("galena") || name.contains("stibnite") -> Color(0xFF708090) // Lead Gray
+        name.contains("graphite") -> Color(0xFF3A3A3A) // Dark lead gray
+        name.contains("sulfur") || name.contains("orpiment") -> Color(0xFFE6D31C) // Yellow
+        name.contains("malachite") -> Color(0xFF4CAF50) // Bright pale green
+        name.contains("azurite") -> Color(0xFF4682B4) // Azure blue / light blue
+        name.contains("bornite") -> Color(0xFF4F4F4F) // Grayish-black
+        name.contains("chalcocite") -> Color(0xFF5C5C5C) // Dark lead-gray
+        name.contains("sphalerite") -> Color(0xFF8B5A2B) // Light brown / golden yellow
+        name.contains("arsenopyrite") -> Color(0xFF3F4F4F) // Dark gray-black
+        name.contains("pyrrhotite") -> Color(0xFF555555) // Dark gray
+        name.contains("molybdenite") -> Color(0xFF778899) // Greenish/bluish gray
+        name.contains("gold") -> Color(0xFFFFD700) // Gold
+        name.contains("silver") -> Color(0xFFC0C0C0) // Silver
+        name.contains("chromite") -> Color(0xFF4A2F22) // Chocolate brown
+        name.contains("cassiterite") -> Color(0xFF8B7355) // Pale brown
+        name.contains("cinnabar") -> Color(0xFFE03C31) // Scarlet red
+        name.contains("realgar") -> Color(0xFFFF5722) // Orange-red
+        name.contains("chlorite") -> Color(0xFF6F8F6F) // Greenish-gray
+        name.contains("limonite") -> Color(0xFFB8860B) // Yellowish brown
+        name.contains("goethite") -> Color(0xFFCD9B1D) // Ochre yellow
+        name.contains("bauxite") -> Color(0xFF8B4513) // Reddish brown
+        name.contains("rutile") -> Color(0xFFB5A642) // Chalky yellow-brown
+        name.contains("copper") -> Color(0xFFCD7F32) // Copper red
+        else -> Color(0xFFE0E0E0) // White / Light Gray for all silicates and sulfates
     }
 }
 
@@ -2251,6 +3371,24 @@ fun AiMineralExplorerView(isFarsiMode: Boolean) {
         listOf("Alunite", "Jarosite", "Sericite", "Spodumene", "Wollastonite", "Scheelite", "Pyrite", "Chalcopyrite", "Hematite", "Magnetite")
     }
 
+    val explorationGuides = if (isFarsiMode) {
+        listOf(
+            "دگرسانی پروپیلیتیک (اپیدوت)" to "Propylitic alteration (Epidote + Chlorite)",
+            "دگرسانی فیلیک (سریسیت)" to "Phyllic alteration (Sericite + Pyrite)",
+            "دگرسانی آرژیلیک پیشرفته" to "Advanced Argillic alteration (Alunite)",
+            "کلاهک آهنی گوسان (گوتیت)" to "Iron Hat Gossan indicators (Goethite + Jarosite)",
+            "کانی‌های ردیاب لیتیوم" to "Lithium Pegmatite pathfinders (Spodumene + Lepidolite)"
+        )
+    } else {
+        listOf(
+            "Propylitic Alteration" to "Propylitic alteration (Epidote + Chlorite)",
+            "Phyllic Alteration" to "Phyllic alteration (Sericite + Pyrite)",
+            "Advanced Argillic" to "Advanced Argillic alteration (Alunite)",
+            "Gossan Iron Hat" to "Iron Hat Gossan indicators (Goethite + Jarosite)",
+            "Lithium Pathfinders" to "Lithium Pegmatite pathfinders (Spodumene + Lepidolite)"
+        )
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -2322,6 +3460,46 @@ fun AiMineralExplorerView(isFarsiMode: Boolean) {
                         )
                     }
                 }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Pathfinder presets
+                Text(
+                    text = if (isFarsiMode) "راهنماهای اکتشافی و دگرسانی‌های سنگ دیواره:" else "Exploration Alteration Presets:",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.secondary
+                )
+
+                androidx.compose.foundation.layout.FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    explorationGuides.forEach { (label, target) ->
+                        val isSelected = searchQuery == target
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { 
+                                searchQuery = target
+                                isLoading = true
+                                aiResult = ""
+                                coroutineScope.launch {
+                                    aiResult = queryGeminiMineral(target, isFarsiMode)
+                                    isLoading = false
+                                }
+                            },
+                            label = { Text(label, fontSize = 9.sp) },
+                            shape = RoundedCornerShape(8.dp),
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                                selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
 
                 Button(
                     onClick = {

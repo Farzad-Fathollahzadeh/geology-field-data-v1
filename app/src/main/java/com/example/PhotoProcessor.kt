@@ -212,6 +212,7 @@ object PhotoProcessor {
             FileOutputStream(file).use { outStream ->
                 annotatedBitmap.compress(Bitmap.CompressFormat.JPEG, 90, outStream)
             }
+            annotatedBitmap.recycle() // Release native memory immediately to prevent OOM
             return file.absolutePath
         } catch (e: Exception) {
             e.printStackTrace()

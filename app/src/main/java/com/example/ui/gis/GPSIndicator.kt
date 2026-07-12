@@ -77,7 +77,7 @@ fun GPSIndicator(
                     )
                 }
                 Text(
-                    text = if (isRealPosition) "$satelliteCount SATS LOCK" else "LOCAL SIM",
+                    text = if (isRealPosition) "$satelliteCount SATS | ±${String.format(java.util.Locale.US, "%.1f", accuracy)}m" else "SIMULATED | ±${String.format(java.util.Locale.US, "%.1f", accuracy)}m",
                     fontSize = 11.sp,
                     color = textCol,
                     fontFamily = FontFamily.Monospace,

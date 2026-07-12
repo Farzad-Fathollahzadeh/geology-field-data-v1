@@ -32,7 +32,8 @@ data class Project(
             childColumns = ["projectId"],
             onDelete = ForeignKey.CASCADE
         )
-    ]
+    ],
+    indices = [androidx.room.Index(value = ["projectId"])]
 )
 data class Station(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
@@ -59,7 +60,8 @@ data class Station(
             childColumns = ["stationId"],
             onDelete = ForeignKey.CASCADE
         )
-    ]
+    ],
+    indices = [androidx.room.Index(value = ["stationId"])]
 )
 data class Observation(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
@@ -119,7 +121,8 @@ data class Observation(
             childColumns = ["observationId"],
             onDelete = ForeignKey.CASCADE
         )
-    ]
+    ],
+    indices = [androidx.room.Index(value = ["observationId"])]
 )
 data class Sample(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
@@ -193,7 +196,8 @@ fun parsePointsJson(json: String): List<TrackPoint> {
             childColumns = ["projectId"],
             onDelete = ForeignKey.CASCADE
         )
-    ]
+    ],
+    indices = [androidx.room.Index(value = ["projectId"])]
 )
 data class Borehole(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
@@ -217,7 +221,8 @@ data class Borehole(
             childColumns = ["boreholeId"],
             onDelete = ForeignKey.CASCADE
         )
-    ]
+    ],
+    indices = [androidx.room.Index(value = ["boreholeId"])]
 )
 data class BoreholeDailyReport(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
@@ -240,7 +245,8 @@ data class BoreholeDailyReport(
             childColumns = ["boreholeId"],
             onDelete = ForeignKey.CASCADE
         )
-    ]
+    ],
+    indices = [androidx.room.Index(value = ["boreholeId"])]
 )
 data class BoreholeCoreRun(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
@@ -267,7 +273,8 @@ data class BoreholeCoreRun(
             childColumns = ["projectId"],
             onDelete = ForeignKey.CASCADE
         )
-    ]
+    ],
+    indices = [androidx.room.Index(value = ["projectId"])]
 )
 data class RockMechanicsEvaluation(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,

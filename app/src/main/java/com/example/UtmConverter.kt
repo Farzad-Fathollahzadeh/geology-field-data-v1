@@ -178,7 +178,8 @@ object UtmConverter {
         utmZone: String,
         utmEasting: Double,
         utmNorthing: Double,
-        coordSystemSetting: String
+        coordSystemSetting: String,
+        customEpsg: String = "32639"
     ): String {
         return when (coordSystemSetting) {
             "WGS84_DECIMAL" -> {
@@ -192,6 +193,42 @@ object UtmConverter {
             }
             "MGRS" -> {
                 formatMGRS(lat, lon)
+            }
+            "WEB_MERCATOR" -> {
+                val r = 6378137.0
+                val x = r * Math.toRadians(lon)
+                val latRad = Math.toRadians(lat.coerceIn(-85.05112878, 85.05112878))
+                val y = r * Math.log(Math.tan(Math.PI / 4.0 + latRad / 2.0))
+                String.format(Locale.US, "X: %.1f m, Y: %.1f m", x, y)
+            }
+            "CUSTOM_EPSG" -> {
+                val digits = customEpsg.filter { it.isDigit() }
+                when {
+                    digits == "3857" -> {
+                        val r = 6378137.0
+                        val x = r * Math.toRadians(lon)
+                        val latRad = Math.toRadians(lat.coerceIn(-85.05112878, 85.05112878))
+                        val y = r * Math.log(Math.tan(Math.PI / 4.0 + latRad / 2.0))
+                        String.format(Locale.US, "EPSG:3857 | X: %.1f m, Y: %.1f m", x, y)
+                    }
+                    digits == "4326" -> {
+                        String.format(Locale.US, "EPSG:4326 | %.8f° N, %.8f° E", lat, lon)
+                    }
+                    digits.length == 5 && (digits.startsWith("326") || digits.startsWith("327")) -> {
+                        val zone = digits.substring(3, 5).toIntOrNull() ?: 39
+                        val isNorth = digits.startsWith("326")
+                        val forcedZone = "$zone${if (isNorth) 'N' else 'S'}"
+                        try {
+                            val utm = convertLatLngToUtm(lat, lon, forcedZone)
+                            String.format(Locale.US, "EPSG:%s | %.1f E, %.1f N", digits, utm.easting, utm.northing)
+                        } catch (e: Exception) {
+                            String.format(Locale.US, "EPSG:%s | %.6f°, %.6f°", digits, lat, lon)
+                        }
+                    }
+                    else -> {
+                        String.format(Locale.US, "EPSG:%s | %.6f°, %.6f°", digits, lat, lon)
+                    }
+                }
             }
             else -> { // "UTM"
                 "Zone $utmZone | ${String.format(Locale.US, "%.0f E, %.0f N", utmEasting, utmNorthing)}"

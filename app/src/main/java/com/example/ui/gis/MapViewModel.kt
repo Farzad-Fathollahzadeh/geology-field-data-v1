@@ -1,6 +1,6 @@
 package com.example.ui.gis
 
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
@@ -22,7 +22,7 @@ data class OfflineRegion(
     val dateDownloaded: String
 )
 
-class MapViewModel : ViewModel() {
+class MapViewModel(application: android.app.Application) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow<MapUiState>(MapUiState.Idle)
     val uiState: StateFlow<MapUiState> = _uiState.asStateFlow()
 
@@ -123,139 +123,194 @@ class MapViewModel : ViewModel() {
     private val _mbtilesImportStatus = MutableStateFlow("")
     val mbtilesImportStatus: StateFlow<String> = _mbtilesImportStatus.asStateFlow()
 
+    // Map of active MBTiles (filename -> opacity)
+    private val _activeMbtiles = MutableStateFlow<Map<String, Float>>(emptyMap())
+    val activeMbtiles: StateFlow<Map<String, Float>> = _activeMbtiles.asStateFlow()
+
+    // List of imported MBTiles files on disk
+    private val _importedMbtilesFiles = MutableStateFlow<List<java.io.File>>(emptyList())
+    val importedMbtilesFiles: StateFlow<List<java.io.File>> = _importedMbtilesFiles.asStateFlow()
+
+    init {
+        loadActiveMbtilesFromPrefs()
+        refreshMbtilesFiles()
+    }
+
+    private fun saveActiveMbtilesToPrefs(active: Map<String, Float>) {
+        val prefs = getApplication<android.app.Application>().getSharedPreferences("geofieldpro_prefs", android.content.Context.MODE_PRIVATE)
+        val serialized = active.entries.joinToString(";") { "${it.key}:${it.value}" }
+        prefs.edit().putString("active_mbtiles", serialized).apply()
+    }
+
+    private fun loadActiveMbtilesFromPrefs() {
+        val prefs = getApplication<android.app.Application>().getSharedPreferences("geofieldpro_prefs", android.content.Context.MODE_PRIVATE)
+        val serialized = prefs.getString("active_mbtiles", "") ?: ""
+        val map = mutableMapOf<String, Float>()
+        if (serialized.isNotEmpty()) {
+            val pairs = serialized.split(";")
+            for (p in pairs) {
+                val parts = p.split(":")
+                if (parts.size == 2) {
+                    val name = parts[0]
+                    val opacity = parts[1].toFloatOrNull() ?: 1.0f
+                    map[name] = opacity
+                }
+            }
+        }
+        _activeMbtiles.value = map
+    }
+
+    fun refreshMbtilesFiles() {
+        val dir = java.io.File(getApplication<android.app.Application>().filesDir, "mbtiles")
+        if (!dir.exists()) dir.mkdirs()
+        val files = dir.listFiles { _, name -> name.endsWith(".mbtiles") || name.endsWith(".sqlite") }
+        _importedMbtilesFiles.value = files?.toList() ?: emptyList()
+
+        // Also clean up any active MBTiles settings for files that no longer exist
+        val active = _activeMbtiles.value.toMutableMap()
+        var changed = false
+        val keys = active.keys.toList()
+        for (key in keys) {
+            val file = java.io.File(dir, key)
+            if (!file.exists()) {
+                active.remove(key)
+                changed = true
+            }
+        }
+        if (changed) {
+            _activeMbtiles.value = active
+            saveActiveMbtilesToPrefs(active)
+        }
+    }
+
+    fun toggleMbtilesActive(fileName: String, active: Boolean) {
+        val current = _activeMbtiles.value.toMutableMap()
+        if (active) {
+            current[fileName] = 1.0f
+        } else {
+            current.remove(fileName)
+        }
+        _activeMbtiles.value = current
+        saveActiveMbtilesToPrefs(current)
+    }
+
+    fun setMbtilesOpacity(fileName: String, opacity: Float) {
+        val current = _activeMbtiles.value.toMutableMap()
+        if (current.containsKey(fileName)) {
+            current[fileName] = opacity.coerceIn(0f, 1f)
+            _activeMbtiles.value = current
+            saveActiveMbtilesToPrefs(current)
+        }
+    }
+
+    fun deleteMbtilesFile(fileName: String) {
+        val file = java.io.File(java.io.File(getApplication<android.app.Application>().filesDir, "mbtiles"), fileName)
+        if (file.exists()) {
+            file.delete()
+        }
+        toggleMbtilesActive(fileName, false)
+        refreshMbtilesFiles()
+    }
+
+    private fun getFileNameFromUri(context: android.content.Context, uri: android.net.Uri): String {
+        var result: String? = null
+        if (uri.scheme == "content") {
+            val cursor = context.contentResolver.query(uri, null, null, null, null)
+            try {
+                if (cursor != null && cursor.moveToFirst()) {
+                    val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (index != -1) {
+                        result = cursor.getString(index)
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                cursor?.close()
+            }
+        }
+        if (result == null) {
+            result = uri.path
+            val cut = result?.lastIndexOf('/') ?: -1
+            if (cut != -1) {
+                result = result?.substring(cut + 1)
+            }
+        }
+        return result ?: "imported_${System.currentTimeMillis()}.mbtiles"
+    }
+
     fun importMbtilesFile(context: android.content.Context, uri: android.net.Uri) {
         if (_isImportingMbtiles.value) return
         _isImportingMbtiles.value = true
         _mbtilesImportProgress.value = 0f
         _mbtilesImportStatus.value = "Preparing MBTiles file..."
 
-        // Launch on main viewModelScope (inherits lifecycle perfectly)
         viewModelScope.launch(Dispatchers.IO) {
-            var tempFile: java.io.File? = null
             var db: android.database.sqlite.SQLiteDatabase? = null
-            var cursor: android.database.Cursor? = null
             try {
-                // 1. Copy URI to clean local temp file
+                val originalName = getFileNameFromUri(context, uri)
+                // Sanitize file name to avoid path traversal or spaces issues
+                val sanitizedName = originalName.replace(Regex("[^a-zA-Z0-9._-]"), "_")
+                
+                val mbtilesDir = java.io.File(getApplication<android.app.Application>().filesDir, "mbtiles")
+                if (!mbtilesDir.exists()) mbtilesDir.mkdirs()
+                
+                val destFile = java.io.File(mbtilesDir, sanitizedName)
+                _mbtilesImportStatus.value = "Copying map database to secure storage..."
+                _mbtilesImportProgress.value = 0.2f
+                
                 val inputStream = context.contentResolver.openInputStream(uri)
                 if (inputStream == null) {
-                    _mbtilesImportStatus.value = "Failed to access chosen file."
+                    _mbtilesImportStatus.value = "Failed to open input stream."
                     _isImportingMbtiles.value = false
                     return@launch
                 }
                 
-                tempFile = java.io.File(context.cacheDir, "temp_import_${System.currentTimeMillis()}.mbtiles")
-                val outputStream = java.io.FileOutputStream(tempFile)
-                _mbtilesImportStatus.value = "Copying file to app environment..."
-                
-                val buffer = ByteArray(1024 * 16)
-                var bytesRead: Int
-                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                    outputStream.write(buffer, 0, bytesRead)
+                val outputStream = java.io.FileOutputStream(destFile)
+                inputStream.use { input ->
+                    outputStream.use { output ->
+                        input.copyTo(output)
+                    }
                 }
-                outputStream.flush()
-                outputStream.close()
-                inputStream.close()
                 
-                _mbtilesImportStatus.value = "Opening offline map database..."
-                // 2. Open copied file as SQLite DB
+                _mbtilesImportStatus.value = "Validating database integrity..."
+                _mbtilesImportProgress.value = 0.8f
+                
+                // Try opening the SQLite Database to verify its schema
                 db = android.database.sqlite.SQLiteDatabase.openDatabase(
-                    tempFile.absolutePath,
+                    destFile.absolutePath,
                     null,
-                    android.database.sqlite.SQLiteDatabase.OPEN_READONLY
+                    android.database.sqlite.SQLiteDatabase.OPEN_READONLY or android.database.sqlite.SQLiteDatabase.NO_LOCALIZED_COLLATORS
                 )
                 
-                // Verify standard tables exist
                 val tableCheckCursor = db.rawQuery(
                     "SELECT name FROM sqlite_master WHERE type='table' AND name='tiles'",
                     null
                 )
-                val tableExists = tableCheckCursor.use { it.moveToFirst() }
-                if (!tableExists) {
-                    _mbtilesImportStatus.value = "Unsupported database format (Missing 'tiles' table)."
+                val hasTilesTable = tableCheckCursor.use { it.moveToFirst() }
+                if (!hasTilesTable) {
+                    _mbtilesImportStatus.value = "Error: Invalid MBTiles format (Missing 'tiles' table)."
+                    destFile.delete()
                     _isImportingMbtiles.value = false
-                    tempFile.delete()
                     return@launch
                 }
                 
-                // 3. Count total tiles
-                var totalTiles = 0
-                val countCursor = db.rawQuery("SELECT count(*) FROM tiles", null)
-                if (countCursor.moveToFirst()) {
-                    totalTiles = countCursor.getInt(0)
-                }
-                countCursor.close()
+                _mbtilesImportStatus.value = "Imported successfully!"
+                _mbtilesImportProgress.value = 1.0f
                 
-                if (totalTiles == 0) {
-                    _mbtilesImportStatus.value = "Import database has zero tiles!"
-                    _isImportingMbtiles.value = false
-                    tempFile.delete()
-                    return@launch
-                }
+                // Refresh our files and set the imported file active
+                refreshMbtilesFiles()
+                toggleMbtilesActive(sanitizedName, true)
                 
-                _mbtilesImportStatus.value = "Discovered $totalTiles tiles. Processing..."
-                
-                // 4. Query all tiles
-                cursor = db.rawQuery("SELECT zoom_level, tile_column, tile_row, tile_data FROM tiles", null)
-                
-                val zIndex = cursor.getColumnIndexOrThrow("zoom_level")
-                val xIndex = cursor.getColumnIndexOrThrow("tile_column")
-                val yIndex = cursor.getColumnIndexOrThrow("tile_row")
-                val dataIndex = cursor.getColumnIndexOrThrow("tile_data")
-                
-                val helper = com.example.TileCacheDatabaseHelper.getInstance(context)
-                var processedCount = 0
-                
-                while (cursor.moveToNext()) {
-                    val z = cursor.getInt(zIndex)
-                    val x = cursor.getInt(xIndex)
-                    val tmsY = cursor.getInt(yIndex)
-                    
-                    // Map TMS Y to XYZ: y_xyz = (2^zoom) - 1 - y_tms
-                    val maxTileY = (1 shl z) - 1
-                    val y = maxTileY - tmsY
-                    
-                    val tileBytes = cursor.getBlob(dataIndex)
-                    if (tileBytes != null && tileBytes.isNotEmpty()) {
-                        // Store to OSM, Google, and ArcGIS intercepted URLs
-                        val osmUrlA = "https://a.tile.openstreetmap.org/$z/$x/$y.png"
-                        val osmUrlB = "https://b.tile.openstreetmap.org/$z/$x/$y.png"
-                        val osmUrlC = "https://c.tile.openstreetmap.org/$z/$x/$y.png"
-                        val arcgisUrl = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/$z/$y/$x"
-                        val googleUrl = "https://mt1.google.com/vt/lyrs=s&x=$x&y=$y&z=$z"
-                        
-                        helper.putTile(osmUrlA, tileBytes, "image/png")
-                        helper.putTile(osmUrlB, tileBytes, "image/png")
-                        helper.putTile(osmUrlC, tileBytes, "image/png")
-                        helper.putTile(arcgisUrl, tileBytes, "image/jpeg")
-                        helper.putTile(googleUrl, tileBytes, "image/jpeg")
-                    }
-                    
-                    processedCount++
-                    if (processedCount % 10 == 0 || processedCount == totalTiles) {
-                        _mbtilesImportProgress.value = processedCount.toFloat() / totalTiles
-                        _mbtilesImportStatus.value = "Importing layers: $processedCount / $totalTiles (${(processedCount * 100 / totalTiles)}%)"
-                    }
-                }
-                
-                _mbtilesImportStatus.value = "Successfully imported $totalTiles tiles!"
-                _mbtilesImportProgress.value = 1f
-                
-                kotlinx.coroutines.delay(2000)
-                
+                delay(1500)
             } catch (e: Exception) {
                 e.printStackTrace()
-                _mbtilesImportStatus.value = "Error parsing SQLite file: ${e.message}"
+                _mbtilesImportStatus.value = "Import failed: ${e.message}"
+                delay(2500)
             } finally {
-                try {
-                    cursor?.close()
-                } catch (e: Exception) {}
                 try {
                     db?.close()
                 } catch (e: Exception) {}
-                try {
-                    tempFile?.delete()
-                } catch (e: Exception) {}
-                
                 _isImportingMbtiles.value = false
                 _mbtilesImportProgress.value = 0f
                 _mbtilesImportStatus.value = ""
@@ -329,7 +384,15 @@ class MapViewModel : ViewModel() {
         return Math.floor((1.0 - Math.log(Math.tan(latRad) + 1.0 / Math.cos(latRad)) / Math.PI) / 2.0 * (1 shl zoom)).toInt()
     }
 
-    suspend fun downloadRegionForLocation(context: android.content.Context, lat: Double, lon: Double, name: String) {
+    suspend fun downloadRegionForLocation(
+        context: android.content.Context,
+        lat: Double,
+        lon: Double,
+        name: String,
+        providers: List<String> = listOf("OSM", "OTM", "Satellite"),
+        radiusKm: Double = 5.0,
+        maxZoom: Int = 15
+    ) {
         if (_isDownloading.value) return
         _isDownloading.value = true
         _downloadProgress.value = 0f
@@ -338,12 +401,14 @@ class MapViewModel : ViewModel() {
         _downloadProgress.value = 0.05f
         kotlinx.coroutines.delay(200)
 
-        val minLatVal = lat - 0.045
-        val maxLatVal = lat + 0.045
-        val minLonVal = lon - 0.055
-        val maxLonVal = lon + 0.055
+        val latOffset = radiusKm / 111.0
+        val lonOffset = radiusKm / (111.0 * cos(Math.toRadians(lat)))
+        val minLatVal = lat - latOffset
+        val maxLatVal = lat + latOffset
+        val minLonVal = lon - lonOffset
+        val maxLonVal = lon + lonOffset
 
-        val zooms = listOf(12, 13, 14, 15)
+        val zooms = if (maxZoom >= 17) listOf(12, 13, 14, 15, 16, 17) else listOf(12, 13, 14, 15)
         val urlsToDownload = mutableListOf<String>()
         
         for (z in zooms) {
@@ -363,21 +428,26 @@ class MapViewModel : ViewModel() {
             
             for (x in xRange) {
                 for (y in yRange) {
-                    urlsToDownload.add("https://a.tile.openstreetmap.org/$z/$x/$y.png")
-                    urlsToDownload.add("https://b.tile.openstreetmap.org/$z/$x/$y.png")
-                    urlsToDownload.add("https://c.tile.openstreetmap.org/$z/$x/$y.png")
-                    
-                    urlsToDownload.add("https://a.tile.opentopomap.org/$z/$x/$y.png")
-                    urlsToDownload.add("https://b.tile.opentopomap.org/$z/$x/$y.png")
-                    urlsToDownload.add("https://c.tile.opentopomap.org/$z/$x/$y.png")
-                    
-                    urlsToDownload.add("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/$z/$y/$x")
-                    urlsToDownload.add("https://mt1.google.com/vt/lyrs=s&x=$x&y=$y&z=$z")
+                    if (providers.contains("OSM")) {
+                        urlsToDownload.add("https://a.tile.openstreetmap.org/$z/$x/$y.png")
+                        urlsToDownload.add("https://b.tile.openstreetmap.org/$z/$x/$y.png")
+                        urlsToDownload.add("https://c.tile.openstreetmap.org/$z/$x/$y.png")
+                    }
+                    if (providers.contains("OTM")) {
+                        urlsToDownload.add("https://a.tile.opentopomap.org/$z/$x/$y.png")
+                        urlsToDownload.add("https://b.tile.opentopomap.org/$z/$x/$y.png")
+                        urlsToDownload.add("https://c.tile.opentopomap.org/$z/$x/$y.png")
+                    }
+                    if (providers.contains("Satellite")) {
+                        urlsToDownload.add("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/$z/$y/$x")
+                        urlsToDownload.add("https://mt1.google.com/vt/lyrs=s&x=$x&y=$y&z=$z")
+                    }
                 }
             }
         }
         
-        val totalTiles = urlsToDownload.size.coerceAtMost(300) // Caps downloading to 300 tiles per region for fast completion
+        val maxTileCap = if (maxZoom >= 17) 600 else 300
+        val totalTiles = urlsToDownload.size.coerceAtMost(maxTileCap)
         val actualList = urlsToDownload.shuffled().take(totalTiles)
         var downloaded = 0
         val helper = com.example.TileCacheDatabaseHelper.getInstance(context)
@@ -418,11 +488,11 @@ class MapViewModel : ViewModel() {
         val newRegionId = "reg_${System.currentTimeMillis()}"
         val finalName = name.ifBlank { "Custom Offline Block ${(_downloadedRegionsList.value.size + 1)}" }
         
-        val minLat = (lat - 0.045).roundTo(4)
-        val maxLat = (lat + 0.045).roundTo(4)
-        val minLon = (lon - 0.055).roundTo(4)
-        val maxLon = (lon + 0.055).roundTo(4)
-        val estimatedSize = (18.6 + Math.random() * 45.0).roundTo(1)
+        val minLat = (lat - latOffset).roundTo(4)
+        val maxLat = (lat + latOffset).roundTo(4)
+        val minLon = (lon - lonOffset).roundTo(4)
+        val maxLon = (lon + lonOffset).roundTo(4)
+        val estimatedSize = (10.0 * radiusKm * (if (maxZoom >= 17) 2.5 else 1.0) + Math.random() * 15.0).roundTo(1)
 
         val freshRegion = OfflineRegion(
             id = newRegionId,
@@ -432,7 +502,7 @@ class MapViewModel : ViewModel() {
             maxLat = maxLat,
             maxLon = maxLon,
             sizeMb = estimatedSize,
-            zoomRange = "Z12 - Z15",
+            zoomRange = "Z12 - Z$maxZoom",
             dateDownloaded = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
         )
 

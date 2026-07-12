@@ -103,11 +103,19 @@ class GeologyViewModel(
     val themeSetting = MutableStateFlow(prefs.getString("theme", "Light") ?: "Light")
     val fontSizeSetting = MutableStateFlow(prefs.getString("font_size", "Standard") ?: "Standard")
     val coordSystemSetting = MutableStateFlow(prefs.getString("coord_system", "UTM") ?: "UTM")
+    val customEpsgCode = MutableStateFlow(prefs.getString("custom_epsg_code", "32639") ?: "32639")
     val isFarsiModeSetting = MutableStateFlow(prefs.getBoolean("is_farsi_mode", false))
-    val isKalmanSmoothingEnabled = MutableStateFlow(prefs.getBoolean("kalman_smoothing", false))
+    val isKalmanSmoothingEnabled = MutableStateFlow(prefs.getBoolean("kalman_smoothing", true))
     val gpsAccuracyLimit = MutableStateFlow(prefs.getFloat("gps_accuracy_limit", 20.0f))
     val gpsMinDisplacement = MutableStateFlow(prefs.getFloat("gps_min_displacement", 2.0f))
     val gpsIntervalSetting = MutableStateFlow(prefs.getString("gps_interval", "Balanced") ?: "Balanced")
+
+    // GPS drift and noise filtering preferences
+    val isMovingAverageEnabled = MutableStateFlow(prefs.getBoolean("moving_average_enabled", true))
+    val movingAverageWindowSize = MutableStateFlow(prefs.getInt("moving_average_window", 5))
+    val geoidHeightCorrectionOffset = MutableStateFlow(prefs.getFloat("geoid_height_correction", -25.0f))
+    val trackSpeedFilterEnabled = MutableStateFlow(prefs.getBoolean("track_speed_filter", true))
+    val trackMinTimeBetweenPoints = MutableStateFlow(prefs.getInt("track_min_time", 3))
 
     // Custom Map Tile Layers
     val customTileUrl = MutableStateFlow(prefs.getString("custom_tile_url", "") ?: "")
@@ -210,6 +218,11 @@ class GeologyViewModel(
         prefs.edit().putString("coord_system", coord).apply()
     }
 
+    fun setCustomEpsgCode(code: String) {
+        customEpsgCode.value = code
+        prefs.edit().putString("custom_epsg_code", code).apply()
+    }
+
     fun setFarsiMode(enabled: Boolean) {
         isFarsiModeSetting.value = enabled
         prefs.edit().putBoolean("is_farsi_mode", enabled).apply()
@@ -228,6 +241,31 @@ class GeologyViewModel(
     fun setGpsMinDisplacement(disp: Float) {
         gpsMinDisplacement.value = disp
         prefs.edit().putFloat("gps_min_displacement", disp).apply()
+    }
+
+    fun setMovingAverageEnabled(enabled: Boolean) {
+        isMovingAverageEnabled.value = enabled
+        prefs.edit().putBoolean("moving_average_enabled", enabled).apply()
+    }
+
+    fun setMovingAverageWindowSize(size: Int) {
+        movingAverageWindowSize.value = size
+        prefs.edit().putInt("moving_average_window", size).apply()
+    }
+
+    fun setGeoidHeightCorrectionOffset(offset: Float) {
+        geoidHeightCorrectionOffset.value = offset
+        prefs.edit().putFloat("geoid_height_correction", offset).apply()
+    }
+
+    fun setTrackSpeedFilterEnabled(enabled: Boolean) {
+        trackSpeedFilterEnabled.value = enabled
+        prefs.edit().putBoolean("track_speed_filter", enabled).apply()
+    }
+
+    fun setTrackMinTimeBetweenPoints(seconds: Int) {
+        trackMinTimeBetweenPoints.value = seconds
+        prefs.edit().putInt("track_min_time", seconds).apply()
     }
 
     fun setCustomTileUrl(url: String) {
@@ -336,14 +374,31 @@ class GeologyViewModel(
         val callback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 val loc = result.lastLocation ?: return
-                liveLocation.value = loc
+                
+                val correctedElevation = loc.altitude + geoidHeightCorrectionOffset.value.toDouble()
+                
+                // Live Location smoothing
+                val (displayLat, displayLon) = if (isKalmanSmoothingEnabled.value) {
+                    gpsKalmanFilter.process(loc.latitude, loc.longitude, loc.accuracy.toDouble(), System.currentTimeMillis())
+                } else {
+                    Pair(loc.latitude, loc.longitude)
+                }
+                
+                val smoothedLoc = Location(loc).apply {
+                    latitude = displayLat
+                    longitude = displayLon
+                    altitude = correctedElevation
+                }
+                liveLocation.value = smoothedLoc
+                
                 gpsState.value = GpsState(
                     isCaptured = true,
-                    latitude = loc.latitude,
-                    longitude = loc.longitude,
-                    elevation = loc.altitude,
+                    latitude = displayLat,
+                    longitude = displayLon,
+                    elevation = correctedElevation,
                     accuracy = loc.accuracy.toDouble()
                 )
+                
                 // Append active tracking points for track registration
                 if (isTrackRecordingActive.value && !isTrackRecordingPaused.value) {
                     val accLimit = gpsAccuracyLimit.value.toDouble()
@@ -354,12 +409,49 @@ class GeologyViewModel(
                             Pair(loc.latitude, loc.longitude)
                         }
 
+                        // Apply moving average if enabled
+                        var smoothedLat = finalLat
+                        var smoothedLon = finalLon
+                        if (isMovingAverageEnabled.value) {
+                            val window = movingAverageWindowSize.value.coerceAtLeast(1)
+                            val recentPoints = activePoints.value.takeLast(window - 1)
+                            if (recentPoints.isNotEmpty()) {
+                                val sumLat = recentPoints.sumOf { it.lat } + finalLat
+                                val sumLon = recentPoints.sumOf { it.lon } + finalLon
+                                smoothedLat = sumLat / (recentPoints.size + 1)
+                                smoothedLon = sumLon / (recentPoints.size + 1)
+                            }
+                        }
+
                         val lastPoint = activePoints.value.lastOrNull()
                         var shouldAppend = true
 
+                        // 1. Min Time Interval Check to filter out excessively frequent updates
                         if (lastPoint != null) {
+                            val timeDiffSec = (System.currentTimeMillis() - lastPoint.time) / 1000.0
+                            if (timeDiffSec < trackMinTimeBetweenPoints.value.toDouble()) {
+                                shouldAppend = false
+                            }
+                        }
+
+                        // 2. Speed Spike Check (if calculated speed > 15 m/s or 54 km/h, ignore as GPS noise)
+                        if (shouldAppend && lastPoint != null && trackSpeedFilterEnabled.value) {
                             val results = FloatArray(1)
-                            Location.distanceBetween(lastPoint.lat, lastPoint.lon, finalLat, finalLon, results)
+                            Location.distanceBetween(lastPoint.lat, lastPoint.lon, smoothedLat, smoothedLon, results)
+                            val distance = results[0]
+                            val timeDiffSec = (System.currentTimeMillis() - lastPoint.time) / 1000.0
+                            if (timeDiffSec > 0.1) {
+                                val calculatedSpeed = distance / timeDiffSec
+                                if (calculatedSpeed > 15.0) { // Unrealistic hike speed, discard spike
+                                    shouldAppend = false
+                                }
+                            }
+                        }
+
+                        // 3. Min Displacement Check
+                        if (shouldAppend && lastPoint != null) {
+                            val results = FloatArray(1)
+                            Location.distanceBetween(lastPoint.lat, lastPoint.lon, smoothedLat, smoothedLon, results)
                             val distance = results[0]
                             if (distance < gpsMinDisplacement.value.toDouble()) {
                                 shouldAppend = false
@@ -368,9 +460,9 @@ class GeologyViewModel(
 
                         if (shouldAppend) {
                             val p = TrackPoint(
-                                lat = finalLat,
-                                lon = finalLon,
-                                ele = loc.altitude,
+                                lat = smoothedLat,
+                                lon = smoothedLon,
+                                ele = correctedElevation,
                                 time = System.currentTimeMillis(),
                                 accuracy = loc.accuracy.toDouble(),
                                 heading = loc.bearing.toDouble()
@@ -1284,6 +1376,11 @@ class GeologyViewModel(
             }
             shareTextFile(context, "borehole_${boreholeCode}_core_runs.csv", csvBuilder.toString())
         }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stopLocationTracking()
     }
 }
 

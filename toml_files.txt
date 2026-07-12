@@ -1,0 +1,3 @@
+/usr/local/lib/node_modules/firebase-tools/node_modules/node-gyp/gyp/pyproject.toml
+/usr/local/lib/node_modules/npm/node_modules/node-gyp/gyp/pyproject.toml
+/usr/local/nodejs/lib/node_modules/npm/node_modules/node-gyp/gyp/pyproject.toml

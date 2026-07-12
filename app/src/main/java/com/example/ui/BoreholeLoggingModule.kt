@@ -22,6 +22,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -34,10 +39,12 @@ import com.example.*
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
+import com.example.MainTab
 
 @Composable
 fun BoreholeLoggingContent(
     viewModel: GeologyViewModel,
+    onNavigateToTab: ((MainTab) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -312,6 +319,7 @@ fun BoreholeLoggingContent(
             projectId = activeProject.id,
             projectName = activeProject.name,
             onBack = { localSelectedProjectId = null },
+            onNavigateToTab = onNavigateToTab,
             modifier = modifier
         )
     }
@@ -323,12 +331,14 @@ fun BoreholeWorkspace(
     projectId: Int,
     projectName: String,
     onBack: () -> Unit,
+    onNavigateToTab: ((com.example.MainTab) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     val boreholesFlow = remember(projectId) { viewModel.getBoreholesForProject(projectId) }
     val boreholes by boreholesFlow.collectAsState(initial = emptyList())
     val activeBorehole by viewModel.activeBorehole.collectAsState(initial = null)
+    val isFarsiMode by viewModel.isFarsiModeSetting.collectAsStateWithLifecycle()
     
     var showCreateBoreholeDialog by remember { mutableStateOf(false) }
     var showEditBoreholeDialog by remember { mutableStateOf(false) }
@@ -571,11 +581,12 @@ fun BoreholeWorkspace(
                                     viewModel.setActiveBorehole(bh.id)
                                 },
                             colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
                             ),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
                         ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
+                            Column(modifier = Modifier.padding(16.dp)) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     verticalAlignment = Alignment.CenterVertically,
@@ -583,12 +594,12 @@ fun BoreholeWorkspace(
                                 ) {
                                     Row(
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                                     ) {
                                         Box(
                                             modifier = Modifier
-                                                .size(36.dp)
-                                                .clip(RoundedCornerShape(6.dp))
+                                                .size(42.dp)
+                                                .clip(RoundedCornerShape(10.dp))
                                                 .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)),
                                             contentAlignment = Alignment.Center
                                         ) {
@@ -596,20 +607,21 @@ fun BoreholeWorkspace(
                                                 Icons.Default.Layers,
                                                 contentDescription = null,
                                                 tint = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.size(20.dp)
+                                                modifier = Modifier.size(22.dp)
                                             )
                                         }
                                         Column {
                                             Text(
                                                 text = bh.boreholeCode,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 15.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                fontSize = 16.sp,
                                                 color = MaterialTheme.colorScheme.onSurface
                                             )
                                             Text(
-                                                text = "Borehole Code: ${bh.boreholeCode}",
-                                                fontSize = 10.5.sp,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                text = if (isFarsiMode) "کد گمانه: ${bh.boreholeCode}" else "Borehole Code: ${bh.boreholeCode}",
+                                                fontSize = 10.sp,
+                                                color = MaterialTheme.colorScheme.primary,
+                                                fontWeight = FontWeight.Medium
                                             )
                                         }
                                     }
@@ -665,24 +677,34 @@ fun BoreholeWorkspace(
                                     }
                                 }
                                 
-                                Spacer(Modifier.height(10.dp))
+                                Spacer(Modifier.height(12.dp))
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Column {
-                                        Text("Orientation (Dip/Dir)", fontSize = 9.sp, color = MaterialTheme.colorScheme.outline)
                                         Text(
-                                            "Azimuth: ${bh.azimuth}° | Dip: ${bh.dip}°",
+                                            text = if (isFarsiMode) "جهت‌گیری گمانه" else "Orientation (Dip/Dir)",
+                                            fontSize = 9.sp,
+                                            color = MaterialTheme.colorScheme.outline,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = if (isFarsiMode) "آزیموت: ${bh.azimuth}° | شیب: ${bh.dip}°" else "Azimuth: ${bh.azimuth}° | Dip: ${bh.dip}°",
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
                                     }
                                     Column(horizontalAlignment = Alignment.End) {
-                                        Text("Planned Depth", fontSize = 9.sp, color = MaterialTheme.colorScheme.outline)
                                         Text(
-                                            "${bh.plannedDepth} meters",
+                                            text = if (isFarsiMode) "عمق طراحی" else "Planned Depth",
+                                            fontSize = 9.sp,
+                                            color = MaterialTheme.colorScheme.outline,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = if (isFarsiMode) "${bh.plannedDepth} متر" else "${bh.plannedDepth} meters",
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.secondary
@@ -690,29 +712,31 @@ fun BoreholeWorkspace(
                                     }
                                 }
 
-                                Spacer(Modifier.height(6.dp))
+                                Spacer(Modifier.height(8.dp))
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .background(
                                             MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f),
-                                            RoundedCornerShape(6.dp)
+                                            RoundedCornerShape(8.dp)
                                         )
-                                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                                        .padding(horizontal = 10.dp, vertical = 8.dp)
                                 ) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(
-                                            "Coords: ${String.format(Locale.US, "%.5f", bh.latitude)}, ${String.format(Locale.US, "%.5f", bh.longitude)}",
+                                            text = if (isFarsiMode) "مختصات: ${String.format(Locale.US, "%.5f", bh.latitude)}، ${String.format(Locale.US, "%.5f", bh.longitude)}" else "Coords: ${String.format(Locale.US, "%.5f", bh.latitude)}, ${String.format(Locale.US, "%.5f", bh.longitude)}",
                                             fontSize = 10.5.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            fontWeight = FontWeight.Medium
                                         )
                                         Text(
-                                            "Elev: ${bh.elevation}m",
+                                            text = if (isFarsiMode) "ارتفاع: ${bh.elevation} متر" else "Elev: ${bh.elevation}m",
                                             fontSize = 10.5.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            fontWeight = FontWeight.Medium
                                         )
                                     }
                                 }
@@ -1003,15 +1027,16 @@ fun BoreholeWorkspace(
                     Button(
                         onClick = {
                             if (validateInputs() && editingBorehole != null) {
+                                val currentBh = editingBorehole!!
                                 viewModel.saveBorehole(
-                                    editingBorehole!!.copy(
+                                    currentBh.copy(
                                         boreholeCode = code,
-                                        latitude = lat.toDouble(),
-                                        longitude = lon.toDouble(),
-                                        elevation = elev.toDouble(),
-                                        azimuth = azimuth.toDouble(),
-                                        dip = dip.toDouble(),
-                                        plannedDepth = planned.toDouble()
+                                        latitude = lat.toDoubleOrNull() ?: currentBh.latitude,
+                                        longitude = lon.toDoubleOrNull() ?: currentBh.longitude,
+                                        elevation = elev.toDoubleOrNull() ?: currentBh.elevation,
+                                        azimuth = azimuth.toDoubleOrNull() ?: currentBh.azimuth,
+                                        dip = dip.toDoubleOrNull() ?: currentBh.dip,
+                                        plannedDepth = planned.toDoubleOrNull() ?: currentBh.plannedDepth
                                     )
                                 ) {
                                     showEditBoreholeDialog = false
@@ -1037,6 +1062,7 @@ fun BoreholeWorkspace(
         BoreholeLoggingDetailsWorkspace(
             viewModel = viewModel,
             borehole = activeBorehole!!,
+            onNavigateToTab = onNavigateToTab,
             modifier = modifier
         )
     }
@@ -1046,10 +1072,12 @@ fun BoreholeWorkspace(
 fun BoreholeLoggingDetailsWorkspace(
     viewModel: GeologyViewModel,
     borehole: Borehole,
+    onNavigateToTab: ((com.example.MainTab) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var selectedSubTab by remember { mutableStateOf(0) }
     
+    val isFarsiMode by viewModel.isFarsiModeSetting.collectAsStateWithLifecycle()
     val dailyReportsFlow = remember(borehole.id) { viewModel.getDailyReportsForBorehole(borehole.id) }
     val dailyReports by dailyReportsFlow.collectAsState(initial = emptyList())
     val coreRunsFlow = remember(borehole.id) { viewModel.getCoreRunsForBorehole(borehole.id) }
@@ -1088,7 +1116,7 @@ fun BoreholeLoggingDetailsWorkspace(
                             Icon(Icons.Default.Layers, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                         }
                         Text(
-                            text = "Borehole: ${borehole.boreholeCode}",
+                            text = if (isFarsiMode) "گمانه: ${borehole.boreholeCode}" else "Borehole: ${borehole.boreholeCode}",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -1108,7 +1136,7 @@ fun BoreholeLoggingDetailsWorkspace(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "Planned Depth: ${borehole.plannedDepth}m | Dip: ${borehole.dip}° | Azimuth: ${borehole.azimuth}°",
+                        text = if (isFarsiMode) "عمق طراحی: ${borehole.plannedDepth} متر | شیب: ${borehole.dip}° | آزیموت: ${borehole.azimuth}°" else "Planned Depth: ${borehole.plannedDepth}m | Dip: ${borehole.dip}° | Azimuth: ${borehole.azimuth}°",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1126,29 +1154,44 @@ fun BoreholeLoggingDetailsWorkspace(
             Tab(
                 selected = selectedSubTab == 0,
                 onClick = { selectedSubTab = 0 },
-                text = { Text("Daily drilling shift logs", fontSize = 11.5.sp, fontWeight = FontWeight.Bold) }
+                text = { Text(if (isFarsiMode) "شیفت‌های حفاری" else "Shift Logs", fontSize = 11.5.sp, fontWeight = FontWeight.Bold) }
             )
             Tab(
                 selected = selectedSubTab == 1,
                 onClick = { selectedSubTab = 1 },
-                text = { Text("Core Log Runs (Quality)", fontSize = 11.5.sp, fontWeight = FontWeight.Bold) }
+                text = { Text(if (isFarsiMode) "لاگ مغزه‌ها (کیفیت)" else "Core Runs (RQD)", fontSize = 11.5.sp, fontWeight = FontWeight.Bold) }
+            )
+            Tab(
+                selected = selectedSubTab == 2,
+                onClick = { selectedSubTab = 2 },
+                text = { Text(if (isFarsiMode) "ستون گرافیکی" else "Graphic Column", fontSize = 11.5.sp, fontWeight = FontWeight.Bold) }
             )
         }
 
-        if (selectedSubTab == 0) {
-            DailyReportsPanel(
-                viewModel = viewModel,
-                boreholeId = borehole.id,
-                boreholeCode = borehole.boreholeCode,
-                reports = dailyReports
-            )
-        } else {
-            CoreRunsPanel(
-                viewModel = viewModel,
-                boreholeId = borehole.id,
-                boreholeCode = borehole.boreholeCode,
-                runs = coreRuns
-            )
+        when (selectedSubTab) {
+            0 -> {
+                DailyReportsPanel(
+                    viewModel = viewModel,
+                    boreholeId = borehole.id,
+                    boreholeCode = borehole.boreholeCode,
+                    reports = dailyReports
+                )
+            }
+            1 -> {
+                CoreRunsPanel(
+                    viewModel = viewModel,
+                    boreholeId = borehole.id,
+                    boreholeCode = borehole.boreholeCode,
+                    runs = coreRuns,
+                    onNavigateToTab = onNavigateToTab
+                )
+            }
+            2 -> {
+                GraphicalBoreholeLog(
+                    runs = coreRuns,
+                    isFarsiMode = isFarsiMode
+                )
+            }
         }
     }
 }
@@ -1472,7 +1515,8 @@ fun CoreRunsPanel(
     viewModel: GeologyViewModel,
     boreholeId: Int,
     boreholeCode: String,
-    runs: List<BoreholeCoreRun>
+    runs: List<BoreholeCoreRun>,
+    onNavigateToTab: ((com.example.MainTab) -> Unit)? = null
 ) {
     val context = LocalContext.current
     var showAddRunDialog by remember { mutableStateOf(false) }
@@ -1597,6 +1641,56 @@ fun CoreRunsPanel(
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("Add Run", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+
+        if (runs.isNotEmpty() && onNavigateToTab != null) {
+            Card(
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+                ),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onNavigateToTab.invoke(com.example.MainTab.RockMechanics) }
+            ) {
+                Row(
+                    modifier = Modifier.padding(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Layers, 
+                        contentDescription = null, 
+                        tint = MaterialTheme.colorScheme.primary, 
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (viewModel.isFarsiModeSetting.value) 
+                                "تحلیل مهندسی توده سنگ (RMR & Q)" 
+                            else 
+                                "Analyze Rock Mass Quality (RMR & Q)",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.5.sp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = if (viewModel.isFarsiModeSetting.value)
+                                "انتقال خودکار داده‌های RQD و UCS این گمانه به پنل مکانیک سنگ جهت تحلیل پایداری"
+                            else
+                                "Load RQD and UCS from these core runs directly into the Rock Mechanics suite.",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Icon(
+                        Icons.Default.ArrowForward, 
+                        contentDescription = null, 
+                        tint = MaterialTheme.colorScheme.primary, 
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
             }
         }
@@ -2082,5 +2176,636 @@ fun CoreTrayVisualizer(runs: List<BoreholeCoreRun>) {
                 }
             }
         }
+    }
+}
+
+@Composable
+fun GraphicalBoreholeLog(
+    runs: List<BoreholeCoreRun>,
+    isFarsiMode: Boolean
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    var selectedQualityFilter by remember { mutableStateOf(0) } // 0: All, 1: Excellent (RQD >= 90), 2: Good (75-90), 3: Fair (50-75), 4: Poor (25-50), 5: Very Poor (< 25)
+    var selectedRunForDetail by remember { mutableStateOf<BoreholeCoreRun?>(null) }
+
+    // Weighted summary stats calculation
+    val totalInterval = runs.sumOf { it.depthTo - it.depthFrom }
+    val avgRqd = if (totalInterval > 0) {
+        runs.sumOf { (it.depthTo - it.depthFrom) * it.rqdPercent } / totalInterval
+    } else 0.0
+
+    val avgRecovery = if (totalInterval > 0) {
+        runs.sumOf { (it.depthTo - it.depthFrom) * it.recoveryPercent } / totalInterval
+    } else 0.0
+
+    val filteredRuns = runs.filter { run ->
+        val matchesSearch = run.lithology.contains(searchQuery, ignoreCase = true) ||
+                run.mineralization.contains(searchQuery, ignoreCase = true) ||
+                run.alteration.contains(searchQuery, ignoreCase = true)
+        
+        val matchesQuality = when (selectedQualityFilter) {
+            1 -> run.rqdPercent >= 90.0
+            2 -> run.rqdPercent >= 75.0 && run.rqdPercent < 90.0
+            3 -> run.rqdPercent >= 50.0 && run.rqdPercent < 75.0
+            4 -> run.rqdPercent >= 25.0 && run.rqdPercent < 50.0
+            5 -> run.rqdPercent < 25.0
+            else -> true
+        }
+        matchesSearch && matchesQuality
+    }.sortedBy { it.depthFrom }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // Stats Summary Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+            ),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.15f))
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.SpaceAround
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = if (isFarsiMode) "مجموع لاگ حفاری" else "Total Logged",
+                        fontSize = 9.sp,
+                        color = MaterialTheme.colorScheme.outline,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = String.format(Locale.US, "%.1f m", totalInterval),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = if (isFarsiMode) "میانگین وزنی RQD" else "Weighted Avg RQD",
+                        fontSize = 9.sp,
+                        color = MaterialTheme.colorScheme.outline,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = String.format(Locale.US, "%.1f%%", avgRqd),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = when {
+                            avgRqd >= 75.0 -> Color(0xFF2E7D32)
+                            avgRqd >= 50.0 -> Color(0xFFEF6C00)
+                            else -> Color(0xFFC62828)
+                        }
+                    )
+                }
+
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = if (isFarsiMode) "میانگین وزنی بازیابی" else "Weighted TCR",
+                        fontSize = 9.sp,
+                        color = MaterialTheme.colorScheme.outline,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = String.format(Locale.US, "%.1f%%", avgRecovery),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                }
+            }
+        }
+
+        // Search and Quality Filters
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier
+                    .weight(1.3f)
+                    .height(48.dp),
+                placeholder = {
+                    Text(
+                        text = if (isFarsiMode) "جستجوی لیتولوژی..." else "Search lithology...",
+                        fontSize = 12.sp
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        Icons.Default.Search,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(10.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                )
+            )
+
+            // Scrollable filter pills for RQD quality levels
+            val filters = if (isFarsiMode) {
+                listOf("همه RQD", "عالی (>=۹۰)", "خوب (۷۵-۹۰)", "متوسط (۵۰-۷۵)", "ضعیف (۲۵-۵۰)", "بسیار ضعیف (<۲۵)")
+            } else {
+                listOf("All RQD", "Excellent (>=90)", "Good (75-90)", "Fair (50-75)", "Poor (25-50)", "Very Poor (<25)")
+            }
+
+            var expandedFilter by remember { mutableStateOf(false) }
+            Box(modifier = Modifier.weight(1f)) {
+                Button(
+                    onClick = { expandedFilter = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(42.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                    ),
+                    contentPadding = PaddingValues(horizontal = 8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = filters[selectedQualityFilter],
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1
+                        )
+                        Icon(Icons.Default.ArrowDropDown, null, modifier = Modifier.size(16.dp))
+                    }
+                }
+                DropdownMenu(
+                    expanded = expandedFilter,
+                    onDismissRequest = { expandedFilter = false }
+                ) {
+                    filters.forEachIndexed { idx, title ->
+                        DropdownMenuItem(
+                            text = { Text(title, fontSize = 11.sp, fontWeight = FontWeight.Medium) },
+                            onClick = {
+                                selectedQualityFilter = idx
+                                expandedFilter = false
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        // Legend Card explaining visual styles
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f)),
+            border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+            shape = RoundedCornerShape(8.dp)
+        ) {
+            Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = if (isFarsiMode) "راهنمای علائم گرافیکی" else "Graphic Legend",
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                
+                // Row showing some lithology colors and patterns
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Limestone
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Box(modifier = Modifier.size(10.dp).background(Color(0xFFCFD8DC)).border(0.5.dp, Color.Gray))
+                        Text(if (isFarsiMode) "آهک" else "Limestone", fontSize = 8.sp)
+                    }
+                    // Sandstone
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Box(modifier = Modifier.size(10.dp).background(Color(0xFFFFF9C4)).border(0.5.dp, Color.Gray))
+                        Text(if (isFarsiMode) "ماسه سنگ" else "Sandstone", fontSize = 8.sp)
+                    }
+                    // Clay
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Box(modifier = Modifier.size(10.dp).background(Color(0xFFD7CCC8)).border(0.5.dp, Color.Gray))
+                        Text(if (isFarsiMode) "رس" else "Clay/Soil", fontSize = 8.sp)
+                    }
+                    // Granite
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Box(modifier = Modifier.size(10.dp).background(Color(0xFFFFCCBC)).border(0.5.dp, Color.Gray))
+                        Text(if (isFarsiMode) "گرانیت" else "Granite", fontSize = 8.sp)
+                    }
+                }
+            }
+        }
+
+        if (filteredRuns.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .background(
+                        MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp),
+                        RoundedCornerShape(12.dp)
+                    )
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f), RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(24.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Layers,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Text(
+                        text = if (isFarsiMode) "مغزه‌ای جهت نمایش وجود ندارد" else "No core runs to build graphic column.",
+                        fontSize = 12.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = if (isFarsiMode) "برای نمایش ستون زمین‌شناسی، از تب دوم مغزه‌ها را اضافه کنید." else "Add Core Runs in the Core Logs panel to populate the geological column.",
+                        fontSize = 10.5.sp,
+                        color = MaterialTheme.colorScheme.outline,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(filteredRuns) { run ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selectedRunForDetail = run },
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp)
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(100.dp)
+                        ) {
+                            // 1. LEFT COLUMN: Depth scale (Paper style)
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .width(62.dp)
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                                    .padding(horizontal = 4.dp, vertical = 6.dp)
+                            ) {
+                                // Draw a ruler indicator
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    val h = size.height
+                                    // Tick lines
+                                    drawLine(Color.Gray.copy(alpha = 0.6f), Offset(size.width - 2.dp.toPx(), 0f), Offset(size.width - 2.dp.toPx(), h), strokeWidth = 1.dp.toPx())
+                                    drawLine(Color.Gray, Offset(size.width - 10.dp.toPx(), 4.dp.toPx()), Offset(size.width, 4.dp.toPx()), strokeWidth = 1.dp.toPx())
+                                    drawLine(Color.Gray, Offset(size.width - 10.dp.toPx(), h - 4.dp.toPx()), Offset(size.width, h - 4.dp.toPx()), strokeWidth = 1.dp.toPx())
+                                    drawLine(Color.Gray.copy(alpha = 0.5f), Offset(size.width - 6.dp.toPx(), h / 2f), Offset(size.width, h / 2f), strokeWidth = 0.8.dp.toPx())
+                                }
+
+                                Column(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalArrangement = Arrangement.SpaceBetween,
+                                    horizontalAlignment = Alignment.Start
+                                ) {
+                                    Text(
+                                        text = "${run.depthFrom}m",
+                                        fontSize = 8.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        text = "Run #${run.runNumber}",
+                                        fontSize = 7.5.sp,
+                                        color = MaterialTheme.colorScheme.outline,
+                                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                                    )
+                                    Text(
+                                        text = "${run.depthTo}m",
+                                        fontSize = 8.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+
+                            // 2. CENTER COLUMN: Lithology pattern
+                            val lithLower = run.lithology.lowercase().trim()
+                            val baseColor = when {
+                                lithLower.contains("clay") || lithLower.contains("soil") || lithLower.contains("رس") || lithLower.contains("خاک") -> Color(0xFFD7CCC8)
+                                lithLower.contains("sand") || lithLower.contains("ماسه") -> Color(0xFFFFF9C4)
+                                lithLower.contains("lime") || lithLower.contains("آهک") -> Color(0xFFCFD8DC)
+                                lithLower.contains("basalt") || lithLower.contains("بازالت") -> Color(0xFF37474F)
+                                lithLower.contains("granite") || lithLower.contains("گرانیت") -> Color(0xFFFFCCBC)
+                                lithLower.contains("shale") || lithLower.contains("شیل") -> Color(0xFFB0BEC5)
+                                lithLower.contains("silt") || lithLower.contains("سیلت") -> Color(0xFFE0E0E0)
+                                else -> Color(0xFFE0F2F1)
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .width(55.dp)
+                                    .background(baseColor)
+                                    .border(width = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant)
+                            ) {
+                                Canvas(modifier = Modifier.fillMaxSize()) {
+                                    val w = size.width
+                                    val h = size.height
+                                    
+                                    when {
+                                        lithLower.contains("clay") || lithLower.contains("soil") || lithLower.contains("رس") || lithLower.contains("خاک") -> {
+                                            val path = Path()
+                                            for (y in 8..h.toInt() step 16) {
+                                                path.reset()
+                                                path.moveTo(0f, y.toFloat())
+                                                path.quadraticTo(w * 0.25f, y.toFloat() - 3f, w * 0.5f, y.toFloat())
+                                                path.quadraticTo(w * 0.75f, y.toFloat() + 3f, w, y.toFloat())
+                                                drawPath(path, color = Color(0xFF8D6E63).copy(alpha = 0.6f), style = Stroke(width = 1f))
+                                            }
+                                        }
+                                        lithLower.contains("sand") || lithLower.contains("ماسه") -> {
+                                            for (x in 6..w.toInt() - 6 step 12) {
+                                                for (y in 6..h.toInt() - 6 step 12) {
+                                                    val rx = x + (Math.sin(y.toDouble() * 3.0) * 3).toFloat()
+                                                    val ry = y + (Math.cos(x.toDouble() * 3.0) * 3).toFloat()
+                                                    drawCircle(color = Color(0xFF795548).copy(alpha = 0.6f), radius = 1.2f, center = Offset(rx, ry))
+                                                }
+                                            }
+                                        }
+                                        lithLower.contains("lime") || lithLower.contains("آهک") -> {
+                                            for (y in 16..h.toInt() step 20) {
+                                                drawLine(color = Color(0xFF78909C), start = Offset(0f, y.toFloat()), end = Offset(w, y.toFloat()), strokeWidth = 1f)
+                                            }
+                                            var isOdd = false
+                                            for (y in 16..h.toInt() step 20) {
+                                                val startX = if (isOdd) 15f else 5f
+                                                for (x in startX.toInt()..w.toInt() step 25) {
+                                                    drawLine(color = Color(0xFF78909C), start = Offset(x.toFloat(), y - 20f), end = Offset(x.toFloat(), y.toFloat()), strokeWidth = 1f)
+                                                }
+                                                isOdd = !isOdd
+                                            }
+                                        }
+                                        lithLower.contains("basalt") || lithLower.contains("بازالت") -> {
+                                            for (x in 8..w.toInt() - 8 step 20) {
+                                                for (y in 8..h.toInt() - 8 step 20) {
+                                                    drawCircle(color = Color.Black.copy(alpha = 0.2f), radius = 3f, center = Offset(x.toFloat(), y.toFloat()), style = Stroke(width = 1f))
+                                                }
+                                            }
+                                        }
+                                        lithLower.contains("granite") || lithLower.contains("گرانیت") -> {
+                                            for (x in 8..w.toInt() - 8 step 18) {
+                                                for (y in 8..h.toInt() - 8 step 18) {
+                                                    drawLine(color = Color(0xFFD84315).copy(alpha = 0.35f), start = Offset(x - 3f, y - 3f), end = Offset(x + 3f, y + 3f), strokeWidth = 1f)
+                                                    drawLine(color = Color(0xFFD84315).copy(alpha = 0.35f), start = Offset(x - 3f, y + 3f), end = Offset(x + 3f, y - 3f), strokeWidth = 1f)
+                                                }
+                                            }
+                                        }
+                                        lithLower.contains("shale") || lithLower.contains("شیل") -> {
+                                            for (y in 6..h.toInt() step 8) {
+                                                drawLine(color = Color(0xFF546E7A).copy(alpha = 0.4f), start = Offset(0f, y.toFloat()), end = Offset(w, y.toFloat()), strokeWidth = 1f)
+                                            }
+                                        }
+                                        else -> {
+                                            // Diagonal stripes for other types
+                                            for (offset in -h.toInt()..w.toInt() step 14) {
+                                                drawLine(color = Color(0xFF004D40).copy(alpha = 0.15f), start = Offset(offset.toFloat(), 0f), end = Offset(offset.toFloat() + h, h), strokeWidth = 1f)
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(4.dp),
+                                    contentAlignment = Alignment.BottomCenter
+                                ) {
+                                    Text(
+                                        text = run.lithology,
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = if (lithLower.contains("basalt")) Color.White else Color.Black,
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 1,
+                                        modifier = Modifier
+                                            .background(
+                                                color = if (lithLower.contains("basalt")) Color.Black.copy(alpha = 0.5f) else Color.White.copy(alpha = 0.65f),
+                                                shape = RoundedCornerShape(2.dp)
+                                            )
+                                            .padding(horizontal = 2.dp)
+                                    )
+                                }
+                            }
+
+                            // 3. RIGHT COLUMN: TCR and RQD bars & indicators
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .padding(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                // Lithology title
+                                Text(
+                                    text = if (isFarsiMode) "لیتولوژی: ${run.lithology}" else "Lithology: ${run.lithology}",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+
+                                // TCR bar (Total Core Recovery)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = if (isFarsiMode) "بازیابی:" else "Rec:",
+                                        fontSize = 8.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.outline,
+                                        modifier = Modifier.width(36.dp)
+                                    )
+                                    LinearProgressIndicator(
+                                        progress = { (run.recoveryPercent / 100f).toFloat().coerceIn(0f, 1f) },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(5.dp)
+                                            .clip(RoundedCornerShape(4.dp)),
+                                        color = MaterialTheme.colorScheme.secondary,
+                                        trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                                    )
+                                    Text(
+                                        text = "${run.recoveryPercent.toInt()}%",
+                                        fontSize = 8.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+
+                                // RQD bar
+                                val rqdVal = run.rqdPercent
+                                val rqdColor = when {
+                                    rqdVal >= 90.0 -> Color(0xFF00796B) // Teal
+                                    rqdVal >= 75.0 -> Color(0xFF388E3C) // Green
+                                    rqdVal >= 50.0 -> Color(0xFFFBC02D) // Yellow
+                                    rqdVal >= 25.0 -> Color(0xFFF57C00) // Orange
+                                    else -> Color(0xFFD32F2F) // Red
+                                }
+                                val rqdQualityText = when {
+                                    rqdVal >= 90.0 -> if (isFarsiMode) "عالی" else "Excellent"
+                                    rqdVal >= 75.0 -> if (isFarsiMode) "خوب" else "Good"
+                                    rqdVal >= 50.0 -> if (isFarsiMode) "متوسط" else "Fair"
+                                    rqdVal >= 25.0 -> if (isFarsiMode) "ضعیف" else "Poor"
+                                    else -> if (isFarsiMode) "بسیار ضعیف" else "V. Poor"
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = "RQD:",
+                                        fontSize = 8.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.outline,
+                                        modifier = Modifier.width(36.dp)
+                                    )
+                                    LinearProgressIndicator(
+                                        progress = { (rqdVal / 100f).toFloat().coerceIn(0f, 1f) },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(5.dp)
+                                            .clip(RoundedCornerShape(4.dp)),
+                                        color = rqdColor,
+                                        trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                                    )
+                                    Text(
+                                        text = "${rqdVal.toInt()}% ($rqdQualityText)",
+                                        fontSize = 8.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = rqdColor
+                                    )
+                                }
+
+                                // Structural frequency and UCS inline status
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Text(
+                                        text = if (isFarsiMode) "بسامد شکست: ${run.fractureFrequency} /متر" else "Frac Freq: ${run.fractureFrequency} /m",
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                    Text(
+                                        text = "UCS: ${run.ucsMpa.toInt()} MPa",
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Detail dialog on click
+    if (selectedRunForDetail != null) {
+        val run = selectedRunForDetail!!
+        AlertDialog(
+            onDismissRequest = { selectedRunForDetail = null },
+            icon = { Icon(Icons.Default.Layers, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+            title = {
+                Text(
+                    text = if (isFarsiMode) "جزئیات لاگ مغزه" else "Core Run Log Details",
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 16.sp
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = if (isFarsiMode) "شماره ران: ${run.runNumber}" else "Run Number: ${run.runNumber}",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                    Text(
+                        text = if (isFarsiMode) "عمق: از ${run.depthFrom} تا ${run.depthTo} متر" else "Depth: from ${run.depthFrom} to ${run.depthTo} m",
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        text = if (isFarsiMode) "نوع سنگ (لیتولوژی): ${run.lithology}" else "Lithology Rock Type: ${run.lithology}",
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        text = if (isFarsiMode) "بازیابی مغزه (TCR): ${run.recoveryPercent}%" else "Total Core Recovery (TCR): ${run.recoveryPercent}%",
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        text = "RQD: ${run.rqdPercent}%",
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        text = if (isFarsiMode) "کانی‌سازی: ${run.mineralization}" else "Mineralization: ${run.mineralization}",
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        text = if (isFarsiMode) "دگرسانی: ${run.alteration}" else "Alteration: ${run.alteration}",
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        text = if (isFarsiMode) "بسامد درزه‌ها: ${run.fractureFrequency} عدد در متر" else "Fracture Frequency: ${run.fractureFrequency} /m",
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        text = "UCS: ${run.ucsMpa} MPa",
+                        fontSize = 12.sp
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { selectedRunForDetail = null }) {
+                    Text(if (isFarsiMode) "تایید" else "OK")
+                }
+            }
+        )
     }
 }

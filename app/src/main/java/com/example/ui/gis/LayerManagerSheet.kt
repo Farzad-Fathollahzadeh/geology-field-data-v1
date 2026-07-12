@@ -50,7 +50,7 @@ fun LayerManagerSheet(
     showOfflineBoundaries: Boolean,
     onToggleOfflineBoundaries: (Boolean) -> Unit,
     downloadedRegionsList: List<OfflineRegion>,
-    onDownloadRegion: (String) -> Unit,
+    onDownloadRegion: (String, List<String>, Double, Int, Double, Double) -> Unit,
     onDeleteRegion: (String) -> Unit,
     isDownloading: Boolean,
     downloadProgress: Float,
@@ -63,6 +63,14 @@ fun LayerManagerSheet(
     onDeleteTrack: (Int) -> Unit = {},
     onSelectTrackForElevationProfile: (com.example.Track) -> Unit = {},
     onExportTrack: (com.example.Track) -> Unit = {},
+
+    // MBTiles maps overlays integration
+    activeMbtiles: Map<String, Float> = emptyMap(),
+    importedMbtilesFiles: List<java.io.File> = emptyList(),
+    onToggleMbtilesActive: (String, Boolean) -> Unit = { _, _ -> },
+    onMbtilesOpacityChange: (String, Float) -> Unit = { _, _ -> },
+    onDeleteMbtiles: (String) -> Unit = {},
+    onImportMbtilesClick: () -> Unit = {},
 
     modifier: Modifier = Modifier,
     isOutdoorMode: Boolean = false
@@ -269,6 +277,137 @@ fun LayerManagerSheet(
                                 ),
                                 modifier = Modifier.height(24.dp)
                             )
+                        }
+                    }
+                }
+
+                // MBTILES OVERLAYS CARD
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = cardColor),
+                    border = BorderStroke(0.5.dp, textColor.copy(alpha = 0.1f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(imageVector = Icons.Default.Layers, contentDescription = null, tint = accentColor, modifier = Modifier.size(16.dp))
+                                Text(
+                                    text = "OFFLINE MBTILES OVERLAYS / لایه‌های آفلاین MBTiles",
+                                    fontSize = 11.sp,
+                                    color = accentColor,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            
+                            Button(
+                                onClick = onImportMbtilesClick,
+                                colors = ButtonDefaults.buttonColors(containerColor = accentColor.copy(alpha = 0.15f), contentColor = accentColor),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                shape = RoundedCornerShape(4.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(12.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Import / درون‌ریزی", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        if (importedMbtilesFiles.isEmpty()) {
+                            Text(
+                                text = "No MBTiles maps imported yet. Use the 'Import' button above to load a .mbtiles file directly into the app (instant AlpineQuest-style offline rendering).",
+                                fontSize = 10.sp,
+                                color = textColor.copy(alpha = 0.5f),
+                                modifier = Modifier.padding(vertical = 4.dp)
+                            )
+                        } else {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                importedMbtilesFiles.forEach { file ->
+                                    val fileName = file.name
+                                    val isActive = activeMbtiles.containsKey(fileName)
+                                    val opacity = activeMbtiles[fileName] ?: 1.0f
+                                    
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(textColor.copy(alpha = 0.03f), RoundedCornerShape(6.dp))
+                                            .padding(8.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Checkbox(
+                                                    checked = isActive,
+                                                    onCheckedChange = { onToggleMbtilesActive(fileName, it) },
+                                                    colors = CheckboxDefaults.colors(checkedColor = accentColor),
+                                                    modifier = Modifier.size(24.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(2.dp))
+                                                Text(
+                                                    text = fileName,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = textColor,
+                                                    maxLines = 1,
+                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                )
+                                            }
+                                            
+                                            IconButton(
+                                                onClick = { onDeleteMbtiles(fileName) },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Delete,
+                                                    contentDescription = "Delete",
+                                                    tint = Color.Red.copy(alpha = 0.7f),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        }
+                                        
+                                        if (isActive) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Text(
+                                                    text = "Opacity: ${(opacity * 100).toInt()}%",
+                                                    fontSize = 10.sp,
+                                                    color = textColor.copy(alpha = 0.6f),
+                                                    fontFamily = FontFamily.Monospace,
+                                                    modifier = Modifier.width(68.dp)
+                                                )
+                                                Slider(
+                                                    value = opacity,
+                                                    onValueChange = { onMbtilesOpacityChange(fileName, it) },
+                                                    colors = SliderDefaults.colors(
+                                                        thumbColor = accentColor,
+                                                        activeTrackColor = accentColor,
+                                                        inactiveTrackColor = textColor.copy(alpha = 0.1f)
+                                                    ),
+                                                    modifier = Modifier.height(18.dp).weight(1f)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -539,7 +678,7 @@ fun LayerManagerSheet(
                         } else {
                             Button(
                                 onClick = {
-                                    onDownloadRegion(inputRegionName)
+                                    onDownloadRegion(inputRegionName, listOf("OSM", "Satellite"), 5.0, 15, currentLat, currentLon)
                                     inputRegionName = ""
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.Black),
