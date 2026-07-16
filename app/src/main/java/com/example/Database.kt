@@ -187,6 +187,12 @@ fun parsePointsJson(json: String): List<TrackPoint> {
     }
 }
 
+fun serializeTrackPoints(points: List<TrackPoint>): String {
+    return points.joinToString(prefix = "[", postfix = "]") { p ->
+        "[${p.lat},${p.lon},${p.ele},${p.time},${p.heading}]"
+    }
+}
+
 @Entity(
     tableName = "boreholes",
     foreignKeys = [
@@ -421,6 +427,9 @@ interface GeologyDao {
 
     @Query("UPDATE tracks SET name = :name, colorHex = :colorHex, strokeWidth = :strokeWidth WHERE id = :id")
     suspend fun updateTrackStyling(id: Int, name: String, colorHex: String, strokeWidth: Float)
+
+    @Query("UPDATE tracks SET pointsJson = :pointsJson WHERE id = :id")
+    suspend fun updateTrackPoints(id: Int, pointsJson: String)
 
     @Query("DELETE FROM tracks WHERE id = :id")
     suspend fun deleteTrackById(id: Int)

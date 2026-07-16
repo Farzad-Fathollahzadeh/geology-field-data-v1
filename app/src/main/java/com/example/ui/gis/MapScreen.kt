@@ -186,6 +186,7 @@ fun MapScreen(
     var isLeftToolsExpanded by remember { mutableStateOf(true) }
     var showElevationProfile by remember { mutableStateOf(false) }
     var elevationProfilePoints by remember { mutableStateOf<List<TrackPoint>>(emptyList()) }
+    var selectedTrackForProfile by remember { mutableStateOf<com.example.Track?>(null) }
 
     // Base coordinate anchor defaults
     val defaultInitialLat = remember(activeProjectStations) {
@@ -1945,6 +1946,7 @@ fun MapScreen(
                                         onSelectTrackForElevationProfile = { track ->
                                             val parsed = com.example.parsePointsJson(track.pointsJson)
                                             elevationProfilePoints = parsed
+                                            selectedTrackForProfile = track
                                             showElevationProfile = true
                                             gisViewModel.updateUiState(MapUiState.Idle)
                                             Toast.makeText(context, "نمودار ارتفاعی ${track.name}", Toast.LENGTH_SHORT).show()
@@ -2430,7 +2432,18 @@ fun MapScreen(
                 ElevationProfilePanel(
                     points = pointsToDisplay,
                     isOutdoorMode = isOutdoorMode,
-                    onClose = { showElevationProfile = false }
+                    onClose = { showElevationProfile = false },
+                    onDownloadOfflineProfile = { updatedPoints ->
+                        if (elevationProfilePoints.isNotEmpty() && selectedTrackForProfile != null) {
+                            val serializedJson = com.example.serializeTrackPoints(updatedPoints)
+                            geologyViewModel.updateTrackPoints(selectedTrackForProfile!!.id, serializedJson)
+                            elevationProfilePoints = updatedPoints
+                            Toast.makeText(context, "پروفیل ارتفاعی UTM دانلود و ذخیره شد.", Toast.LENGTH_SHORT).show()
+                        } else {
+                            geologyViewModel.activePoints.value = updatedPoints
+                            Toast.makeText(context, "پروفیل ارتفاعی مسیر فعال بروزرسانی شد.", Toast.LENGTH_SHORT).show()
+                        }
+                    }
                 )
             }
         }

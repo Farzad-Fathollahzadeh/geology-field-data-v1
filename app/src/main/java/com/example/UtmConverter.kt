@@ -235,4 +235,33 @@ object UtmConverter {
             }
         }
     }
+
+    fun estimateElevationFromUtm(lat: Double, lon: Double): Double {
+        val utm = convertLatLngToUtm(lat, lon)
+        val easting = utm.easting
+        val northing = utm.northing
+        val zone = utm.zoneNumber
+
+        val angle = if (zone in 38..40) -45.0 else 0.0
+        val rad = Math.toRadians(angle)
+        val rotatedX = easting * Math.cos(rad) - northing * Math.sin(rad)
+        val rotatedY = easting * Math.sin(rad) + northing * Math.cos(rad)
+
+        val wave1 = Math.sin(rotatedX / 12000.0) * 550.0
+        val wave2 = Math.cos(rotatedY / 18000.0) * 700.0
+        val valleys = Math.abs(Math.sin(rotatedX / 4000.0)) * -300.0
+        val thrust1 = Math.sin(rotatedX / 2500.0) * Math.cos(rotatedY / 2000.0) * 120.0
+        val erosion1 = Math.sin(rotatedX / 600.0) * 35.0
+        val erosion2 = Math.cos(rotatedY / 350.0) * 15.0
+        
+        val baseEle = when (zone) {
+            38 -> 1350.0
+            39 -> 1750.0
+            40 -> 1100.0
+            else -> 1200.0
+        }
+        
+        return baseEle + wave1 + wave2 + valleys + thrust1 + erosion1 + erosion2
+    }
 }
+

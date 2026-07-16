@@ -12311,8 +12311,9 @@ fun WebViewMap(
                                         val yStr = if (yPart.contains(".")) yPart.substring(0, yPart.indexOf(".")) else yPart
                                         val y = yStr.toIntOrNull() ?: 0
                                         
-                                        val mbtilesFile = java.io.File(java.io.File(ctx.filesDir, "mbtiles"), fileName)
-                                        if (mbtilesFile.exists()) {
+                                        val mbtilesDir = java.io.File(ctx.filesDir, "mbtiles")
+                                        val mbtilesFile = java.io.File(mbtilesDir, fileName)
+                                        if (mbtilesFile.exists() && mbtilesFile.canonicalPath.startsWith(mbtilesDir.canonicalPath)) {
                                             val tileBytes = MbtilesDatabaseCache.getTileBytesDirectly(mbtilesFile, z, x, y)
                                             if (tileBytes != null) {
                                                 val contentType = if (url.endsWith(".jpg") || url.endsWith(".jpeg")) "image/jpeg" else "image/png"
@@ -14369,13 +14370,14 @@ fun MapContent(viewModel: GeologyViewModel) {
                 // Map crosshair elevation mock/estimate + quick point adder
                 Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     // Elevation estimate
+                    val calculatedElev = com.example.UtmConverter.estimateElevationFromUtm(pannedCenterLat, pannedCenterLon)
                     Box(
                         modifier = Modifier
                             .background(if (isOutdoorMode) Color(0xFFEEEEEE) else Color(0x3300FFE0), RoundedCornerShape(4.dp))
                             .padding(horizontal = 4.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = "Elev: 1210m",
+                            text = if (isFarsiMode) "ارتفاع: ${calculatedElev.toInt()}م" else "Elev: ${calculatedElev.toInt()}m",
                             fontSize = 8.sp,
                             color = if (isOutdoorMode) Color.Black else Color(0xFF00E5FF),
                             fontFamily = FontFamily.Monospace,

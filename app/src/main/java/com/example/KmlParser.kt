@@ -50,6 +50,16 @@ object KmlParser {
         try {
             val factory = DocumentBuilderFactory.newInstance()
             factory.isNamespaceAware = false
+            try {
+                factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
+                factory.setFeature("http://xml.org/sax/features/external-general-entities", false)
+                factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false)
+                factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false)
+                factory.isXIncludeAware = false
+                factory.isExpandEntityReferences = false
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
             val builder = factory.newDocumentBuilder()
             
             // Handle cases with byte order marks or minor xml headers safely

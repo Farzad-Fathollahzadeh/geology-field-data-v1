@@ -343,8 +343,23 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
             GeotechMineral("روتیل (Rutile)", "Rutile", 6.0..6.5, "Reddish-brown, dark blood red, brassy black", "Chalky yellow-brown", "non_metallic", "Good", 4.25, specialFeat = "ضریب شکست نوری بالاتر از الماس، بلورهای طویل سوزنی مانند مو داخل کوارتز (در کوارتز رتیله) یا منشورهای قلابدار متقاطع", enFeat = "Titanium dioxide polymorphic, dark blood-red adamantine crystals, high refractive index, forms needles in quartz"),
             GeotechMineral("تورمالین (Tourmaline)", "Tourmaline", 7.0..7.5, "Coal black, deep green", "White", "non_metallic", "No / Conchoidal fracture", 3.06, specialFeat = "بلورهای منشوری طویل با سطح مقطع مثلث کلوخی با شیارهای طولی، سختی شدید (۷.۵)، کانی شاخص پگماتیت‌ها", enFeat = "Complex borosilicate, unique diagnostic curved-triangular cross-section prisms, hardness 7.5, pegs pathfinder"),
             GeotechMineral("مس طبیعی (Copper)", "Native Copper", 2.5..3.0, "Copper red, tarnishes green", "Copper-red shiny metallic", "metallic", "None", 8.94, specialFeat = "فلز مس قرمز طبیعی چکش‌خوار، با توده‌های دندریتی، معمولا با سطوح پوسته سبز رنگ پودری مالاکیت اکسید پوشیده می‌شود", enFeat = "Native element copper red, extremely dense and ductile, oxidation skin of green malachite protects core"),
-            GeotechMineral("اکتینولیت (Actinolite)", "Actinolite", 5.5..6.0, "Pistachio dark green to emerald", "White", "non_metallic", "Perfect amphibole angles (56 and 124 deg)", 3.04, specialFeat = "بلورهای سوزنی شکل دراز شعاعی و نازک مانند چوب، کانی دگرگونی سنگ‌های شیست سبز و هاله‌های بزرگ اسکارن", enFeat = "Green fibrous amphibole, forms needle-like cluster sprays in greenschist facies and iron skarn zones")
-        )
+            GeotechMineral("اکتینولیت (Actinolite)", "Actinolite", 5.5..6.0, "Pistachio dark green to emerald", "White", "non_metallic", "Perfect amphibole angles (56 and 124 deg)", 3.04, specialFeat = "بلورهای سوزنی شکل دراز شعاعی و نازک مانند چوب، کانی دگرگونی سنگ‌های شیست سبز و هاله‌های بزرگ اسکارن", enFeat = "Green fibrous amphibole, forms needle-like cluster sprays in greenschist facies and iron skarn zones"),
+            GeotechMineral("کریسوکولا (Chrysocolla)", "Chrysocolla", 2.0..4.0, "Cyan, greenish-blue, turquoise", "Light blue", "non_metallic", "None", 2.20, specialFeat = "سیلیکات مس بسیار سبک‌وزن، رنگ فیروزه‌ای مات تابان، به شدت جذب رطوبت زبان می‌شود، در زون‌های اکسیده مس یافت می‌شود", enFeat = "Lightweight copper silicate, vivid blue-green, highly absorbent of tongue moisture, oxidation cap zone indicator", feel = "smooth", shape = "massive"),
+            GeotechMineral("لپیدولیت (Lepidolite)", "Lepidolite (Lithium Mica)", 2.5..4.0, "Lilac-gray, purple, rose-pink", "White", "non_metallic", "Perfect basal plates", 2.85, specialFeat = "میکای بنفش غنی از لیتیوم، فلس‌های صورتی تا بنفش درخشان، از کانی‌های شاخص و پیشرو پگماتیت‌های غنی از لیتیوم (LCT)", enFeat = "Lilac-pink lithium-bearing mica, diagnostic violet sparkly flakes, signature of highly fractionated pegmatites", feel = "smooth", shape = "plates"),
+            GeotechMineral("اسپودومن (Spodumene)", "Spodumene (Lithium Ore)", 6.5..7.0, "White, grayish, yellowish, kunzite pink", "White", "non_metallic", "Perfect prismatic in 2 directions", 3.15, specialFeat = "پیروکسن لیتیوم‌دار، بلورهای منشوری طویل شیاردار، سختی بسیار بالا (۷)، منبع اصلی لیتیوم جهان در پگماتیت‌ها", enFeat = "Primary lithium pyroxene, elongated flattened prisms, high hardness (6.5-7), major lithium resource", feel = "normal", shape = "columnar"),
+            GeotechMineral("بریل (Beryl)", "Beryl (Emerald/Aquamarine)", 7.5..8.0, "Green, blue, yellow, white, pink", "White", "non_metallic", "Poor / None", 2.76, specialFeat = "سختی فوق‌العاده بالا (۸)، بلورهای کاملاً شش‌وجهی منشوری منظم صاف، شامل نگین‌های ارزشمند زمرد و آکوآمارین", enFeat = "Extreme hardness (7.5-8), perfect hexagonal prisms, source of beryllium and emerald gemstones", feel = "normal", shape = "hexagonal"),
+            GeotechMineral("وانادینیت (Vanadinite)", "Vanadinite", 2.5..3.0, "Bright red, orange, brown", "White to pale yellow", "non_metallic", "None", 6.85, specialFeat = "بلورهای هگزاگونال شش‌گوشه نارنجی-قرمز با جلای صمغی بسیار براق، چگالی فوق‌العاده سنگین برای کانی شیشه‌ای به دلیل داشتن سرب و وانادیوم", enFeat = "Bright red hexagonal prism plates, remarkably high density (6.8) due to lead-vanadium content, supergene zone", feel = "normal", shape = "hexagonal"),
+            GeotechMineral("وولفنیت (Wulfenite)", "Wulfenite", 2.7..3.0, "Yellow, orange, bright red", "White", "non_metallic", "Good", 6.80, specialFeat = "مولیبدات سرب، بلورهای بسیار نازک مربعی یا لوحی زردرنگ تا نارنجی براق، در زون‌های بسیار اکسیده شده کانسارهای سرب و روی", enFeat = "Thin tabular square crystals, resinous butter-yellow to orange-red, lead-molybdate marker", feel = "normal", shape = "plates"),
+            GeotechMineral("سروسیت (Cerussite)", "Cerussite (Lead Carbonate)", 3.0..3.5, "Colorless, white, gray, adamantine", "White", "non_metallic", "Good in 2 directions", 6.55, acidReaction = true, specialFeat = "کربنات سرب ثانویه، دارای جلای قوی الماسی بسیار براق و چگالی فوق‌العاده سنگین، با اسید کلریدریک گرم جوشش شدیدی دارد", enFeat = "Extremely heavy lead carbonate, adamantine sparkling luster, effervesces strongly in warm dilute HCl", feel = "normal", shape = "rhombohedral"),
+            GeotechMineral("آنگلزیت (Anglesite)", "Anglesite (Lead Sulfate)", 2.5..3.0, "Colorless, white, gray, yellowish", "White", "non_metallic", "Good", 6.30, specialFeat = "سولفات سرب، حاصل تجزیه گالن، بسیار سنگین‌وزن با جلای الماسی، برخلاف سروسیت هرگز با اسید کلریدریک نمی‌جوشد", enFeat = "Heavy lead sulfate formed from galena oxidation, adamantine luster, no effervescence with acid", feel = "normal", shape = "massive"),
+            GeotechMineral("اسمیت زونیت (Smithsonite)", "Smithsonite (Zinc Spar)", 4.0..4.5, "Green, blue, pink, white, gray", "White", "non_metallic", "Perfect rhombohedral", 4.40, acidReaction = true, specialFeat = "کربنات روی ثانویه، معمولاً با ظاهر خوشه‌ای (کلوئیدی) شبیه به حباب‌های صابون چسبیده، با اسید کلریدریک رقیق و گرم جوشش شدید دارد", enFeat = "Zinc carbonate, botryoidal bubbly clusters (dry bone ore), effervesces vigorously in warm HCl", feel = "smooth", shape = "massive"),
+            GeotechMineral("استارولیت (Staurolite)", "Staurolite (Fairy Cross)", 7.0..7.5, "Reddish-brown, dark brown, black", "Gray/White", "non_metallic", "Poor", 3.75, specialFeat = "بلورهای دوقلوی چلیپایی بسیار متمایز شبیه به علامت صلیب یا ضربدر، سختی بسیار بالا (۷.۵)، کانی شاخص دگرگونی شیست شدید", enFeat = "Metamorphic index mineral, distinct cross-shaped twin crystals, highly resistant, diagnostic schist marker", feel = "normal", shape = "massive"),
+            GeotechMineral("رودونیت (Rhodonite)", "Rhodonite", 5.5..6.5, "Rose-pink, red with black veins", "White", "non_metallic", "Perfect in 2 directions", 3.60, specialFeat = "رنگ صورتی تیره تا قرمز گل‌بهی غنی از منگنز همراه با رگچه‌ها و لکه‌های شبکه متقاطع سیاه رنگ دندریتی اکسید منگنز، سختی بالا", enFeat = "Vibrant rose-pink silicate with dramatic dark black dendritic manganese oxide veins, high hardness (5.5-6.5)", feel = "normal", shape = "massive"),
+            GeotechMineral("رودوکروزیت (Rhodochrosite)", "Rhodochrosite", 3.5..4.0, "Raspberry pink, rose red", "White", "non_metallic", "Perfect rhombohedral", 3.70, acidReaction = true, specialFeat = "کربنات منگنز صورتی تمشکی خیره‌کننده، نوارهای موازی صورتی-سفید، با اسید کلریدریک گرم جوشش متمایز دارد", enFeat = "Stunning raspberry-pink manganese carbonate with white banding layers, effervesces beautifully in warm acid", feel = "smooth", shape = "rhombohedral"),
+            GeotechMineral("ولاستونیت (Wollastonite)", "Wollastonite", 4.5..5.0, "White, gray, pale green", "White", "non_metallic", "Perfect in 2 directions", 2.90, specialFeat = "سیلیکات کلسیم، بلورهای توده‌ای الیافی یا سوزنی کلاف مانند، کانی دگرگونی تماسی اسکارن آهکی مجاور سنگ‌های آذرین", enFeat = "Fibrous to acicular white calc-silicate, diagnostic of contact metamorphic skarns, industrial mineral", feel = "normal", shape = "fibrous"),
+            GeotechMineral("پیروژنوسیت / یاقوت کروم (Pyrope Garnet)", "Pyrope Garnet", 7.0..7.5, "Deep blood red, purplish-red", "White", "non_metallic", "None", 3.56, specialFeat = "کانی شاخص گوشته و لوله‌های کیمبرلیتی حاوی الماس، رنگ قرمز خون کبوتری تیره بسیار سخت، فاقد هرگونه رخ متمایز", enFeat = "Chrome-rich deep blood-red garnet, ultra-stable, primary pathfinder used globally in diamond exploration programs", feel = "normal", shape = "hexagonal"),
+            GeotechMineral("سرپانتین (Serpentine)", "Serpentine", 3.0..5.0, "Apple green, olive green, blackish green", "White", "non_metallic", "Poor", 2.60, specialFeat = "رنگ سبز ماری چرب و بسیار براق موم مانند، سطح لغزنده و پودری، تشکیل دهنده اصلی افیولیت‌ها و زون‌های بخیه زمین‌درز ایران", enFeat = "Waxy mottled green silicate, greasy feel, primary component of altered mantle peridotites in ophiolite suites", feel = "soapy", shape = "massive")
+        ) + com.example.ui.getExtraMinerals()
     }
 
 
@@ -391,6 +406,7 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
     var answerShape by remember { mutableStateOf("any") }
 
     // CATALOG FILTER STATES
+    var catalogSearchQuery by remember { mutableStateOf("") }
     var searchHardness by remember { mutableStateOf("") }
     var filterLuster by remember { mutableStateOf("All Lusters") }
     var filterAcid by remember { mutableStateOf(false) }
@@ -545,9 +561,19 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
     }
 
     // Dynamic candidates calculated for manual filter tab
-    val filteredCatalogList = remember(searchHardness, filterLuster, filterAcid, filterMagnet, selectedGroupFilter) {
+    val filteredCatalogList = remember(catalogSearchQuery, searchHardness, filterLuster, filterAcid, filterMagnet, selectedGroupFilter) {
         val targetHardness = searchHardness.toDoubleOrNull()
         minerals.filter { min ->
+            val matchesSearch = if (catalogSearchQuery.isNotEmpty()) {
+                min.nameFa.contains(catalogSearchQuery, ignoreCase = true) ||
+                min.nameEn.contains(catalogSearchQuery, ignoreCase = true) ||
+                min.specialFeat.contains(catalogSearchQuery, ignoreCase = true) ||
+                min.enFeat.contains(catalogSearchQuery, ignoreCase = true) ||
+                min.color.contains(catalogSearchQuery, ignoreCase = true) ||
+                min.streak.contains(catalogSearchQuery, ignoreCase = true) ||
+                min.luster.contains(catalogSearchQuery, ignoreCase = true)
+            } else true
+
             val matchesHardness = if (targetHardness != null) {
                 targetHardness in min.hardnessRange || 
                 (targetHardness >= min.hardnessRange.start - 0.5 && targetHardness <= min.hardnessRange.endInclusive + 0.5)
@@ -581,7 +607,7 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
                 (selectedGroupFilter == "عناصر طبیعی" && groupText.contains("عناصر طبیعی"))
             } else true
 
-            matchesHardness && matchesLuster && matchesAcid && matchesMagnet && matchesGroup
+            matchesSearch && matchesHardness && matchesLuster && matchesAcid && matchesMagnet && matchesGroup
         }
     }
 
@@ -1720,6 +1746,28 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
                         modifier = Modifier.fillMaxWidth()
                     )
 
+                    OutlinedTextField(
+                        value = catalogSearchQuery,
+                        onValueChange = { catalogSearchQuery = it },
+                        placeholder = { 
+                            Text(
+                                text = if (isFarsiMode) "جستجوی نام، مشخصه یا رنگ کانی..." else "Search name, color, feature...",
+                                fontSize = 11.sp
+                            )
+                        },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                        trailingIcon = if (catalogSearchQuery.isNotEmpty()) {
+                            {
+                                IconButton(onClick = { catalogSearchQuery = "" }) {
+                                    Icon(Icons.Default.Clear, contentDescription = "Clear", modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        } else null,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true
+                    )
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1816,9 +1864,10 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
                             leadingIcon = if (filterMagnet) { { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp)) } } else null
                         )
 
-                        if (searchHardness.isNotEmpty() || filterLuster != "All Lusters" || filterAcid || filterMagnet || (selectedGroupFilter != "All" && selectedGroupFilter != "همه کانی‌ها")) {
+                        if (catalogSearchQuery.isNotEmpty() || searchHardness.isNotEmpty() || filterLuster != "All Lusters" || filterAcid || filterMagnet || (selectedGroupFilter != "All" && selectedGroupFilter != "همه کانی‌ها")) {
                             IconButton(
                                 onClick = {
+                                    catalogSearchQuery = ""
                                     searchHardness = ""
                                     filterLuster = "All Lusters"
                                     filterAcid = false
@@ -1871,9 +1920,12 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
                 ) {
                     items(filteredCatalogList) { mineral ->
                         Card(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedMineralForLab = mineral },
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
                         ) {
                             Column(
                                 modifier = Modifier.padding(14.dp),
@@ -1884,7 +1936,7 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Column {
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = mineral.nameFa,
                                             fontSize = 16.sp,
@@ -1900,13 +1952,18 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
                                     }
 
                                     // Hardness tag
+                                    val hardnessText = if (mineral.hardnessRange.start == mineral.hardnessRange.endInclusive) {
+                                        mineral.hardnessRange.start.toString().replace(".0", "")
+                                    } else {
+                                        "${mineral.hardnessRange.start.toString().replace(".0", "")} - ${mineral.hardnessRange.endInclusive.toString().replace(".0", "")}"
+                                    }
                                     Box(
                                         modifier = Modifier
                                             .background(MaterialTheme.colorScheme.secondaryContainer, RoundedCornerShape(8.dp))
                                             .padding(horizontal = 10.dp, vertical = 4.dp)
                                     ) {
                                         Text(
-                                            text = "Mohs Hardness: ${mineral.hardnessRange.start.toInt()}",
+                                            text = "Mohs: $hardnessText",
                                             fontSize = 11.sp,
                                             color = MaterialTheme.colorScheme.onSecondaryContainer,
                                             fontWeight = FontWeight.Bold
@@ -1916,24 +1973,63 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
 
                                 Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
 
-                                // Diagnostic list grid
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(if (isFarsiMode) "رنگ: ${mineral.color}" else "Mineral Color: ${mineral.color}", fontSize = 11.sp)
-                                        Text(if (isFarsiMode) "خاکه: ${mineral.streak}" else "Streak Powder: ${mineral.streak}", fontSize = 11.sp)
+                                // Diagnostic list grid with Icons
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Default.Palette, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(13.dp))
+                                            Text(if (isFarsiMode) "رنگ: ${mineral.color}" else "Color: ${mineral.color}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
+                                        }
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Default.Brush, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(13.dp))
+                                            Text(if (isFarsiMode) "خاکه: ${mineral.streak}" else "Streak: ${mineral.streak}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
+                                        }
                                     }
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(if (isFarsiMode) "جلا: ${mineral.luster}" else "Luster: ${mineral.luster}", fontSize = 11.sp)
-                                        Text(if (isFarsiMode) "چگالی مخصوص: ${mineral.density} g/cm³" else "Specific Gravity: ${mineral.density} g/cm³", fontSize = 11.sp)
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(13.dp))
+                                            Text(if (isFarsiMode) "جلا: ${formatLuster(mineral.luster, isFarsiMode)}" else "Luster: ${mineral.luster}", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
+                                        }
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Default.Scale, contentDescription = null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(13.dp))
+                                            Text(if (isFarsiMode) "چگالی: ${mineral.density} g/cm³" else "Density: ${mineral.density} g/cm³", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurface)
+                                        }
                                     }
                                 }
 
-                                Text(
-                                    text = if (isFarsiMode) "رخ / گسیختگی: ${mineral.cleavage}" else "Cleavage/Fracture: ${mineral.cleavage}",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.BrokenImage, contentDescription = null, tint = MaterialTheme.colorScheme.tertiary, modifier = Modifier.size(13.dp))
+                                    Text(
+                                        text = if (isFarsiMode) "رخ / گسیختگی: ${mineral.cleavage}" else "Cleavage/Fracture: ${mineral.cleavage}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
 
                                 Box(
                                     modifier = Modifier
@@ -1955,6 +2051,37 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
                                             fontFamily = FontFamily.Monospace,
                                             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
                                         )
+                                    }
+                                }
+
+                                // Interactive action button to run field lab
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Science,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Text(
+                                                text = if (isFarsiMode) "ورود به شبیه‌ساز تست صحرایی" else "Run Field Lab Simulator",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -3660,18 +3787,34 @@ suspend fun queryGeminiMineral(mineralName: String, isFarsi: Boolean): String = 
         val responseBody = response.body?.string() ?: ""
         if (response.isSuccessful && responseBody.isNotEmpty()) {
             val jsonResponse = JSONObject(responseBody)
-            val candidates = jsonResponse.optJSONArray("candidates")
-            val firstCandidate = candidates?.optJSONObject(0)
-            val content = firstCandidate?.optJSONObject("content")
-            val parts = content?.optJSONArray("parts")
-            val firstPart = parts?.optJSONObject(0)
-            val text = firstPart?.optString("text")
-            text ?: if (isFarsi) "پاسخی دریافت نشد." else "No response text"
-        } else {
-            val errorMsg = if (response.code == 400) {
-                if (isFarsi) "خطای ۴۰۰: احتمالاً کلید نادرست است یا مدل در دسترس نیست." else "Error 400: Bad request. API key might be invalid."
+            if (jsonResponse.has("error")) {
+                val errorObj = jsonResponse.optJSONObject("error")
+                val errMsg = errorObj?.optString("message") ?: "Unknown API Error"
+                if (isFarsi) "خطای وب‌سرویس: $errMsg" else "API Error: $errMsg"
             } else {
-                "Error code ${response.code}: ${response.message}"
+                val candidates = jsonResponse.optJSONArray("candidates")
+                val firstCandidate = candidates?.optJSONObject(0)
+                val content = firstCandidate?.optJSONObject("content")
+                val parts = content?.optJSONArray("parts")
+                val firstPart = parts?.optJSONObject(0)
+                val text = firstPart?.optString("text")
+                text ?: if (isFarsi) "خطا: ساختار پاسخ معتبر نبود." else "Error: Invalid response format."
+            }
+        } else {
+            var detailedError = ""
+            if (responseBody.isNotEmpty()) {
+                try {
+                    val jsonResponse = JSONObject(responseBody)
+                    val errorObj = jsonResponse.optJSONObject("error")
+                    detailedError = errorObj?.optString("message") ?: ""
+                } catch (e: Exception) {}
+            }
+            val errorMsg = if (detailedError.isNotEmpty()) {
+                detailedError
+            } else if (response.code == 400) {
+                if (isFarsi) "کلید معتبر نیست یا فرمت درخواست اشتباه است." else "Bad request. Your API key might be invalid."
+            } else {
+                "HTTP ${response.code}: ${response.message}"
             }
             if (isFarsi) "خطا در ارتباط با سرور هوش مصنوعی: $errorMsg" else "API connection failed: $errorMsg"
         }

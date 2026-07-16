@@ -616,6 +616,12 @@ class GeologyViewModel(
         }
     }
 
+    fun updateTrackPoints(trackId: Int, pointsJson: String) {
+        viewModelScope.launch {
+            dao.updateTrackPoints(trackId, pointsJson)
+        }
+    }
+
     fun appendTrackPoint(p: TrackPoint) {
         if (isTrackRecordingActive.value) {
             activePoints.value = activePoints.value + p

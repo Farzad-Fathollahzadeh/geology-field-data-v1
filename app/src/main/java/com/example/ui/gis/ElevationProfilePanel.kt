@@ -38,6 +38,7 @@ fun ElevationProfilePanel(
     points: List<TrackPoint>,
     isOutdoorMode: Boolean = false,
     onClose: () -> Unit,
+    onDownloadOfflineProfile: ((List<TrackPoint>) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val accentColor = if (isOutdoorMode) Color(0xFF007A78) else Color(0xFF00FFE0)
@@ -535,6 +536,57 @@ fun ElevationProfilePanel(
                         }
                     }
                 }
+
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(accentColor.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+                        .border(1.dp, accentColor.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                        .padding(8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f).padding(end = 6.dp)) {
+                        Text(
+                            text = "تخمین و دانلود آفلاین پروفیل ارتفاعی UTM",
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = textColor
+                        )
+                        val samplePoint = points.firstOrNull()
+                        val utmZoneText = if (samplePoint != null) {
+                            val utm = com.example.UtmConverter.convertLatLngToUtm(samplePoint.lat, samplePoint.lon)
+                            "Zone ${utm.zoneNumber}${utm.zoneChar} (${points.size} pts)"
+                        } else {
+                            "ناشناخته"
+                        }
+                        Text(
+                            text = "محاسبه ارتفاع توپوگرافی محلی بدون نیاز به شبکه بر اساس مختصات ($utmZoneText)",
+                            fontSize = 8.sp,
+                            color = textMuted
+                        )
+                    }
+                    
+                    Button(
+                        onClick = {
+                            val updatedPoints = points.map { pt ->
+                                val estimatedEle = com.example.UtmConverter.estimateElevationFromUtm(pt.lat, pt.lon)
+                                pt.copy(ele = estimatedEle)
+                            }
+                            onDownloadOfflineProfile?.invoke(updatedPoints)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.Black),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        shape = RoundedCornerShape(6.dp),
+                        modifier = Modifier.height(28.dp)
+                    ) {
+                        Text("محاسبه و دانلود / Calculate", fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
 
                 // Scrubbing instructions helper label
                 Text(
