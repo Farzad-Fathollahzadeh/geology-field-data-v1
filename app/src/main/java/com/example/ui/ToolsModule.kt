@@ -52,6 +52,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.nativeCanvas
 import java.text.DecimalFormat
 import java.util.Locale
 import kotlinx.coroutines.launch
@@ -69,7 +70,7 @@ fun ToolsContent(
     viewModel: GeologyViewModel,
     modifier: Modifier = Modifier
 ) {
-    var selectedToolTab by remember { mutableStateOf(0) } // 0 = Mineral ID, 1 = Lithology, 2 = QAPF Plotter, 3 = Converter, 4 = Developer Profile
+    var selectedToolTab by remember { mutableStateOf(0) } // 0 = Mineral ID, 1 = Lithology, 2 = QAPF Plotter, 3 = Structural Geometry, 4 = Converter, 5 = Developer Profile
     val isFarsiMode by viewModel.isFarsiModeSetting.collectAsStateWithLifecycle()
 
     val primaryColor = MaterialTheme.colorScheme.primary
@@ -187,12 +188,18 @@ fun ToolsContent(
             Tab(
                 selected = selectedToolTab == 3,
                 onClick = { selectedToolTab = 3 },
-                text = { Text(if (isFarsiMode) "تبدیل واحد" else "Converter", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                icon = { Icon(Icons.Default.SyncAlt, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                text = { Text(if (isFarsiMode) "هندسه ساختاری" else "Structural Geometry", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                icon = { Icon(Icons.Default.Explore, contentDescription = null, modifier = Modifier.size(18.dp)) }
             )
             Tab(
                 selected = selectedToolTab == 4,
                 onClick = { selectedToolTab = 4 },
+                text = { Text(if (isFarsiMode) "تبدیل واحد" else "Converter", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                icon = { Icon(Icons.Default.SyncAlt, contentDescription = null, modifier = Modifier.size(18.dp)) }
+            )
+            Tab(
+                selected = selectedToolTab == 5,
+                onClick = { selectedToolTab = 5 },
                 text = { Text(if (isFarsiMode) "توسعه‌دهنده" else "Developer", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                 icon = { Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(18.dp)) }
             )
@@ -206,8 +213,9 @@ fun ToolsContent(
                 0 -> MineralIdHelper(viewModel)
                 1 -> LithologyHelper()
                 2 -> Box(modifier = Modifier.verticalScroll(rememberScrollState())) { QAPFClassifierPanel() }
-                3 -> GeotechConverter()
-                4 -> DeveloperProfilePage()
+                3 -> StructuralGeometryCalculator(isFarsiMode)
+                4 -> GeotechConverter()
+                5 -> DeveloperProfilePage()
             }
         }
     }
@@ -3822,4 +3830,576 @@ suspend fun queryGeminiMineral(mineralName: String, isFarsi: Boolean): String = 
         if (isFarsi) "خطای سیستمی رخ داد: ${e.localizedMessage}" else "System Exception: ${e.localizedMessage}"
     }
 }
+
+// ---------------------------------------------
+// 6. STRUCTURAL GEOMETRY CALCULATOR
+// ---------------------------------------------
+fun compassToCartesian(centerX: Float, centerY: Float, radius: Float, angleDegrees: Double): Offset {
+    val phiRad = Math.toRadians(angleDegrees - 90.0)
+    return Offset(
+        (centerX + radius * Math.cos(phiRad)).toFloat(),
+        (centerY + radius * Math.sin(phiRad)).toFloat()
+    )
+}
+
+@Composable
+fun StructuralGeometryCalculator(isFarsiMode: Boolean) {
+    var subTab by remember { mutableStateOf(0) } // 0 = Strike/Dip Conv, 1 = Apparent Dip, 2 = True Thickness
+    
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(4.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Mode Selector Chips
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            val modes = if (isFarsiMode) {
+                listOf("تبدیل امتداد/شیب", "شیب ظاهری", "ضخامت لایه")
+            } else {
+                listOf("Strike/Dip Conv", "Apparent Dip", "True Thickness")
+            }
+            modes.forEachIndexed { index, mode ->
+                ElevatedFilterChip(
+                    selected = subTab == index,
+                    onClick = { subTab = index },
+                    label = { Text(mode, fontSize = 10.sp) },
+                    modifier = Modifier.weight(1f),
+                    colors = FilterChipDefaults.elevatedFilterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                )
+            }
+        }
+        
+        when (subTab) {
+            0 -> StrikeDipConverter(isFarsiMode)
+            1 -> ApparentDipCalculator(isFarsiMode)
+            2 -> TrueThicknessCalculator(isFarsiMode)
+        }
+    }
+}
+
+@Composable
+fun StrikeDipConverter(isFarsiMode: Boolean) {
+    var modeByStrike by remember { mutableStateOf(true) } // true = Input Strike/Dip, false = Input DipDir/Dip
+    var inputStrike by remember { mutableStateOf("45") }
+    var inputDip by remember { mutableStateOf("30") }
+    var inputDipDir by remember { mutableStateOf("135") }
+    
+    val strike = inputStrike.toDoubleOrNull() ?: 0.0
+    val dip = inputDip.toDoubleOrNull() ?: 0.0
+    val dipDir = inputDipDir.toDoubleOrNull() ?: 0.0
+    
+    // Derived values
+    val calculatedDipDir = remember(strike) { (strike + 90.0) % 360.0 }
+    val calculatedStrike = remember(dipDir) { (dipDir - 90.0 + 360.0) % 360.0 }
+    
+    val activeStrike = if (modeByStrike) strike else calculatedStrike
+    val activeDip = dip
+    val activeDipDir = if (modeByStrike) calculatedDipDir else dipDir
+    
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = if (isFarsiMode) "روش ورودی:" else "Input Method:",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(0.4f)
+            )
+            FilledTonalButton(
+                onClick = { modeByStrike = !modeByStrike },
+                modifier = Modifier.weight(0.6f),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = if (modeByStrike) {
+                        if (isFarsiMode) "امتداد و شیب ➔ جهت شیب" else "Strike/Dip ➔ Dip Dir"
+                    } else {
+                        if (isFarsiMode) "جهت شیب و شیب ➔ امتداد" else "Dip Dir/Dip ➔ Strike"
+                    },
+                    fontSize = 11.sp
+                )
+            }
+        }
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (modeByStrike) {
+                OutlinedTextField(
+                    value = inputStrike,
+                    onValueChange = { inputStrike = it.take(5) },
+                    label = { Text(if (isFarsiMode) "امتداد (Strike °)" else "Strike (°)", fontSize = 10.sp) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f),
+                    singleLine = true
+                )
+            } else {
+                OutlinedTextField(
+                    value = inputDipDir,
+                    onValueChange = { inputDipDir = it.take(5) },
+                    label = { Text(if (isFarsiMode) "جهت شیب (Dip Dir °)" else "Dip Direction (°)", fontSize = 10.sp) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f),
+                    singleLine = true
+                )
+            }
+            
+            OutlinedTextField(
+                value = inputDip,
+                onValueChange = { inputDip = it.take(5) },
+                label = { Text(if (isFarsiMode) "شیب (Dip °)" else "Dip Angle (°)", fontSize = 10.sp) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.weight(1f),
+                singleLine = true
+            )
+        }
+        
+        // Calculated result Card
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.15f)),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = if (isFarsiMode) "نتایج تبدیل هندسی" else "Geometric Conversion Results",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.secondary
+                )
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(if (isFarsiMode) "فرمت امتداد / شیب (RHR)" else "Strike / Dip (RHR)", fontSize = 10.sp, color = Color.Gray)
+                        Text("${activeStrike.toInt()}° / ${activeDip.toInt()}°", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(if (isFarsiMode) "فرمت جهت شیب / شیب" else "Dip Dir / Dip", fontSize = 10.sp, color = Color.Gray)
+                        Text(String.format(Locale.US, "%03d° / %02d°", activeDipDir.toInt(), activeDip.toInt()), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+        }
+        
+        // Beautiful dynamic compass representation!
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(12.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f))
+        ) {
+            Column(
+                modifier = Modifier.padding(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = if (isFarsiMode) "نمای قطب‌نما (صفحه دوبعدی لایه)" else "Compass View (Bed Plane 2D)",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                
+                Box(
+                    modifier = Modifier
+                        .size(160.dp)
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f), CircleShape)
+                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val primaryColorVal = MaterialTheme.colorScheme.primary
+                    val secondaryColorVal = MaterialTheme.colorScheme.secondary
+                    val onSurfaceVariantColorVal = MaterialTheme.colorScheme.onSurfaceVariant
+                    
+                    Canvas(modifier = Modifier.fillMaxSize()) {
+                        val cx = size.width / 2f
+                        val cy = size.height / 2f
+                        val r = size.minDimension / 2f * 0.82f
+                        
+                        // Draw compass cardinal directions
+                        drawContext.canvas.nativeCanvas.drawText("N", cx, cy - r + 12f, android.graphics.Paint().apply {
+                            color = onSurfaceVariantColorVal.hashCode()
+                            textSize = 28f
+                            textAlign = android.graphics.Paint.Align.CENTER
+                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        })
+                        drawContext.canvas.nativeCanvas.drawText("S", cx, cy + r - 2f, android.graphics.Paint().apply {
+                            color = onSurfaceVariantColorVal.hashCode()
+                            textSize = 28f
+                            textAlign = android.graphics.Paint.Align.CENTER
+                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        })
+                        drawContext.canvas.nativeCanvas.drawText("E", cx + r - 12f, cy + 8f, android.graphics.Paint().apply {
+                            color = onSurfaceVariantColorVal.hashCode()
+                            textSize = 28f
+                            textAlign = android.graphics.Paint.Align.CENTER
+                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        })
+                        drawContext.canvas.nativeCanvas.drawText("W", cx - r + 14f, cy + 8f, android.graphics.Paint().apply {
+                            color = onSurfaceVariantColorVal.hashCode()
+                            textSize = 28f
+                            textAlign = android.graphics.Paint.Align.CENTER
+                            typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        })
+                        
+                        // Draw thin reference cross-hairs
+                        drawLine(color = onSurfaceVariantColorVal.copy(alpha = 0.15f), start = Offset(cx, cy - r), end = Offset(cx, cy + r), strokeWidth = 1f)
+                        drawLine(color = onSurfaceVariantColorVal.copy(alpha = 0.15f), start = Offset(cx - r, cy), end = Offset(cx + r, cy), strokeWidth = 1f)
+                        
+                        // 1. Draw Strike Line (passes through center from (strike) to (strike + 180))
+                        val strikeStart = compassToCartesian(cx, cy, r * 0.9f, activeStrike)
+                        val strikeEnd = compassToCartesian(cx, cy, r * 0.9f, activeStrike + 180.0)
+                        drawLine(
+                            color = secondaryColorVal,
+                            start = strikeStart,
+                            end = strikeEnd,
+                            strokeWidth = 6f,
+                            cap = StrokeCap.Round
+                        )
+                        
+                        // 2. Draw Dip Direction Arrow starting from center to activeDipDir
+                        val dipDirOffset = compassToCartesian(cx, cy, (r * 0.85f * (activeDip / 90.0).coerceIn(0.1, 1.0)).toFloat(), activeDipDir)
+                        drawLine(
+                            color = primaryColorVal,
+                            start = Offset(cx, cy),
+                            end = dipDirOffset,
+                            strokeWidth = 8f,
+                            cap = StrokeCap.Round
+                        )
+                        
+                        // Draw small arrow head at dipDirOffset
+                        val angleRad = Math.toRadians(activeDipDir - 90.0)
+                        val arrowLength = 16f
+                        val arrowAngle = Math.toRadians(35.0)
+                        val p1 = Offset(
+                            (dipDirOffset.x - arrowLength * Math.cos(angleRad - arrowAngle)).toFloat(),
+                            (dipDirOffset.y - arrowLength * Math.sin(angleRad - arrowAngle)).toFloat()
+                        )
+                        val p2 = Offset(
+                            (dipDirOffset.x - arrowLength * Math.cos(angleRad + arrowAngle)).toFloat(),
+                            (dipDirOffset.y - arrowLength * Math.sin(angleRad + arrowAngle)).toFloat()
+                        )
+                        drawLine(color = primaryColorVal, start = dipDirOffset, end = p1, strokeWidth = 8f, cap = StrokeCap.Round)
+                        drawLine(color = primaryColorVal, start = dipDirOffset, end = p2, strokeWidth = 8f, cap = StrokeCap.Round)
+                        
+                        // Draw tiny hub in center
+                        drawCircle(color = onSurfaceVariantColorVal, radius = 6f)
+                    }
+                }
+                
+                Text(
+                    text = if (isFarsiMode) {
+                        "خط زرد نشان‌دهنده امتداد لایه (Strike) و فلش آبی رنگ نشان‌دهنده شیب لایه (Dip Direction) است. طول فلش متناسب با مقدار شیب ترسیم شده است."
+                    } else {
+                        "The yellow line shows Bed Strike and the blue arrow shows Bed Dip Direction. Arrow length scales with dip magnitude."
+                    },
+                    fontSize = 9.5.sp,
+                    color = Color.Gray,
+                    textAlign = TextAlign.Center,
+                    lineHeight = 14.sp,
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ApparentDipCalculator(isFarsiMode: Boolean) {
+    var trueDip by remember { mutableStateOf("35") }
+    var trueDipDir by remember { mutableStateOf("120") }
+    var sectionTrend by remember { mutableStateOf("150") }
+    
+    val tDip = trueDip.toDoubleOrNull() ?: 0.0
+    val tDipDir = trueDipDir.toDoubleOrNull() ?: 0.0
+    val sTrend = sectionTrend.toDoubleOrNull() ?: 0.0
+    
+    // Beta is angle difference between True Dip Dir and Section Line
+    val rawDiff = Math.abs(tDipDir - sTrend)
+    val beta = if (rawDiff > 180.0) 360.0 - rawDiff else rawDiff
+    
+    val betaRad = Math.toRadians(beta)
+    val tDipRad = Math.toRadians(tDip)
+    val apparentDipRad = Math.atan(Math.tan(tDipRad) * Math.cos(betaRad))
+    val apparentDipDeg = Math.toDegrees(apparentDipRad).coerceIn(0.0, 90.0)
+    
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = if (isFarsiMode) {
+                "محاسبه شیب ظاهری در مقاطع عرضی زمین‌شناسی براساس راستای مقطع و جهت شیب واقعی لایه‌ها"
+            } else {
+                "Calculate Apparent Dip on structural geological sections based on cross-section trend and true bedding dip"
+            },
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            lineHeight = 15.sp
+        )
+        
+        OutlinedTextField(
+            value = trueDip,
+            onValueChange = { trueDip = it.take(5) },
+            label = { Text(if (isFarsiMode) "زاویه شیب واقعی (True Dip °)" else "True Dip Angle (°)", fontSize = 10.sp) },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = trueDipDir,
+                onValueChange = { trueDipDir = it.take(5) },
+                label = { Text(if (isFarsiMode) "جهت شیب واقعی (True Dip Dir °)" else "True Dip Direction (°)", fontSize = 10.sp) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.weight(1f),
+                singleLine = true
+            )
+            
+            OutlinedTextField(
+                value = sectionTrend,
+                onValueChange = { sectionTrend = it.take(5) },
+                label = { Text(if (isFarsiMode) "راستای مقطع (Section Line °)" else "Section Line Azimuth (°)", fontSize = 10.sp) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.weight(1f),
+                singleLine = true
+            )
+        }
+        
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = if (isFarsiMode) "زاویه شیب ظاهری نهایی" else "Apparent Dip Result",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                
+                Text(
+                    text = String.format(Locale.US, "%.1f°", apparentDipDeg),
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                
+                Divider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.1f))
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = if (isFarsiMode) "اختلاف زاویه جهت‌ها (Beta):" else "Angle Offset (Beta):",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = String.format(Locale.US, "%.1f°", beta),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TrueThicknessCalculator(isFarsiMode: Boolean) {
+    var outcropWidth by remember { mutableStateOf("12.5") }
+    var bedDip by remember { mutableStateOf("30") }
+    var groundSlope by remember { mutableStateOf("10") }
+    var slopeDirectionSame by remember { mutableStateOf(false) } // false = Opposite direction, true = Same direction
+    
+    val width = outcropWidth.toDoubleOrNull() ?: 0.0
+    val dip = bedDip.toDoubleOrNull() ?: 0.0
+    val slope = groundSlope.toDoubleOrNull() ?: 0.0
+    
+    // Calculation:
+    // If slope is opposite to dip: Thickness t = width * sin(dip + slope)
+    // If slope is same as dip: Thickness t = width * sin(dip - slope) (or absolute value)
+    val dipRad = Math.toRadians(dip)
+    val slopeRad = Math.toRadians(slope)
+    
+    val thickness = remember(width, dip, slope, slopeDirectionSame) {
+        if (slopeDirectionSame) {
+            Math.abs(width * Math.sin(dipRad - slopeRad))
+        } else {
+            width * Math.sin(dipRad + slopeRad)
+        }
+    }
+    
+    val verticalDepth = remember(width, dip, slope, slopeDirectionSame) {
+        // Approximate vertical depth to bottom of the layer at the dip side of the outcrop
+        if (slopeDirectionSame) {
+            width * Math.sin(dipRad) / Math.cos(slopeRad)
+        } else {
+            width * Math.sin(dipRad) * Math.cos(slopeRad)
+        }
+    }
+    
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = if (isFarsiMode) {
+                "محاسبه ضخامت واقعی لایه و عمق قائم زمین‌شناختی بر اساس پهنای رخنمون صحرایی، زاویه شیب و شیب توپوگرافی زمین"
+            } else {
+                "Calculate true stratigraphic thickness and vertical depth from surface outcrop width, layer dip, and terrain slope"
+            },
+            fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            lineHeight = 15.sp
+        )
+        
+        OutlinedTextField(
+            value = outcropWidth,
+            onValueChange = { outcropWidth = it.take(6) },
+            label = { Text(if (isFarsiMode) "عرض رخنمون (Outcrop Width m)" else "Outcrop Width (meters)", fontSize = 10.sp) },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = bedDip,
+                onValueChange = { bedDip = it.take(5) },
+                label = { Text(if (isFarsiMode) "شیب لایه (Bed Dip °)" else "Bed Dip Angle (°)", fontSize = 10.sp) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.weight(1f),
+                singleLine = true
+            )
+            
+            OutlinedTextField(
+                value = groundSlope,
+                onValueChange = { groundSlope = it.take(5) },
+                label = { Text(if (isFarsiMode) "شیب زمین (Ground Slope °)" else "Ground Slope (°)", fontSize = 10.sp) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.weight(1f),
+                singleLine = true
+            )
+        }
+        
+        // Relative Direction Selector
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = if (isFarsiMode) "جهت شیب زمین نسبت به لایه:" else "Terrain Slope relative to Bed Dip:",
+                fontSize = 10.5.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(0.5f)
+            )
+            
+            FilledTonalButton(
+                onClick = { slopeDirectionSame = !slopeDirectionSame },
+                modifier = Modifier.weight(0.5f),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                Text(
+                    text = if (slopeDirectionSame) {
+                        if (isFarsiMode) "هم‌جهت" else "Same Direction"
+                    } else {
+                        if (isFarsiMode) "مخالف جهت" else "Opposite Direction"
+                    },
+                    fontSize = 11.sp
+                )
+            }
+        }
+        
+        // Display result Card
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.15f)),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = if (isFarsiMode) "ضخامت لایه‌بندی واقعی (True Stratigraphic Thickness)" else "True Stratigraphic Thickness",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.tertiary
+                )
+                
+                Text(
+                    text = String.format(Locale.US, "%.2f m", thickness),
+                    fontSize = 32.sp,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.tertiary
+                )
+                
+                Divider(color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.1f))
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = if (isFarsiMode) "تخمین عمق قائم به کف لایه:" else "Est. Vertical Depth to Bed Base:",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = String.format(Locale.US, "%.2f meters", verticalDepth),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+        }
+    }
+}
+
 
