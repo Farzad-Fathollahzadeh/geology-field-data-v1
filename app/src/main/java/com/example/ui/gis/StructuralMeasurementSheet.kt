@@ -49,17 +49,24 @@ fun StructuralMeasurementSheet(
     val cardBgColor = if (isOutdoorMode) Color.White else Color(0xFF1E2623)
     val textColor = if (isOutdoorMode) Color.Black else Color.White
 
-    // Trigger auto-sampling attitude angles based on compass orientation
+    // Real hardware sensor orientation
+    val compassSensorState by rememberCompassSensor()
+    val activeHeading = if (compassSensorState.isAvailable) compassSensorState.azimuthDegrees.toDouble() else compassHeading
+
+    // Trigger auto-sampling attitude angles based on device sensor orientation
     fun pullAttitudeValues() {
-        // Strike is current heading relative to North
-        val calculatedStrike = compassHeading.toInt() % 360
-        // Dip is standard simulated angle (bedding is often between 20-55)
-        val calculatedDip = (calculatedStrike % 45) + 15
+        val calculatedStrike = (activeHeading.toInt() % 360 + 360) % 360
+        // Dip is pitch angle from device sensor if available
+        val calculatedDip = if (compassSensorState.isAvailable) {
+            kotlin.math.abs(compassSensorState.pitchDegrees).toInt().coerceIn(0, 90)
+        } else {
+            (calculatedStrike % 45) + 15
+        }
         val calculatedDipDir = (calculatedStrike + 90) % 360
 
-        strike = String.format("%03d", calculatedStrike)
+        strike = String.format(java.util.Locale.US, "%03d", calculatedStrike)
         dip = calculatedDip.toString()
-        dipDirection = String.format("%03d", calculatedDipDir)
+        dipDirection = String.format(java.util.Locale.US, "%03d", calculatedDipDir)
     }
 
     Column(

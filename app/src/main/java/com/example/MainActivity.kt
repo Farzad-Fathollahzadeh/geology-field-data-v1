@@ -346,19 +346,12 @@ fun MainScreenContent(
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onBackground
                                 )
-                                if (activeTab == MainTab.GeologicalMapping && currentScreen is Screen.StationDetail && activeStation != null) {
+                                if (activeProject != null) {
                                     Text(
-                                        text = "${activeProject?.name ?: "Field Log Project"} • UTM: $utmBackgroundCoord",
+                                        text = activeProject?.name ?: "",
                                         fontSize = 11.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                } else {
-                                    Text(
-                                        text = "GeoField Platform v3.1.1 • UTM: $utmBackgroundCoord",
-                                        fontSize = 10.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontFamily = FontFamily.Monospace
+                                        fontWeight = FontWeight.Medium
                                     )
                                 }
                             }
@@ -447,10 +440,6 @@ fun MainScreenContent(
                             containerColor = MaterialTheme.colorScheme.background,
                             titleContentColor = MaterialTheme.colorScheme.onBackground
                         )
-                    )
-                    Divider(
-                        thickness = 1.dp,
-                        color = MaterialTheme.colorScheme.outline
                     )
                 }
             },

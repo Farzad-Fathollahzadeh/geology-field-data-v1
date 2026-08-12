@@ -24,6 +24,39 @@ data class Project(
 )
 
 @Entity(
+    tableName = "field_sites",
+    foreignKeys = [
+        ForeignKey(
+            entity = Project::class,
+            parentColumns = ["id"],
+            childColumns = ["projectId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [androidx.room.Index(value = ["projectId"]), androidx.room.Index(value = ["siteCode"])]
+)
+data class FieldSite(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val projectId: Int = 1,
+    val siteCode: String,                       // e.g. "FS-001" or "SITE-101"
+    val siteName: String = "",                  // Human-readable locality/site name
+    val latitude: Double = 0.0,                 // GPS Latitude
+    val longitude: Double = 0.0,                // GPS Longitude
+    val elevation: Double = 0.0,                // GPS Elevation in meters
+    val accuracy: Double = 0.0,                 // GPS Horizontal accuracy in meters
+    val utmEasting: Double? = null,             // UTM Easting coordinate
+    val utmNorthing: Double? = null,            // UTM Northing coordinate
+    val utmZone: String? = null,                // UTM Grid Zone designation (e.g., "39N")
+    val description: String? = null,            // Field site notes/description
+    val rockType: String? = null,               // Lithology / rock classification
+    val geologistName: String? = null,          // Name/ID of observing geologist
+    val photoPath: String? = null,              // Path to captured site image
+    val timestamp: Long = System.currentTimeMillis(), // Field observation timestamp (ms)
+    val createdAt: Long = System.currentTimeMillis(), // Database insertion timestamp (ms)
+    val updatedAt: Long = System.currentTimeMillis()  // Last modified timestamp (ms)
+)
+
+@Entity(
     tableName = "stations",
     foreignKeys = [
         ForeignKey(
@@ -65,11 +98,22 @@ data class Station(
 )
 data class Observation(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val stationId: Int,
-    val observationType: String, // Lithology, Alteration, Fault, Joint, Vein, Structure, Mineralization, Sample
+    val stationId: Int = 0,
+    val fieldSiteId: Long? = null,              // Optional link to FieldSite entity
+    val observationType: String,                // Lithology, Alteration, Fault, Joint, Vein, Structure, Mineralization, Sample
     val photoPath: String? = null,
     val notes: String? = null,
-    val createdAt: Long = System.currentTimeMillis(),
+
+    // GPS Coordinates
+    val latitude: Double = 0.0,                 // GPS Latitude
+    val longitude: Double = 0.0,                // GPS Longitude
+    val elevation: Double = 0.0,                // GPS Elevation in meters
+    val accuracy: Double = 0.0,                 // GPS Accuracy in meters
+
+    // Timestamps
+    val timestamp: Long = System.currentTimeMillis(), // Field observation timestamp (ms)
+    val createdAt: Long = System.currentTimeMillis(), // Record creation timestamp (ms)
+    val updatedAt: Long = System.currentTimeMillis(), // Record modification timestamp (ms)
 
     // Lithology-specific fields
     val lithologyType: String? = null,
@@ -126,11 +170,28 @@ data class Observation(
 )
 data class Sample(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val observationId: Int,
-    val sampleCodeId: String, // e.g. DZ-014-A
-    val sampleType: String,   // Hand specimen, Core, Soil, Stream sediment, etc.
-    val description: String?,
-    val photoPath: String?
+    val observationId: Int = 0,
+    val fieldSiteId: Long? = null,              // Optional link to FieldSite entity
+    val sampleCodeId: String,                   // e.g. DZ-014-A
+    val sampleType: String,                     // Hand specimen, Core, Soil, Stream sediment, etc.
+    val description: String? = null,
+    val photoPath: String? = null,
+
+    // GPS Coordinates
+    val latitude: Double = 0.0,                 // GPS Latitude
+    val longitude: Double = 0.0,                // GPS Longitude
+    val elevation: Double = 0.0,                // GPS Elevation in meters
+    val accuracy: Double = 0.0,                 // GPS Accuracy in meters
+
+    // Timestamps
+    val timestamp: Long = System.currentTimeMillis(), // Sample collection timestamp (ms)
+    val createdAt: Long = System.currentTimeMillis(), // Record creation timestamp (ms)
+    val updatedAt: Long = System.currentTimeMillis(), // Record modification timestamp (ms)
+
+    // Additional sample attributes
+    val weightKg: Double? = null,               // Sample weight in kilograms
+    val storageLocation: String? = null,        // Storage / core box location
+    val assayStatus: String? = "Pending"        // Assay laboratory status
 )
 
 @Entity(tableName = "tracks")
@@ -485,6 +546,25 @@ interface GeologyDao {
 
     @Query("DELETE FROM rock_mechanics_evaluations WHERE id = :id")
     suspend fun deleteRockMechanicsEvaluationById(id: Int)
+
+    // Field Sites
+    @Query("SELECT * FROM field_sites ORDER BY timestamp DESC")
+    fun getAllFieldSites(): Flow<List<FieldSite>>
+
+    @Query("SELECT * FROM field_sites WHERE projectId = :projectId ORDER BY timestamp DESC")
+    fun getFieldSitesForProject(projectId: Int): Flow<List<FieldSite>>
+
+    @Query("SELECT * FROM field_sites WHERE id = :fieldSiteId")
+    fun getFieldSiteById(fieldSiteId: Long): Flow<FieldSite?>
+
+    @Query("SELECT * FROM field_sites WHERE id = :fieldSiteId")
+    suspend fun getFieldSiteByIdOnce(fieldSiteId: Long): FieldSite?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertFieldSite(fieldSite: FieldSite): Long
+
+    @Query("DELETE FROM field_sites WHERE id = :id")
+    suspend fun deleteFieldSiteById(id: Long)
 }
 
 
@@ -500,9 +580,10 @@ interface GeologyDao {
         Borehole::class,
         BoreholeDailyReport::class,
         BoreholeCoreRun::class,
-        RockMechanicsEvaluation::class
+        RockMechanicsEvaluation::class,
+        FieldSite::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class GeologyDatabase : RoomDatabase() {

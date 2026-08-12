@@ -12,7 +12,16 @@ object UtmConverter {
         val zoneString: String get() = "$zoneNumber$zoneChar"
         
         override fun toString(): String {
-            return "${String.format("%.3f", easting)} E, ${String.format("%.3f", northing)} N, Zone $zoneNumber$zoneChar"
+            return "${String.format(Locale.US, "%.3f", easting)} E, ${String.format(Locale.US, "%.3f", northing)} N, Zone $zoneNumber$zoneChar"
+        }
+    }
+
+    data class LatLngResult(
+        val latitude: Double,
+        val longitude: Double
+    ) {
+        override fun toString(): String {
+            return String.format(Locale.US, "%.6f° N, %.6f° E", latitude, longitude)
         }
     }
 
@@ -262,6 +271,109 @@ object UtmConverter {
         }
         
         return baseEle + wave1 + wave2 + valleys + thrust1 + erosion1 + erosion2
+    }
+
+    /**
+     * Converts UTM coordinates (Easting, Northing, Zone) to WGS84 Geodetic Coordinates (Latitude, Longitude).
+     *
+     * @param easting UTM Easting coordinate in meters
+     * @param northing UTM Northing coordinate in meters
+     * @param zoneNumber UTM Zone number (1 to 60)
+     * @param zoneChar UTM Latitude Band character (e.g., 'N', 'S', 'T')
+     * @param isSouthern Explicit flag for southern hemisphere if zoneChar is absent
+     * @return LatLngResult containing decimal latitude and longitude
+     */
+    fun convertUtmToLatLng(
+        easting: Double,
+        northing: Double,
+        zoneNumber: Int,
+        zoneChar: Char? = 'N',
+        isSouthern: Boolean? = null
+    ): LatLngResult {
+        // WGS84 Ellipsoid parameters
+        val k0 = 0.9996
+        val a = 6378137.0
+        val eccSquared = 0.00669437999013
+        val eccPrimeSquared = eccSquared / (1.0 - eccSquared)
+        val e1 = (1.0 - Math.sqrt(1.0 - eccSquared)) / (1.0 + Math.sqrt(1.0 - eccSquared))
+
+        val x = easting - 500000.0 // Remove false easting
+        val southern = isSouthern ?: (zoneChar != null && zoneChar in 'C'..'M')
+        val y = if (southern) northing - 10000000.0 else northing // Remove false northing for southern hemisphere
+
+        val lonOrigin = (zoneNumber - 1) * 6 - 180 + 3
+        val lonOriginRad = Math.toRadians(lonOrigin.toDouble())
+
+        val m = y / k0
+        val mu = m / (a * (1.0 - eccSquared / 4.0 - 3.0 * eccSquared * eccSquared / 64.0 - 5.0 * Math.pow(eccSquared, 3.0) / 256.0))
+
+        val phi1Rad = mu + (3.0 * e1 / 2.0 - 27.0 * Math.pow(e1, 3.0) / 32.0) * Math.sin(2.0 * mu) +
+                (21.0 * e1 * e1 / 16.0 - 55.0 * Math.pow(e1, 4.0) / 32.0) * Math.sin(4.0 * mu) +
+                (151.0 * Math.pow(e1, 3.0) / 96.0) * Math.sin(6.0 * mu) +
+                (1097.0 * Math.pow(e1, 4.0) / 512.0) * Math.sin(8.0 * mu)
+
+        val n1 = a / Math.sqrt(1.0 - eccSquared * Math.sin(phi1Rad) * Math.sin(phi1Rad))
+        val t1 = Math.tan(phi1Rad) * Math.tan(phi1Rad)
+        val c1 = eccPrimeSquared * Math.cos(phi1Rad) * Math.cos(phi1Rad)
+        val r1 = a * (1.0 - eccSquared) / Math.pow(1.0 - eccSquared * Math.sin(phi1Rad) * Math.sin(phi1Rad), 1.5)
+        val d = x / (n1 * k0)
+
+        val latRad = phi1Rad - (n1 * Math.tan(phi1Rad) / r1) * (
+                d * d / 2.0 -
+                (5.0 + 3.0 * t1 + 10.0 * c1 - 4.0 * c1 * c1 - 9.0 * eccPrimeSquared) * Math.pow(d, 4.0) / 24.0 +
+                (61.0 + 90.0 * t1 + 298.0 * c1 + 45.0 * t1 * t1 - 252.0 * eccPrimeSquared - 3.0 * c1 * c1) * Math.pow(d, 6.0) / 720.0
+        )
+
+        val lonRad = lonOriginRad + (
+                d -
+                (1.0 + 2.0 * t1 + c1) * Math.pow(d, 3.0) / 6.0 +
+                (5.0 - 2.0 * c1 + 28.0 * t1 - 3.0 * c1 * c1 + 8.0 * eccPrimeSquared + 24.0 * t1 * t1) * Math.pow(d, 5.0) / 120.0
+        ) / Math.cos(phi1Rad)
+
+        return LatLngResult(
+            latitude = Math.toDegrees(latRad),
+            longitude = Math.toDegrees(lonRad)
+        )
+    }
+
+    /**
+     * Calculates central meridian longitude in degrees for a given UTM Zone number.
+     */
+    fun getCentralMeridian(zoneNumber: Int): Double {
+        val validZone = zoneNumber.coerceIn(1, 60)
+        return (validZone - 1) * 6.0 - 180.0 + 3.0
+    }
+
+    /**
+     * Computes the standard UTM zone number (1 to 60) for a given longitude.
+     */
+    fun getUtmZoneForLongitude(longitude: Double): Int {
+        var adjustedLon = longitude
+        while (adjustedLon < -180.0) adjustedLon += 360.0
+        while (adjustedLon >= 180.0) adjustedLon -= 360.0
+        return (((adjustedLon + 180.0) / 6.0).toInt() % 60) + 1
+    }
+
+    /**
+     * Calculates the UTM Grid Convergence angle (γ) in degrees for geological compass correction.
+     * Convergence is the angle between True North and Grid North.
+     */
+    fun calculateGridConvergence(latitude: Double, longitude: Double): Double {
+        val zone = getUtmZoneForLongitude(longitude)
+        val cm = getCentralMeridian(zone)
+        val deltaLonRad = Math.toRadians(longitude - cm)
+        val latRad = Math.toRadians(latitude)
+        val convergenceRad = Math.atan(Math.tan(deltaLonRad) * Math.sin(latRad))
+        return Math.toDegrees(convergenceRad)
+    }
+
+    /**
+     * Calculates planar Euclidean distance in meters between two UTM coordinates.
+     */
+    fun calculateUtmDistance(easting1: Double, northing1: Double, easting2: Double, northing2: Double): Double {
+        val dx = easting2 - easting1
+        val dy = northing2 - northing1
+        return Math.sqrt(dx * dx + dy * dy)
     }
 }
 

@@ -202,6 +202,7 @@ fun BoreholeLoggingContent(
                                 .fillMaxWidth()
                                 .clickable {
                                     localSelectedProjectId = project.id
+                                    viewModel.loadProject(project.id)
                                 },
                             colors = CardDefaults.cardColors(
                                 containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)
@@ -293,6 +294,7 @@ fun BoreholeLoggingContent(
                             } else {
                                 viewModel.createProjectSilently(newProjectName, newProjectDesc) { newId ->
                                     localSelectedProjectId = newId
+                                    viewModel.loadProject(newId)
                                 }
                                 showCreateProjectDialog = false
                                 newProjectName = ""

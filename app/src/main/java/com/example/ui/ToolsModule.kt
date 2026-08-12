@@ -52,6 +52,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.nativeCanvas
 import java.text.DecimalFormat
 import java.util.Locale
@@ -4243,39 +4244,205 @@ fun ApparentDipCalculator(isFarsiMode: Boolean) {
 }
 
 @Composable
+fun CrossSectionDiagramCanvas(
+    width: Double,
+    dip: Double,
+    slope: Double,
+    slopeDirectionSame: Boolean,
+    thickness: Double,
+    isFarsiMode: Boolean
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = if (isFarsiMode) "مقطع عرضی دوبعدی هندسه لایه‌بندی" else "2D Geological Cross-Section Diagram",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(170.dp)
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.1f), RoundedCornerShape(8.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                val primaryColor = MaterialTheme.colorScheme.primary
+                val tertiaryColor = MaterialTheme.colorScheme.tertiary
+                val surfaceColor = MaterialTheme.colorScheme.surface
+                val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
+                val gridColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
+
+                Canvas(modifier = Modifier.fillMaxSize().padding(12.dp)) {
+                    val w = size.width
+                    val h = size.height
+                    val cx = w / 2f
+                    val cy = h / 2f
+
+                    // 1. Draw horizontal reference baseline
+                    drawLine(
+                        color = gridColor,
+                        start = Offset(20f, cy),
+                        end = Offset(w - 20f, cy),
+                        strokeWidth = 1.5f,
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f)
+                    )
+
+                    // 2. Draw ground surface line
+                    val effSlopeDeg = if (slopeDirectionSame) -slope else slope
+                    val slopeRad = Math.toRadians(effSlopeDeg)
+                    val groundLength = w * 0.7f
+                    val gDx = (groundLength / 2f * Math.cos(slopeRad)).toFloat()
+                    val gDy = (groundLength / 2f * Math.sin(slopeRad)).toFloat()
+
+                    val groundStart = Offset(cx - gDx, cy + gDy)
+                    val groundEnd = Offset(cx + gDx, cy - gDy)
+
+                    // Draw ground fill
+                    val groundPath = Path().apply {
+                        moveTo(groundStart.x, groundStart.y)
+                        lineTo(groundEnd.x, groundEnd.y)
+                        lineTo(groundEnd.x, h)
+                        lineTo(groundStart.x, h)
+                        close()
+                    }
+                    drawPath(
+                        path = groundPath,
+                        color = tertiaryColor.copy(alpha = 0.08f)
+                    )
+
+                    // Ground line
+                    drawLine(
+                        color = Color(0xFF795548), // Brown earth tone
+                        start = groundStart,
+                        end = groundEnd,
+                        strokeWidth = 4f,
+                        cap = StrokeCap.Round
+                    )
+
+                    // 3. Draw Top and Bottom Bedding Planes
+                    val dipRad = Math.toRadians(dip)
+                    val bedLength = w * 0.5f
+                    val bDx = (bedLength / 2f * Math.cos(dipRad)).toFloat()
+                    val bDy = (bedLength / 2f * Math.sin(dipRad)).toFloat()
+
+                    // Top bedding plane (intersects ground center)
+                    val topBedStart = Offset(cx - bDx, cy - bDy)
+                    val topBedEnd = Offset(cx + bDx, cy + bDy)
+
+                    drawLine(
+                        color = primaryColor,
+                        start = topBedStart,
+                        end = topBedEnd,
+                        strokeWidth = 3.5f,
+                        cap = StrokeCap.Round
+                    )
+
+                    // Bottom bedding plane offset by thickness scale
+                    val normRad = dipRad + Math.PI / 2.0
+                    val thickPx = (h * 0.22f).coerceAtLeast(18f)
+                    val nDx = (thickPx * Math.cos(normRad)).toFloat()
+                    val nDy = (thickPx * Math.sin(normRad)).toFloat()
+
+                    val botBedStart = Offset(topBedStart.x + nDx, topBedStart.y + nDy)
+                    val botBedEnd = Offset(topBedEnd.x + nDx, topBedEnd.y + nDy)
+
+                    drawLine(
+                        color = primaryColor.copy(alpha = 0.7f),
+                        start = botBedStart,
+                        end = botBedEnd,
+                        strokeWidth = 2.5f,
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 6f), 0f),
+                        cap = StrokeCap.Round
+                    )
+
+                    // 4. Perpendicular thickness dimension arrow
+                    val dimMidTop = Offset(cx, cy)
+                    val dimMidBot = Offset(cx + nDx, cy + nDy)
+
+                    drawLine(
+                        color = Color(0xFFD32F2F), // Red highlight for thickness
+                        start = dimMidTop,
+                        end = dimMidBot,
+                        strokeWidth = 3f,
+                        cap = StrokeCap.Round
+                    )
+
+                    // Dimension end caps
+                    drawCircle(color = Color(0xFFD32F2F), radius = 4f, center = dimMidTop)
+                    drawCircle(color = Color(0xFFD32F2F), radius = 4f, center = dimMidBot)
+
+                    // Text labels
+                    val paint = android.graphics.Paint().apply {
+                        textSize = 24f
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                    }
+
+                    drawContext.canvas.nativeCanvas.drawText(
+                        if (isFarsiMode) "سطح زمین" else "Ground Surface",
+                        groundEnd.x - 60f,
+                        (groundEnd.y - 12f).coerceIn(20f, h - 20f),
+                        paint.apply { color = android.graphics.Color.GRAY }
+                    )
+
+                    drawContext.canvas.nativeCanvas.drawText(
+                        String.format(Locale.US, "t = %.2fm", thickness),
+                        dimMidBot.x + 10f,
+                        dimMidBot.y,
+                        paint.apply { color = android.graphics.Color.RED }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun TrueThicknessCalculator(isFarsiMode: Boolean) {
     var outcropWidth by remember { mutableStateOf("12.5") }
+    var traverseAngle by remember { mutableStateOf("90") } // Angle relative to strike (90 = perpendicular)
     var bedDip by remember { mutableStateOf("30") }
     var groundSlope by remember { mutableStateOf("10") }
     var slopeDirectionSame by remember { mutableStateOf(false) } // false = Opposite direction, true = Same direction
-    
-    val width = outcropWidth.toDoubleOrNull() ?: 0.0
+
+    val measuredWidth = outcropWidth.toDoubleOrNull() ?: 0.0
+    val travAngle = (traverseAngle.toDoubleOrNull() ?: 90.0).coerceIn(1.0, 90.0)
     val dip = bedDip.toDoubleOrNull() ?: 0.0
     val slope = groundSlope.toDoubleOrNull() ?: 0.0
-    
-    // Calculation:
-    // If slope is opposite to dip: Thickness t = width * sin(dip + slope)
-    // If slope is same as dip: Thickness t = width * sin(dip - slope) (or absolute value)
+
+    // Correct measured width for non-perpendicular traverse angle
+    val trueOutcropWidth = measuredWidth * Math.sin(Math.toRadians(travAngle))
+
     val dipRad = Math.toRadians(dip)
     val slopeRad = Math.toRadians(slope)
-    
-    val thickness = remember(width, dip, slope, slopeDirectionSame) {
+
+    val thickness = remember(trueOutcropWidth, dip, slope, slopeDirectionSame) {
         if (slopeDirectionSame) {
-            Math.abs(width * Math.sin(dipRad - slopeRad))
+            Math.abs(trueOutcropWidth * Math.sin(dipRad - slopeRad))
         } else {
-            width * Math.sin(dipRad + slopeRad)
+            trueOutcropWidth * Math.sin(dipRad + slopeRad)
         }
     }
-    
-    val verticalDepth = remember(width, dip, slope, slopeDirectionSame) {
-        // Approximate vertical depth to bottom of the layer at the dip side of the outcrop
+
+    val verticalDepth = remember(trueOutcropWidth, dip, slope, slopeDirectionSame) {
         if (slopeDirectionSame) {
-            width * Math.sin(dipRad) / Math.cos(slopeRad)
+            trueOutcropWidth * Math.sin(dipRad) / Math.cos(slopeRad)
         } else {
-            width * Math.sin(dipRad) * Math.cos(slopeRad)
+            trueOutcropWidth * Math.sin(dipRad) * Math.cos(slopeRad)
         }
     }
-    
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -4284,24 +4451,38 @@ fun TrueThicknessCalculator(isFarsiMode: Boolean) {
     ) {
         Text(
             text = if (isFarsiMode) {
-                "محاسبه ضخامت واقعی لایه و عمق قائم زمین‌شناختی بر اساس پهنای رخنمون صحرایی، زاویه شیب و شیب توپوگرافی زمین"
+                "محاسبه ضخامت واقعی لایه‌بندی و عمق قائم با اعمال زاویه پیمایش صحرایی، شیب لایه و توپوگرافی زمین"
             } else {
-                "Calculate true stratigraphic thickness and vertical depth from surface outcrop width, layer dip, and terrain slope"
+                "Calculate true stratigraphic thickness and vertical depth applying traverse angle, bed dip, and topography"
             },
             fontSize = 11.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             lineHeight = 15.sp
         )
-        
-        OutlinedTextField(
-            value = outcropWidth,
-            onValueChange = { outcropWidth = it.take(6) },
-            label = { Text(if (isFarsiMode) "عرض رخنمون (Outcrop Width m)" else "Outcrop Width (meters)", fontSize = 10.sp) },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
-        
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = outcropWidth,
+                onValueChange = { outcropWidth = it.take(6) },
+                label = { Text(if (isFarsiMode) "عرض اندازه‌گیری (m)" else "Measured Width (m)", fontSize = 10.sp) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.weight(1f),
+                singleLine = true
+            )
+
+            OutlinedTextField(
+                value = traverseAngle,
+                onValueChange = { traverseAngle = it.take(5) },
+                label = { Text(if (isFarsiMode) "زاویه پیمایش به امتداد (°)" else "Traverse to Strike (°)", fontSize = 10.sp) },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.weight(1f),
+                singleLine = true
+            )
+        }
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -4314,7 +4495,7 @@ fun TrueThicknessCalculator(isFarsiMode: Boolean) {
                 modifier = Modifier.weight(1f),
                 singleLine = true
             )
-            
+
             OutlinedTextField(
                 value = groundSlope,
                 onValueChange = { groundSlope = it.take(5) },
@@ -4324,7 +4505,7 @@ fun TrueThicknessCalculator(isFarsiMode: Boolean) {
                 singleLine = true
             )
         }
-        
+
         // Relative Direction Selector
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -4337,7 +4518,7 @@ fun TrueThicknessCalculator(isFarsiMode: Boolean) {
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(0.5f)
             )
-            
+
             FilledTonalButton(
                 onClick = { slopeDirectionSame = !slopeDirectionSame },
                 modifier = Modifier.weight(0.5f),
@@ -4353,7 +4534,7 @@ fun TrueThicknessCalculator(isFarsiMode: Boolean) {
                 )
             }
         }
-        
+
         // Display result Card
         Card(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.15f)),
@@ -4371,34 +4552,61 @@ fun TrueThicknessCalculator(isFarsiMode: Boolean) {
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.tertiary
                 )
-                
+
                 Text(
                     text = String.format(Locale.US, "%.2f m", thickness),
                     fontSize = 32.sp,
                     fontWeight = FontWeight.Black,
                     color = MaterialTheme.colorScheme.tertiary
                 )
-                
+
                 Divider(color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.1f))
-                
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = if (isFarsiMode) "عرض واقعی عمود بر امتداد:" else "True Perpendicular Outcrop Width:",
+                        fontSize = 10.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        text = String.format(Locale.US, "%.2f m", trueOutcropWidth),
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
                         text = if (isFarsiMode) "تخمین عمق قائم به کف لایه:" else "Est. Vertical Depth to Bed Base:",
-                        fontSize = 11.sp,
+                        fontSize = 10.5.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = String.format(Locale.US, "%.2f meters", verticalDepth),
-                        fontSize = 11.sp,
+                        text = String.format(Locale.US, "%.2f m", verticalDepth),
+                        fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
         }
+
+        // 2D Cross-Section Diagram
+        CrossSectionDiagramCanvas(
+            width = trueOutcropWidth,
+            dip = dip,
+            slope = slope,
+            slopeDirectionSame = slopeDirectionSame,
+            thickness = thickness,
+            isFarsiMode = isFarsiMode
+        )
     }
 }
 

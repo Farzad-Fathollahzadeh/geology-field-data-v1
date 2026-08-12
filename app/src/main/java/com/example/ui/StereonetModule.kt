@@ -191,6 +191,7 @@ fun StereonetScreen(
                                 .fillMaxWidth()
                                 .clickable {
                                     localSelectedProjectId = project.id
+                                    viewModel.loadProject(project.id)
                                 },
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
                             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f)),

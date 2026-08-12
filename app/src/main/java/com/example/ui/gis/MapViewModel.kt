@@ -512,6 +512,159 @@ class MapViewModel(application: android.app.Application) : AndroidViewModel(appl
         _downloadStatusText.value = ""
     }
 
+    suspend fun downloadTilesForSurveyLocations(
+        context: android.content.Context,
+        stations: List<com.example.Station>,
+        providers: List<String> = listOf("OSM", "OTM", "Satellite"),
+        bufferRadiusKm: Double = 1.5,
+        maxZoom: Int = 16,
+        customName: String = ""
+    ) {
+        if (_isDownloading.value) return
+        if (stations.isEmpty()) {
+            _downloadStatusText.value = "هیچ نقطه یا ایستگاهی برای ذخیره آفلاین پیدا نشد!"
+            return
+        }
+
+        _isDownloading.value = true
+        _downloadProgress.value = 0f
+        _downloadStatusText.value = "بررسی و استخراج مختصات ${stations.size} ایستگاه برداشت..."
+        kotlinx.coroutines.delay(200)
+
+        val urlsToDownload = mutableSetOf<String>()
+        val zooms = if (maxZoom >= 16) listOf(12, 13, 14, 15, 16) else listOf(12, 13, 14, 15)
+
+        var minLatVal = 90.0
+        var maxLatVal = -90.0
+        var minLonVal = 180.0
+        var maxLonVal = -180.0
+
+        for (st in stations) {
+            val lat = st.latitude
+            val lon = st.longitude
+
+            if (lat < minLatVal) minLatVal = lat
+            if (lat > maxLatVal) maxLatVal = lat
+            if (lon < minLonVal) minLonVal = lon
+            if (lon > maxLonVal) maxLonVal = lon
+
+            val latOffset = bufferRadiusKm / 111.0
+            val lonOffset = bufferRadiusKm / (111.0 * cos(Math.toRadians(lat.coerceIn(-85.0, 85.0))))
+
+            val sMinLat = lat - latOffset
+            val sMaxLat = lat + latOffset
+            val sMinLon = lon - lonOffset
+            val sMaxLon = lon + lonOffset
+
+            for (z in zooms) {
+                val startX = getTileX(sMinLon, z)
+                val endX = getTileX(sMaxLon, z)
+                val startY = getTileY(sMaxLat, z)
+                val endY = getTileY(sMinLat, z)
+
+                val minX = startX.coerceAtMost(endX)
+                val maxX = startX.coerceAtLeast(endX)
+                val minY = startY.coerceAtMost(endY)
+                val maxY = startY.coerceAtLeast(endY)
+
+                val xRange = (minX..maxX).take(8)
+                val yRange = (minY..maxY).take(8)
+
+                for (x in xRange) {
+                    for (y in yRange) {
+                        if (providers.contains("OSM")) {
+                            urlsToDownload.add("https://a.tile.openstreetmap.org/$z/$x/$y.png")
+                            urlsToDownload.add("https://b.tile.openstreetmap.org/$z/$x/$y.png")
+                        }
+                        if (providers.contains("OTM")) {
+                            urlsToDownload.add("https://a.tile.opentopomap.org/$z/$x/$y.png")
+                        }
+                        if (providers.contains("Satellite")) {
+                            urlsToDownload.add("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/$z/$y/$x")
+                            urlsToDownload.add("https://mt1.google.com/vt/lyrs=s&x=$x&y=$y&z=$z")
+                        }
+                    }
+                }
+            }
+        }
+
+        val totalTiles = urlsToDownload.size.coerceAtMost(800)
+        val actualList = urlsToDownload.toList().shuffled().take(totalTiles)
+        var downloaded = 0
+        val helper = com.example.TileCacheDatabaseHelper.getInstance(context)
+
+        _downloadStatusText.value = "ذخیره‌سازی ${totalTiles} کاشی نقشه برای ${stations.size} ایستگاه برداشت..."
+        _downloadProgress.value = 0.1f
+        kotlinx.coroutines.delay(200)
+
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            for (tileUrl in actualList) {
+                try {
+                    if (helper.getTile(tileUrl) == null) {
+                        val connection = java.net.URL(tileUrl).openConnection() as java.net.HttpURLConnection
+                        connection.connectTimeout = 3000
+                        connection.readTimeout = 3000
+                        connection.useCaches = false
+                        connection.connect()
+
+                        if (connection.responseCode == 200) {
+                            val contentType = connection.contentType ?: "image/png"
+                            val bytes = connection.inputStream.use { it.readBytes() }
+                            helper.putTile(tileUrl, bytes, contentType)
+                        }
+                    }
+                } catch (e: Exception) {
+                    // Ignore drops
+                }
+                downloaded++
+
+                if (downloaded % 5 == 0 || downloaded == totalTiles) {
+                    val progress = 0.1f + 0.85f * (downloaded.toFloat() / totalTiles)
+                    _downloadProgress.value = progress
+                    _downloadStatusText.value = "ذخیره‌سازی کاشی $downloaded / $totalTiles ایستگاه‌ها..."
+                }
+            }
+        }
+
+        val newRegionId = "survey_reg_${System.currentTimeMillis()}"
+        val finalName = if (customName.isNotBlank()) customName else "بسته آفلاین ایستگاه‌های برداشت (${stations.size} نقطه)"
+
+        val estimatedSize = (totalTiles * 0.025).roundTo(1).coerceAtLeast(1.2)
+
+        val freshRegion = OfflineRegion(
+            id = newRegionId,
+            name = finalName,
+            minLat = minLatVal.roundTo(4),
+            minLon = minLonVal.roundTo(4),
+            maxLat = maxLatVal.roundTo(4),
+            maxLon = maxLonVal.roundTo(4),
+            sizeMb = estimatedSize,
+            zoomRange = "Z12 - Z$maxZoom",
+            dateDownloaded = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+        )
+
+        _downloadedRegionsList.value = _downloadedRegionsList.value + freshRegion
+        _isDownloading.value = false
+        _downloadProgress.value = 0f
+        _downloadStatusText.value = ""
+    }
+
+    suspend fun downloadTilesForSingleStation(
+        context: android.content.Context,
+        station: com.example.Station,
+        radiusKm: Double = 2.0,
+        maxZoom: Int = 16
+    ) {
+        downloadTilesForSurveyLocations(
+            context = context,
+            stations = listOf(station),
+            providers = listOf("OSM", "OTM", "Satellite"),
+            bufferRadiusKm = radiusKm,
+            maxZoom = maxZoom,
+            customName = "نقشه آفلاین ایستگاه ${station.stationCode}"
+        )
+    }
+
     fun deleteDownloadedRegion(id: String) {
         _downloadedRegionsList.value = _downloadedRegionsList.value.filter { it.id != id }
     }

@@ -196,13 +196,16 @@ fun MapScreen(
         if (activeProjectStations.isNotEmpty()) activeProjectStations.map { it.longitude }.average() else 51.42151
     }
 
+    var showDigitalCompassModal by remember { mutableStateOf(false) }
+    val liveCompassData by rememberCompassSensor()
+
     var simulatorLat by remember(defaultInitialLat) { mutableStateOf(defaultInitialLat) }
     var simulatorLon by remember(defaultInitialLon) { mutableStateOf(defaultInitialLon) }
     var simulatorHeading by remember { mutableStateOf(45.0) }
 
     val currentLat = if (isRealPositionEnabled && liveLocation != null) liveLocation!!.latitude else simulatorLat
     val currentLon = if (isRealPositionEnabled && liveLocation != null) liveLocation!!.longitude else simulatorLon
-    val currentHeading = if (isRealPositionEnabled && liveLocation != null) liveLocation!!.bearing.toDouble() else simulatorHeading
+    val currentHeading = if (liveCompassData.isAvailable) liveCompassData.azimuthDegrees.toDouble() else if (isRealPositionEnabled && liveLocation != null) liveLocation!!.bearing.toDouble() else simulatorHeading
     val currentEle = if (isRealPositionEnabled && liveLocation != null) liveLocation!!.altitude else 1420.0
     val currentAccuracy = if (isRealPositionEnabled && liveLocation != null) liveLocation!!.accuracy.toDouble() else 1.8
 
@@ -753,6 +756,17 @@ fun MapScreen(
                     .fillMaxSize()
                     .padding(bottom = 80.dp, start = 12.dp, end = 12.dp)
             ) {
+                // Interactive Digital Compass Widget floating on top-right of map screen
+                CompassWidget(
+                    heading = currentHeading,
+                    isOutdoorMode = isOutdoorMode,
+                    useDeviceSensor = true,
+                    onClick = { showDigitalCompassModal = true },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 70.dp, end = 4.dp)
+                )
+
                 // Sliced center overlay: Manual Walk D-Pad controller (Saves steps instantly)
                 // Displays cleanly and ONLY when showMoveSimulator is true - freeing map view space!
                 if (showMoveSimulator) {
@@ -1938,6 +1952,19 @@ fun MapScreen(
                                         downloadStatusText = downloadStatusText,
                                         currentLat = currentLat,
                                         currentLon = currentLon,
+                                        surveyStationsList = stationsToShow,
+                                        onDownloadSurveyLocationsTiles = { stations, radius, providers, customName ->
+                                            scope.launch {
+                                                gisViewModel.downloadTilesForSurveyLocations(
+                                                    context = context,
+                                                    stations = stations,
+                                                    providers = providers,
+                                                    bufferRadiusKm = radius,
+                                                    maxZoom = 16,
+                                                    customName = customName
+                                                )
+                                            }
+                                        },
                                         savedTracks = savedTracks,
                                         onDeleteTrack = { trackId ->
                                             geologyViewModel.deleteTrack(trackId)
@@ -2087,6 +2114,28 @@ fun MapScreen(
                                                                 imageVector = Icons.Default.Delete,
                                                                 contentDescription = "Delete point",
                                                                 tint = Color.Red.copy(alpha = 0.8f),
+                                                                modifier = Modifier.size(16.dp)
+                                                            )
+                                                        }
+
+                                                        IconButton(
+                                                            onClick = {
+                                                                scope.launch {
+                                                                    Toast.makeText(context, "شروع ذخیره نقشه آفلاین ایستگاه ${station.stationCode}...", Toast.LENGTH_SHORT).show()
+                                                                    gisViewModel.downloadTilesForSingleStation(
+                                                                        context = context,
+                                                                        station = station,
+                                                                        radiusKm = 2.0,
+                                                                        maxZoom = 16
+                                                                    )
+                                                                }
+                                                            },
+                                                            modifier = Modifier.size(28.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.DownloadForOffline,
+                                                                contentDescription = "Cache offline tiles for station",
+                                                                tint = accentColor,
                                                                 modifier = Modifier.size(16.dp)
                                                             )
                                                         }
@@ -2794,6 +2843,22 @@ fun MapScreen(
                     }
                 }
             )
+        }
+
+        // Full Field Digital Compass Overlay Modal
+        if (showDigitalCompassModal) {
+            androidx.compose.ui.window.Dialog(
+                onDismissRequest = { showDigitalCompassModal = false }
+            ) {
+                FieldDigitalCompassCard(
+                    latitude = currentLat,
+                    longitude = currentLon,
+                    elevation = currentEle,
+                    accuracy = currentAccuracy,
+                    onDismiss = { showDigitalCompassModal = false },
+                    isOutdoorMode = isOutdoorMode
+                )
+            }
         }
     }
 }

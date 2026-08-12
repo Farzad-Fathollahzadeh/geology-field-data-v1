@@ -183,6 +183,7 @@ fun RockMechanicsContent(
                                 .fillMaxWidth()
                                 .clickable {
                                     localSelectedProjectId = project.id
+                                    viewModel.loadProject(project.id)
                                 },
                             colors = CardDefaults.cardColors(
                                 containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
@@ -289,6 +290,7 @@ fun RockMechanicsContent(
                             if (projName.isNotBlank()) {
                                 viewModel.createProjectSilently(projName, projDesc) { newId ->
                                     localSelectedProjectId = newId
+                                    viewModel.loadProject(newId)
                                 }
                                 showCreateProjDialog = false
                                 projName = ""

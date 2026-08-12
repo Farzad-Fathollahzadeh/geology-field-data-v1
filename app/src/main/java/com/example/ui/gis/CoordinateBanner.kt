@@ -5,6 +5,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,7 +36,7 @@ fun CoordinateBanner(
     var selectedFormatIndex by remember { mutableStateOf(0) } // 0: WGS84, 1: UTM, 2: MGRS
     
     val accentColor = if (isOutdoorMode) Color(0xFF007A78) else Color(0xFF00FFE0)
-    val panelBg = if (isOutdoorMode) Color.White.copy(alpha = 0.95f) else Color(0xDD000000)
+    val panelBg = if (isOutdoorMode) Color.White.copy(alpha = 0.92f) else Color(0xEE0A100E)
     val textColor = if (isOutdoorMode) Color.Black else Color.White
     val textMuted = if (isOutdoorMode) Color.DarkGray else Color.LightGray
 
@@ -46,8 +49,7 @@ fun CoordinateBanner(
         }
     }
 
-    // Dynamic convert to MGRS (simulated mathematically for robust GIS standard presentation)
-    // Dynamic convert to MGRS (standard military-grade grid calculations with 1-meter precision)
+    // Dynamic convert to MGRS
     val mgrsString = remember(latitude, longitude, utmCoord) {
         if (utmCoord == null) {
             "GZD Converting..."
@@ -55,13 +57,11 @@ fun CoordinateBanner(
             val z = utmCoord.zoneNumber
             val band = utmCoord.zoneChar
             
-            // 100km column letters (excluding I and O)
             val colLetters = "ABCDEFGHJKLMNPQRSTUVXYZ"
             val colIndex = (utmCoord.easting / 100000).toInt()
             val colOffset = ((z - 1) % 3) * 8
             val colLetter = colLetters[(colIndex - 1 + colOffset) % colLetters.length]
             
-            // 100km row letters (excluding I and O)
             val rowLetters = "ABCDEFGHJKLMNPQRSTUV"
             val rowIndex = (utmCoord.northing / 100000).toInt() % 20
             val rowOffset = if (z % 2 != 0) 0 else 5
@@ -78,60 +78,62 @@ fun CoordinateBanner(
     }
 
     val readoutText = when (selectedFormatIndex) {
-        0 -> "WGS84: ${String.format(Locale.US, "%.8f", latitude)}° Lat, ${String.format(Locale.US, "%.8f", longitude)}° Lon"
+        0 -> "${String.format(Locale.US, "%.6f", latitude)}°, ${String.format(Locale.US, "%.6f", longitude)}°"
         1 -> {
             if (utmCoord != null) {
-                "UTM: ${utmCoord.zoneString} ${String.format(Locale.US, "%.2f", utmCoord.easting)}m E, ${String.format(Locale.US, "%.2f", utmCoord.northing)}m N"
+                "${utmCoord.zoneString}  ${String.format(Locale.US, "%.1f", utmCoord.easting)}m E  ${String.format(Locale.US, "%.1f", utmCoord.northing)}m N"
             } else {
-                "UTM: Converting..."
+                "UTM Calculating..."
             }
         }
-        else -> "MGRS: $mgrsString"
+        else -> mgrsString
     }
 
-    Box(
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = panelBg,
+        border = androidx.compose.foundation.BorderStroke(0.5.dp, accentColor.copy(alpha = 0.35f)),
+        shadowElevation = 6.dp,
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(panelBg)
-            .border(1.dp, accentColor.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(16.dp))
             .clickable {
-                // Cycle format index
                 selectedFormatIndex = (selectedFormatIndex + 1) % 3
             }
-            .padding(10.dp)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = when (selectedFormatIndex) {
-                            0 -> "WGS84 COORDINATES"
-                            1 -> "UTM GRID METRIC"
-                            else -> "MGRS STANDARD MIL-GRID"
+                            0 -> "WGS84"
+                            1 -> "UTM GRID"
+                            else -> "MGRS"
                         },
-                        fontSize = 9.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = accentColor,
                         fontFamily = FontFamily.Monospace,
-                        letterSpacing = 1.sp
+                        letterSpacing = 0.5.sp
                     )
-                    Text(
-                        text = "(TAP TO CYCLE)",
-                        fontSize = 8.sp,
-                        color = textMuted.copy(alpha = 0.7f),
-                        fontFamily = FontFamily.Monospace
+                    Icon(
+                        imageVector = Icons.Default.Sync,
+                        contentDescription = "Cycle Format",
+                        tint = textMuted.copy(alpha = 0.6f),
+                        modifier = Modifier.size(11.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(3.dp))
+                Spacer(modifier = Modifier.height(2.dp))
 
                 Text(
                     text = readoutText,
@@ -141,40 +143,45 @@ fun CoordinateBanner(
                     color = textColor
                 )
 
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.height(3.dp))
 
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "ELE: ${String.format(Locale.US, "%.1f", elevation)} m",
-                        fontSize = 11.sp,
-                        color = textColor.copy(alpha = 0.8f),
-                        fontFamily = FontFamily.Monospace
+                        text = "ارتفاع: ${elevation.toInt()}m",
+                        fontSize = 10.sp,
+                        color = textColor.copy(alpha = 0.75f)
                     )
                     Text(
-                        text = "ACCURACY: ±${String.format(Locale.US, "%.1f", accuracy)} m",
-                        fontSize = 11.sp,
-                        color = textColor.copy(alpha = 0.8f),
-                        fontFamily = FontFamily.Monospace
+                        text = "دقت: ±${String.format(Locale.US, "%.1f", accuracy)}m",
+                        fontSize = 10.sp,
+                        color = if (accuracy < 3.0) Color(0xFF4CAF50) else Color(0xFFFF9800)
                     )
+                    val sensorData by rememberCompassSensor()
+                    if (sensorData.isAvailable) {
+                        Text(
+                            text = "جهت: ${sensorData.azimuthDegrees.toInt()}°",
+                            fontSize = 10.sp,
+                            color = accentColor,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
             }
 
-            TextButton(
+            IconButton(
                 onClick = {
                     clipboardManager.setText(AnnotatedString(readoutText))
                 },
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                modifier = Modifier.height(30.dp)
+                modifier = Modifier.size(36.dp)
             ) {
-                Text(
-                    text = "COPY",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = accentColor,
-                    fontFamily = FontFamily.Monospace
+                Icon(
+                    imageVector = Icons.Default.ContentCopy,
+                    contentDescription = "Copy Coordinates",
+                    tint = accentColor,
+                    modifier = Modifier.size(18.dp)
                 )
             }
         }

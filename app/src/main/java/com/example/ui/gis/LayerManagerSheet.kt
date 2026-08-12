@@ -58,6 +58,10 @@ fun LayerManagerSheet(
     currentLat: Double,
     currentLon: Double,
 
+    // Survey locations tile caching parameters
+    surveyStationsList: List<com.example.Station> = emptyList(),
+    onDownloadSurveyLocationsTiles: (List<com.example.Station>, Double, List<String>, String) -> Unit = { _, _, _, _ -> },
+
     // Tracks library parameters
     savedTracks: List<com.example.Track> = emptyList(),
     onDeleteTrack: (Int) -> Unit = {},
@@ -565,6 +569,131 @@ fun LayerManagerSheet(
                             textColor = textColor,
                             accentColor = accentColor
                         )
+                    }
+                }
+
+                // GEOLOGICAL SURVEY LOCATIONS TILE CACHER CARD
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = cardColor),
+                    border = BorderStroke(1.dp, accentColor.copy(alpha = 0.4f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(imageVector = Icons.Default.CloudDownload, contentDescription = null, tint = accentColor, modifier = Modifier.size(18.dp))
+                                Text(
+                                    text = "SURVEY LOCATIONS OFFLINE CACHE",
+                                    fontSize = 11.sp,
+                                    color = accentColor,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(accentColor.copy(alpha = 0.2f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "${surveyStationsList.size} STATIONS ON RECORD",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = accentColor,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = "ذخیره‌سازی و کش خودکار کاشی‌های نقشه توپوگرافی و ماهواره‌ای برای محدوده کل ایستگاه‌های زمین‌شناسی ثبت‌شده جهت کار در مناطق بدون پوشش شبکه.",
+                            fontSize = 11.sp,
+                            color = textColor.copy(alpha = 0.7f),
+                            lineHeight = 15.sp
+                        )
+
+                        var surveyRadiusKm by remember { mutableStateOf(2.0) }
+                        var surveyCacheName by remember { mutableStateOf("") }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("شعاع پوشش هر ایستگاه / Radius:", fontSize = 10.5.sp, color = textColor.copy(alpha = 0.8f))
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                listOf(1.0, 2.0, 5.0).forEach { r ->
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(if (surveyRadiusKm == r) accentColor else textColor.copy(alpha = 0.1f))
+                                            .clickable { surveyRadiusKm = r }
+                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = "${r.toInt()} km",
+                                            fontSize = 9.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (surveyRadiusKm == r) Color.Black else textColor
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        OutlinedTextField(
+                            value = surveyCacheName,
+                            onValueChange = { surveyCacheName = it },
+                            placeholder = { Text("مثلاً: ایستگاه‌های زون A", fontSize = 11.sp) },
+                            label = { Text("نام بسته نقشه ایستگاه‌ها", fontSize = 11.sp) },
+                            singleLine = true,
+                            enabled = !isDownloading,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = accentColor,
+                                unfocusedBorderColor = textColor.copy(alpha = 0.2f),
+                                focusedLabelColor = accentColor,
+                                focusedTextColor = textColor,
+                                unfocusedTextColor = textColor
+                            ),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Button(
+                            onClick = {
+                                onDownloadSurveyLocationsTiles(
+                                    surveyStationsList,
+                                    surveyRadiusKm,
+                                    listOf("OSM", "OTM", "Satellite"),
+                                    surveyCacheName
+                                )
+                                surveyCacheName = ""
+                            },
+                            enabled = !isDownloading && surveyStationsList.isNotEmpty(),
+                            colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.Black),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(imageVector = Icons.Default.Map, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                                Text(
+                                    text = if (surveyStationsList.isEmpty()) "ایستگاهی برای دانلود یافت نشد" else "ذخیره آفلاین کاشی‌های نقشه تمام ایستگاه‌ها (${surveyStationsList.size} نقطه)",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     }
                 }
 
