@@ -194,10 +194,21 @@ data class Sample(
     val assayStatus: String? = "Pending"        // Assay laboratory status
 )
 
-@Entity(tableName = "tracks")
+@Entity(
+    tableName = "tracks",
+    foreignKeys = [
+        ForeignKey(
+            entity = Project::class,
+            parentColumns = ["id"],
+            childColumns = ["projectId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [androidx.room.Index(value = ["projectId"])]
+)
 data class Track(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val projectId: Int = 0,
+    val projectId: Int = 1,
     val name: String,
     val pointsJson: String, // format: "[[lat,lon,ele,time,accuracy,heading],...]"
     val lengthMeters: Double = 0.0,
@@ -583,7 +594,7 @@ interface GeologyDao {
         RockMechanicsEvaluation::class,
         FieldSite::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 abstract class GeologyDatabase : RoomDatabase() {

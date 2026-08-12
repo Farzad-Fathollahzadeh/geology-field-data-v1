@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "GeoFieldPro"
+rootProject.name = "GeoField Pro"
 include(":app")

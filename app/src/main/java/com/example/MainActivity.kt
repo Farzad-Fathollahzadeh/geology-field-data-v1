@@ -1642,32 +1642,19 @@ fun GeoFieldSplashScreen() {
             Box(
                 modifier = Modifier
                     .size(110.dp)
-                    .clip(RoundedCornerShape(30.dp))
-                    .background(MaterialTheme.colorScheme.surface)
-                    .border(1.5.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(30.dp)),
+                    .clip(RoundedCornerShape(28.dp))
+                    .background(Color.White)
+                    .border(1.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(28.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                // Nested decorative geometric/instrument design
-                Box(
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(id = R.drawable.app_logo),
+                    contentDescription = "GeoField Pro Logo",
                     modifier = Modifier
-                        .size(76.dp)
-                        .clip(RoundedCornerShape(38.dp))
-                        .border(1.5.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(38.dp)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "▲",
-                        fontSize = 24.sp,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.offset(y = (-4).dp)
-                    )
-                    Text(
-                        text = "▼",
-                        fontSize = 18.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.offset(y = 12.dp)
-                    )
-                }
+                        .size(92.dp)
+                        .clip(RoundedCornerShape(20.dp)),
+                    contentScale = ContentScale.Fit
+                )
             }
             Spacer(modifier = Modifier.height(24.dp))
             Text(
@@ -7082,15 +7069,17 @@ fun HomeDashboardContent(
                     modifier = Modifier
                         .size(64.dp)
                         .clip(RoundedCornerShape(14.dp))
-                        .background(MaterialTheme.colorScheme.primaryContainer)
-                        .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f), RoundedCornerShape(14.dp)),
+                        .background(Color.White)
+                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f), RoundedCornerShape(14.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Terrain,
+                    androidx.compose.foundation.Image(
+                        painter = androidx.compose.ui.res.painterResource(id = R.drawable.app_logo),
                         contentDescription = "GeoField Pro Logo",
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(36.dp)
+                        modifier = Modifier
+                            .size(54.dp)
+                            .clip(RoundedCornerShape(10.dp)),
+                        contentScale = ContentScale.Fit
                     )
                 }
 

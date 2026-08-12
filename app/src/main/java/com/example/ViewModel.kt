@@ -60,22 +60,23 @@ data class ImportedFeature(
 // --- CORRESPONDING GEOLOGY VIEWMODEL ---
 class GeologyViewModel(
     val application: Application,
-    val dao: GeologyDao
+    val dao: GeologyDao,
+    val repository: GeologyRepository = (application as GeologyApplication).repository
 ) : ViewModel() {
 
     private val prefs = application.getSharedPreferences("geofieldpro_prefs", Context.MODE_PRIVATE)
 
-    // Basic flows backed by Room & StateFlow
+    // Basic flows backed by Room Repository & StateFlow
     val currentScreen = MutableStateFlow<Screen>(Screen.ProjectList)
-    val projects: StateFlow<List<Project>> = dao.getAllProjects()
+    val projects: StateFlow<List<Project>> = repository.projects
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val allStations: StateFlow<List<Station>> = dao.getAllStations()
+    val allStations: StateFlow<List<Station>> = repository.allStations
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val allObservations: StateFlow<List<Observation>> = dao.getAllObservations()
+    val allObservations: StateFlow<List<Observation>> = repository.allObservations
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val tracks: StateFlow<List<Track>> = dao.getAllTracks()
+    val tracks: StateFlow<List<Track>> = repository.tracks
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val allSamples: StateFlow<List<Sample>> = dao.getAllSamples()
+    val allSamples: StateFlow<List<Sample>> = repository.allSamples
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Active Selection State Flows
@@ -1393,12 +1394,13 @@ class GeologyViewModel(
 // --- VIEWMODEL FACTORY PROVIDER ---
 class GeologyViewModelFactory(
     private val application: Application,
-    private val dao: GeologyDao
+    private val dao: GeologyDao,
+    private val repository: GeologyRepository = (application as GeologyApplication).repository
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(GeologyViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return GeologyViewModel(application, dao) as T
+            return GeologyViewModel(application, dao, repository) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class Exception")
     }
