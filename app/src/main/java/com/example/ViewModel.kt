@@ -1318,7 +1318,52 @@ class GeologyViewModel(
     }
 
     fun exportProjectZip(context: Context, projectId: Int) {
-        exportCsv(context, projectId)
+        exportGeoJson(context, projectId)
+    }
+
+    fun exportGeoJson(context: Context, projectId: Int) {
+        viewModelScope.launch {
+            val project = dao.getProjectById(projectId).firstOrNull()
+            val stations = dao.getStationsForProjectSync(projectId)
+            val observations = dao.getObservationsForProjectSync(projectId)
+            
+            val geoJson = StringBuilder()
+            geoJson.append("{\n")
+            geoJson.append("  \"type\": \"FeatureCollection\",\n")
+            geoJson.append("  \"name\": \"${project?.name ?: "Geological_Project"}\",\n")
+            geoJson.append("  \"crs\": { \"type\": \"name\", \"properties\": { \"name\": \"urn:ogc:def:crs:OGC:1.3:CRS84\" } },\n")
+            geoJson.append("  \"features\": [\n")
+            
+            val features = mutableListOf<String>()
+            stations.forEach { s ->
+                val obs = observations.filter { it.stationId == s.id }
+                val lithology = obs.firstOrNull { !it.lithologyType.isNullOrEmpty() }?.lithologyType ?: "Unspecified"
+                val strike = obs.firstOrNull { it.strike != null }?.strike
+                val dip = obs.firstOrNull { it.dip != null }?.dip
+                val dipDir = obs.firstOrNull { it.dipDirection != null }?.dipDirection
+                
+                val props = StringBuilder()
+                props.append("      \"properties\": {\n")
+                props.append("        \"STATION_CODE\": \"${s.stationCode}\",\n")
+                props.append("        \"PREFIX\": \"${s.prefix ?: ""}\",\n")
+                props.append("        \"ELEVATION\": ${s.elevation},\n")
+                props.append("        \"UTM_EASTING\": ${s.utmEasting ?: 0.0},\n")
+                props.append("        \"UTM_NORTHING\": ${s.utmNorthing ?: 0.0},\n")
+                props.append("        \"UTM_ZONE\": \"${s.utmZone ?: ""}\",\n")
+                props.append("        \"LITHOLOGY\": \"$lithology\",\n")
+                props.append("        \"STRIKE\": ${strike ?: "null"},\n")
+                props.append("        \"DIP\": ${dip ?: "null"},\n")
+                props.append("        \"DIP_DIRECTION\": ${dipDir ?: "null"}\n")
+                props.append("      }")
+                
+                val feat = "    {\n      \"type\": \"Feature\",\n      \"geometry\": {\n        \"type\": \"Point\",\n        \"coordinates\": [${s.longitude}, ${s.latitude}, ${s.elevation}]\n      },\n$props\n    }"
+                features.add(feat)
+            }
+            geoJson.append(features.joinToString(",\n"))
+            geoJson.append("\n  ]\n}")
+            
+            shareTextFile(context, "project_${projectId}_gis.geojson", geoJson.toString())
+        }
     }
 
     fun exportKml(context: Context, projectId: Int) {
@@ -1342,11 +1387,72 @@ class GeologyViewModel(
     }
 
     fun exportProjectAgs(context: Context, projectId: Int) {
-        exportCsv(context, projectId)
+        viewModelScope.launch {
+            val project = dao.getProjectById(projectId).firstOrNull()
+            val stations = dao.getStationsForProjectSync(projectId)
+            val boreholes = dao.getBoreholesForProjectSync(projectId)
+            
+            val ags = StringBuilder()
+            ags.append("\"GROUP\",\"PROJ\"\n")
+            ags.append("\"HEADING\",\"PROJ_ID\",\"PROJ_NAME\",\"PROJ_LOC\",\"PROJ_CLNT\"\n")
+            ags.append("\"DATA\",\"P${projectId}\",\"${project?.name ?: "GeoField Project"}\",\"Field Location\",\"Geological Survey\"\n\n")
+            
+            ags.append("\"GROUP\",\"LOCA\"\n")
+            ags.append("\"HEADING\",\"LOCA_ID\",\"LOCA_TYPE\",\"LOCA_NORT\",\"LOCA_EAST\",\"LOCA_GL\",\"LOCA_FDEP\"\n")
+            stations.forEach { s ->
+                ags.append("\"DATA\",\"${s.stationCode}\",\"EXPOSURE\",\"${s.utmNorthing ?: s.latitude}\",\"${s.utmEasting ?: s.longitude}\",\"${s.elevation}\",\"0.00\"\n")
+            }
+            boreholes.forEach { b ->
+                ags.append("\"DATA\",\"${b.boreholeCode}\",\"BH\",\"${b.latitude}\",\"${b.longitude}\",\"${b.elevation}\",\"${b.plannedDepth}\"\n")
+            }
+            
+            shareTextFile(context, "project_${projectId}_ags4.ags", ags.toString())
+        }
     }
 
     fun exportProjectSurpacCsv(context: Context, projectId: Int) {
-        exportCsv(context, projectId)
+        viewModelScope.launch {
+            val boreholes = dao.getBoreholesForProjectSync(projectId)
+            val stations = dao.getStationsForProjectSync(projectId)
+            val observations = dao.getObservationsForProjectSync(projectId)
+            
+            val csv = StringBuilder()
+            csv.append("=== LEAPFROG / SURPAC / DATAMINE 3D MINING EXPORT ===\n\n")
+            
+            // COLLAR TABLE
+            csv.append("--- COLLAR TABLE (collar.csv) ---\n")
+            csv.append("HOLE_ID,X_UTM,Y_UTM,Z_ELEV,MAX_DEPTH,AZIMUTH,DIP\n")
+            boreholes.forEach { b ->
+                csv.append("${b.boreholeCode},${b.longitude},${b.latitude},${b.elevation},${b.plannedDepth},${b.azimuth},${b.dip}\n")
+            }
+            if (boreholes.isEmpty()) {
+                stations.forEach { s ->
+                    csv.append("${s.stationCode},${s.utmEasting ?: s.longitude},${s.utmNorthing ?: s.latitude},${s.elevation},0.0,0,90\n")
+                }
+            }
+            
+            // SURVEY TABLE
+            csv.append("\n--- SURVEY TABLE (survey.csv) ---\n")
+            csv.append("HOLE_ID,DEPTH,DIP,AZIMUTH\n")
+            boreholes.forEach { b ->
+                csv.append("${b.boreholeCode},0.0,${b.dip},${b.azimuth}\n")
+                csv.append("${b.boreholeCode},${b.plannedDepth},${b.dip},${b.azimuth}\n")
+            }
+            
+            // STRUCTURAL ORIENTATION TABLE
+            csv.append("\n--- STRUCTURAL ORIENTATIONS (structural.csv) ---\n")
+            csv.append("POINT_ID,X_EAST,Y_NORTH,Z_ELEV,STRIKE,DIP,DIP_DIRECTION,FEATURE_TYPE\n")
+            stations.forEach { s ->
+                val obsList = observations.filter { it.stationId == s.id }
+                obsList.forEach { o ->
+                    if (o.strike != null || o.dip != null) {
+                        csv.append("${s.stationCode},${s.utmEasting ?: s.longitude},${s.utmNorthing ?: s.latitude},${s.elevation},${o.strike ?: 0},${o.dip ?: 0},${o.dipDirection ?: 0},${o.observationType}\n")
+                    }
+                }
+            }
+            
+            shareTextFile(context, "project_${projectId}_leapfrog_surpac_3d.csv", csv.toString())
+        }
     }
 
     fun exportBoreholesCsv(context: Context, projectId: Int) {
