@@ -95,7 +95,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        viewModel.setFarsiMode(false)
         enableEdgeToEdge()
         setContent {
             val themeSetting by viewModel.themeSetting.collectAsStateWithLifecycle()
@@ -273,13 +272,9 @@ fun MainScreenContent(
         if (isRootLocationPermitted) {
             try {
                 val intent = Intent(context, UtmBackgroundService::class.java)
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                    context.startForegroundService(intent)
-                } else {
-                    context.startService(intent)
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
+                context.startService(intent)
+            } catch (t: Throwable) {
+                t.printStackTrace()
             }
         }
     }
@@ -779,8 +774,10 @@ fun MainScreenContent(
                         item {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
-                                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                                shape = RoundedCornerShape(16.dp),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
                             ) {
                                 Column(
                                     modifier = Modifier.padding(10.dp),
@@ -1064,8 +1061,10 @@ fun MainScreenContent(
                             Spacer(Modifier.height(4.dp))
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
-                                border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                                shape = RoundedCornerShape(16.dp),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
                             ) {
                                 Column(
                                     modifier = Modifier.padding(10.dp),
@@ -1976,10 +1975,11 @@ fun ProjectListScreen(
                                     .testTag("project_item_${project.id}")
                                     .clickable { onSelectProject(project) },
                                 colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surface
+                                    containerColor = if (isDark) Color(0xFF1E221F) else Color(0xFFFFFFFF)
                                 ),
-                                shape = RoundedCornerShape(20.dp),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                                shape = RoundedCornerShape(18.dp),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 4.dp),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = if (isDark) 0.25f else 0.15f))
                             ) {
                                 Row(
                                     modifier = Modifier
@@ -2228,15 +2228,17 @@ fun ProjectDashboardScreen(
             .padding(16.dp)
     ) {
         // Project Header Info (Drawn on a beautiful Minimalist Apple Card)
+        val isHeaderDark = isSystemInDarkTheme()
         Card(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 16.dp),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
+                containerColor = if (isHeaderDark) Color(0xFF1E221F) else Color(0xFFFFFFFF)
             ),
-            shape = RoundedCornerShape(20.dp),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            shape = RoundedCornerShape(18.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = if (isHeaderDark) 0.25f else 0.15f))
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Row(
@@ -2465,10 +2467,11 @@ fun ProjectDashboardScreen(
                             .clickable { onStationSelect(station) }
                             .testTag("station_card_${station.id}"),
                         colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surface
+                            containerColor = if (isDark) Color(0xFF1E221F) else Color(0xFFFFFFFF)
                         ),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                        shape = RoundedCornerShape(20.dp)
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 4.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = if (isDark) 0.25f else 0.15f)),
+                        shape = RoundedCornerShape(18.dp)
                     ) {
                         Row(
                             modifier = Modifier
@@ -3040,13 +3043,15 @@ fun CreateStationScreen(
             MaterialTheme.colorScheme.outline
         }
 
+        val isGpsDark = isSystemInDarkTheme()
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
+            shape = RoundedCornerShape(18.dp),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surface
+                containerColor = if (isGpsDark) Color(0xFF1E221F) else Color(0xFFFFFFFF)
             ),
-            border = BorderStroke(1.dp, borderHighlightColor)
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            border = BorderStroke(if (gps.isCaptured) 1.5.dp else 1.dp, if (gps.isCaptured) gpsActiveColor else MaterialTheme.colorScheme.outline.copy(alpha = if (isGpsDark) 0.25f else 0.15f))
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(
@@ -3525,9 +3530,10 @@ fun CreateStationScreen(
             val zonesList = listOf("11N", "32V", "38N", "39N", "40N", "50J", "54K", "55S")
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(20.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                colors = CardDefaults.cardColors(containerColor = if (isGpsDark) Color(0xFF1E221F) else Color(0xFFFFFFFF)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = if (isGpsDark) 0.25f else 0.15f))
             ) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
@@ -3620,9 +3626,10 @@ fun CreateStationScreen(
         // STEP 4: INITIAL OBSERVATION LOGGER
         Card(
             modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(20.dp),
-            border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
+            colors = CardDefaults.cardColors(containerColor = if (isGpsDark) Color(0xFF1E221F) else Color(0xFFFFFFFF)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            shape = RoundedCornerShape(18.dp),
+            border = BorderStroke(1.2.dp, MaterialTheme.colorScheme.primary.copy(alpha = if (isGpsDark) 0.45f else 0.35f))
         ) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Row(

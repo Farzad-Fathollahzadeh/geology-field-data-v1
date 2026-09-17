@@ -27,9 +27,6 @@ class UtmBackgroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
-        startForeground(101, createNotification())
-        
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         startLocationUpdates()
     }

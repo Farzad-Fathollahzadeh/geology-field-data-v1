@@ -67,6 +67,28 @@ private val HighContrastColorScheme = darkColorScheme(
     outline = Color(0xFFFFFFFF)
 )
 
+private val SilverColorScheme = lightColorScheme(
+    primary = Color(0xFF2C3E50),         // Sleek Slate Blue
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFD6DBDF),
+    onPrimaryContainer = Color(0xFF1B2631),
+    secondary = Color(0xFF5D6D7E),
+    onSecondary = Color(0xFFFFFFFF),
+    secondaryContainer = Color(0xFFEAEDED),
+    onSecondaryContainer = Color(0xFF212F3D),
+    tertiary = Color(0xFF7F8C8D),
+    onTertiary = Color(0xFFFFFFFF),
+    tertiaryContainer = Color(0xFFF2F4F4),
+    onTertiaryContainer = Color(0xFF2C3E50),
+    background = Color(0xFFF5F7FA),
+    onBackground = Color(0xFF2C3E50),
+    surface = Color(0xFFFFFFFF),
+    onSurface = Color(0xFF2C3E50),
+    surfaceVariant = Color(0xFFEBEDEF),
+    onSurfaceVariant = Color(0xFF566573),
+    outline = Color(0xFFBDC3C7)
+)
+
 @Composable
 fun MyApplicationTheme(
     themeSetting: String,
@@ -76,12 +98,14 @@ fun MyApplicationTheme(
         "Dark" -> true
         "HighContrast" -> true
         "Light" -> false
+        "Silver" -> false
         else -> isSystemInDarkTheme()
     }
     
     val colorScheme = when (themeSetting) {
         "HighContrast" -> HighContrastColorScheme
         "Dark" -> DarkColorScheme
+        "Silver" -> SilverColorScheme
         "Light" -> LightColorScheme
         else -> if (darkTheme) DarkColorScheme else LightColorScheme
     }
@@ -89,6 +113,7 @@ fun MyApplicationTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,
+        shapes = AppShapes,
         content = content
     )
 }

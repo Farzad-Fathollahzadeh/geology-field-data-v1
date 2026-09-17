@@ -171,36 +171,72 @@ fun ToolsContent(
             Tab(
                 selected = selectedToolTab == 0,
                 onClick = { selectedToolTab = 0 },
-                text = { Text(if (isFarsiMode) "کانی‌شناسی" else "Mineralogy", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                icon = { Icon(Icons.Default.Diamond, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                text = { Text(if (isFarsiMode) "کلاینومتر و برانتون" else "Field Compass", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                icon = { Icon(Icons.Default.Explore, contentDescription = null, modifier = Modifier.size(18.dp)) }
             )
             Tab(
                 selected = selectedToolTab == 1,
                 onClick = { selectedToolTab = 1 },
-                text = { Text(if (isFarsiMode) "سنگ‌شناسی" else "Lithology", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                icon = { Icon(Icons.Default.Layers, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                text = { Text(if (isFarsiMode) "چکش اشمیت (ISRM)" else "Schmidt Hammer", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                icon = { Icon(Icons.Default.Hardware, contentDescription = null, modifier = Modifier.size(18.dp)) }
             )
             Tab(
                 selected = selectedToolTab == 2,
                 onClick = { selectedToolTab = 2 },
-                text = { Text(if (isFarsiMode) "پلاتر QAPF" else "QAPF Plotter", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                icon = { Icon(Icons.Default.Category, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                text = { Text(if (isFarsiMode) "اقتصاد معدن (NSR)" else "Mining Economics", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                icon = { Icon(Icons.Default.MonetizationOn, contentDescription = null, modifier = Modifier.size(18.dp)) }
             )
             Tab(
                 selected = selectedToolTab == 3,
                 onClick = { selectedToolTab = 3 },
-                text = { Text(if (isFarsiMode) "هندسه ساختاری" else "Structural Geometry", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                icon = { Icon(Icons.Default.Explore, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                text = { Text(if (isFarsiMode) "برش عرضی" else "Cross-Section", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                icon = { Icon(Icons.Default.AutoGraph, contentDescription = null, modifier = Modifier.size(18.dp)) }
             )
             Tab(
                 selected = selectedToolTab == 4,
                 onClick = { selectedToolTab = 4 },
-                text = { Text(if (isFarsiMode) "تبدیل واحد" else "Converter", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                icon = { Icon(Icons.Default.SyncAlt, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                text = { Text(if (isFarsiMode) "دستیار هوش مصنوعی" else "AI Assistant", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                icon = { Icon(Icons.Default.Psychology, contentDescription = null, modifier = Modifier.size(18.dp)) }
             )
             Tab(
                 selected = selectedToolTab == 5,
                 onClick = { selectedToolTab = 5 },
+                text = { Text(if (isFarsiMode) "بارکد و برچسب نمونه" else "Sample Tag & QR", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                icon = { Icon(Icons.Default.QrCode, contentDescription = null, modifier = Modifier.size(18.dp)) }
+            )
+            Tab(
+                selected = selectedToolTab == 6,
+                onClick = { selectedToolTab = 6 },
+                text = { Text(if (isFarsiMode) "کانی‌شناسی" else "Mineralogy", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                icon = { Icon(Icons.Default.Diamond, contentDescription = null, modifier = Modifier.size(18.dp)) }
+            )
+            Tab(
+                selected = selectedToolTab == 7,
+                onClick = { selectedToolTab = 7 },
+                text = { Text(if (isFarsiMode) "سنگ‌شناسی" else "Lithology", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                icon = { Icon(Icons.Default.Layers, contentDescription = null, modifier = Modifier.size(18.dp)) }
+            )
+            Tab(
+                selected = selectedToolTab == 8,
+                onClick = { selectedToolTab = 8 },
+                text = { Text(if (isFarsiMode) "پلاتر QAPF" else "QAPF Plotter", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                icon = { Icon(Icons.Default.Category, contentDescription = null, modifier = Modifier.size(18.dp)) }
+            )
+            Tab(
+                selected = selectedToolTab == 9,
+                onClick = { selectedToolTab = 9 },
+                text = { Text(if (isFarsiMode) "هندسه ساختاری" else "Structural Geometry", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                icon = { Icon(Icons.Default.Calculate, contentDescription = null, modifier = Modifier.size(18.dp)) }
+            )
+            Tab(
+                selected = selectedToolTab == 10,
+                onClick = { selectedToolTab = 10 },
+                text = { Text(if (isFarsiMode) "تبدیل واحد" else "Converter", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                icon = { Icon(Icons.Default.SyncAlt, contentDescription = null, modifier = Modifier.size(18.dp)) }
+            )
+            Tab(
+                selected = selectedToolTab == 11,
+                onClick = { selectedToolTab = 11 },
                 text = { Text(if (isFarsiMode) "توسعه‌دهنده" else "Developer", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                 icon = { Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(18.dp)) }
             )
@@ -211,12 +247,18 @@ fun ToolsContent(
         // Content Area
         Box(modifier = Modifier.weight(1f)) {
             when (selectedToolTab) {
-                0 -> MineralIdHelper(viewModel)
-                1 -> LithologyHelper()
-                2 -> Box(modifier = Modifier.verticalScroll(rememberScrollState())) { QAPFClassifierPanel() }
-                3 -> StructuralGeometryCalculator(isFarsiMode)
-                4 -> GeotechConverter()
-                5 -> DeveloperProfilePage()
+                0 -> FieldCompassModule(isFarsiMode)
+                1 -> SchmidtHammerModule(isFarsiMode)
+                2 -> MiningEconomicsModule(isFarsiMode)
+                3 -> GeologicalCrossSectionModule(isFarsiMode)
+                4 -> AiGeoAssistantModule(isFarsiMode)
+                5 -> SampleLabelManagerModule(viewModel, isFarsiMode)
+                6 -> MineralIdHelper(viewModel)
+                7 -> LithologyHelper()
+                8 -> Box(modifier = Modifier.verticalScroll(rememberScrollState())) { QAPFClassifierPanel() }
+                9 -> StructuralGeometryCalculator(isFarsiMode)
+                10 -> GeotechConverter()
+                11 -> DeveloperProfilePage()
             }
         }
     }
@@ -1208,6 +1250,7 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
                         quickFilteredList.forEach { mineral ->
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                                 border = if (singleExactFound) BorderStroke(1.5.dp, Color(0xFFFFB300)) else BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
                                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -1560,8 +1603,9 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f)),
-                    border = BorderStroke(1.2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
-                    shape = RoundedCornerShape(16.dp)
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    shape = RoundedCornerShape(18.dp)
                 ) {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(
@@ -1702,7 +1746,9 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
                 if (showOtherMatches) {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -1932,9 +1978,10 @@ fun MineralIdHelper(viewModel: GeologyViewModel) {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { selectedMineralForLab = mineral },
+                            shape = RoundedCornerShape(16.dp),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.08f))
+                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 4.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
                         ) {
                             Column(
                                 modifier = Modifier.padding(14.dp),
@@ -2146,10 +2193,11 @@ private fun WizardQuestionPane(
                     containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f) else MaterialTheme.colorScheme.surface
                 ),
                 border = BorderStroke(
-                    width = if (isSelected) 1.8.dp else 1.dp,
+                    width = if (isSelected) 1.5.dp else 1.dp,
                     color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)
                 ),
-                shape = RoundedCornerShape(12.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 2.dp else 1.dp),
+                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
@@ -3062,8 +3110,9 @@ fun LithologyHelper() {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = RoundedCornerShape(12.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    shape = RoundedCornerShape(16.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp, pressedElevation = 4.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
                 ) {
                     Column(
                         modifier = Modifier.padding(14.dp),
@@ -3211,9 +3260,11 @@ fun GeotechConverter() {
         Spacer(modifier = Modifier.height(2.dp))
 
         Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth().border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(16.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.15f)),
+            modifier = Modifier.fillMaxWidth()
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
