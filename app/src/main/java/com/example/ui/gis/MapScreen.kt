@@ -81,6 +81,8 @@ fun MapScreen(
     val isTrackRecordingActive by geologyViewModel.isTrackRecordingActive.collectAsStateWithLifecycle()
     val activePoints by geologyViewModel.activePoints.collectAsStateWithLifecycle()
     val liveLocation by geologyViewModel.liveLocation.collectAsStateWithLifecycle()
+    val recordingDurationSec by geologyViewModel.recordingDurationSec.collectAsStateWithLifecycle()
+    val isTrackRecordingPaused by geologyViewModel.isTrackRecordingPaused.collectAsStateWithLifecycle()
 
     // GIS Map UI settings from specialized MapViewModel
     val uiState by gisViewModel.uiState.collectAsStateWithLifecycle()
@@ -177,11 +179,12 @@ fun MapScreen(
     // Simplify/De-clutter view states
     var isSimpleMode by remember { mutableStateOf(true) }
     var showTopHud by remember { mutableStateOf(true) }
-    var isQuickMapDeckExpanded by remember { mutableStateOf(false) }
     var showMoveSimulator by remember { mutableStateOf(false) }
     var showWaypointSelectorDialog by remember { mutableStateOf(false) }
     var showProjectStatsDialog by remember { mutableStateOf(false) }
     var showHelpDialog by remember { mutableStateOf(false) }
+    var showImportMapDialog by remember { mutableStateOf(false) }
+    var showDownloadTutorialDialog by remember { mutableStateOf(false) }
     var showQuickOpacitySlider by remember { mutableStateOf(false) }
     var isLeftToolsExpanded by remember { mutableStateOf(true) }
     var showElevationProfile by remember { mutableStateOf(false) }
@@ -364,390 +367,518 @@ fun MapScreen(
                     (b + 360.0) % 360.0
                 }
                 
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .padding(top = 60.dp) // Float it neatly below the crosshair ring
-                ) {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = Color.Black.copy(alpha = 0.85f)
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.7f)),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                if (crosshairDist > 8.0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .padding(top = 56.dp) // Float neatly below the crosshair ring
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = Color.Black.copy(alpha = 0.85f)
+                            ),
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, accentColor.copy(alpha = 0.7f)),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
                         ) {
-                            Text(
-                                text = "📏 " + (if (crosshairDist >= 1000.0) String.format(Locale.US, "%.2f km", crosshairDist / 1000.0) else String.format(Locale.US, "%.0f m", crosshairDist)),
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                fontFamily = FontFamily.Monospace
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .height(10.dp)
-                                    .width(1.dp)
-                                    .background(Color.White.copy(alpha = 0.3f))
-                            )
-                            Text(
-                                text = "🧭 ${String.format(Locale.US, "%.0f°", crosshairBearing)}",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                fontFamily = FontFamily.Monospace
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "📏 " + (if (crosshairDist >= 1000.0) String.format(Locale.US, "%.2f km", crosshairDist / 1000.0) else String.format(Locale.US, "%.0f m", crosshairDist)),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .height(10.dp)
+                                        .width(1.dp)
+                                        .background(Color.White.copy(alpha = 0.3f))
+                                )
+                                Text(
+                                    text = "🧭 ${String.format(Locale.US, "%.0f°", crosshairBearing)}",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
                         }
                     }
                 }
             }
         }
 
-        // --- LAYER 1: ALPINEQUEST-STYLE UNIFIED GLASSMORPHIC HUD TELEMETRY BANNER ---
+        // --- LAYER 1: SLEEK UNIFIED FLOATING TELEMETRY ISLAND & CONTEXTUAL PILLS ---
         if (uiState is MapUiState.Idle && showTopHud) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.TopCenter)
-                    .padding(top = 12.dp, start = 8.dp, end = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                    .padding(top = 10.dp, start = 12.dp, end = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                // Unified HUD Box: adaptive premium background depending on theme
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = (if (isOutdoorMode) Color.White else Color(0xFF141A17)).copy(alpha = 0.92f)
-                    ),
-                    border = BorderStroke(1.dp, if (isOutdoorMode) Color(0xFFE0E0E0) else accentColor.copy(alpha = 0.3f)),
-                    shape = RoundedCornerShape(12.dp),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                    modifier = Modifier.fillMaxWidth()
+                // Real-time Coordinate Readout state
+                var coordinateFormatIndex by remember { mutableStateOf(0) } // 0: WGS84, 1: UTM, 2: MGRS
+
+                val utmCoord = remember(currentLat, currentLon) {
+                    try {
+                        com.example.UtmConverter.convertLatLngToUtm(currentLat, currentLon)
+                    } catch (e: Exception) {
+                        null
+                    }
+                }
+
+                val mgrsString = remember(currentLat, currentLon, utmCoord) {
+                    if (utmCoord == null) {
+                        "MGRS..."
+                    } else {
+                        val z = utmCoord.zoneNumber
+                        val band = utmCoord.zoneChar
+                        val colLetters = "ABCDEFGHJKLMNPQRSTUVXYZ"
+                        val colIndex = (utmCoord.easting / 100000).toInt()
+                        val colLetter = colLetters[(colIndex - 1 + ((z - 1) % 3) * 8) % colLetters.length]
+                        val rowLetters = "ABCDEFGHJKLMNPQRSTUV"
+                        val rowIndex = (utmCoord.northing / 100000).toInt() % 20
+                        val rowLetter = rowLetters[(rowIndex + (if (z % 2 != 0) 0 else 5)) % rowLetters.length]
+                        val eStr = String.format(Locale.US, "%05d", (utmCoord.easting % 100000).toInt().coerceIn(0, 99999))
+                        val nStr = String.format(Locale.US, "%05d", (utmCoord.northing % 100000).toInt().coerceIn(0, 99999))
+                        "$z$band $colLetter$rowLetter $eStr $nStr"
+                    }
+                }
+
+                val readoutText = when (coordinateFormatIndex) {
+                    0 -> "${String.format(Locale.US, "%.5f", currentLat)}°N  ${String.format(Locale.US, "%.5f", currentLon)}°E"
+                    1 -> if (utmCoord != null) "${utmCoord.zoneString} ${String.format(Locale.US, "%.0f", utmCoord.easting)}m E ${String.format(Locale.US, "%.0f", utmCoord.northing)}m N" else "UTM..."
+                    else -> "MGRS: $mgrsString"
+                }
+
+                // SLEEK FLOATING TOP ISLAND (Compact 42dp capsule)
+                Surface(
+                    shape = RoundedCornerShape(21.dp),
+                    color = (if (isOutdoorMode) Color.White else Color(0xFF101714)).copy(alpha = 0.94f),
+                    border = BorderStroke(1.dp, if (isOutdoorMode) Color(0xFFE0E5E0) else accentColor.copy(alpha = 0.35f)),
+                    shadowElevation = 3.dp,
+                    modifier = Modifier.wrapContentWidth().height(42.dp)
                 ) {
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // LEFT SECTION: Mode switches with minimalist circular controls
+                        // GPS Fix dot + Accuracy
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Simple/Advanced Toggle Button
-                            IconButton(
-                                onClick = { isSimpleMode = !isSimpleMode },
+                            Box(
                                 modifier = Modifier
-                                    .size(34.dp)
-                                    .background(
-                                        if (isSimpleMode) Color(0xFFF5F5F5) else accentColor.copy(alpha = 0.15f),
-                                        shape = RoundedCornerShape(8.dp)
-                                    )
-                            ) {
-                                Icon(
-                                    imageVector = if (isSimpleMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                    contentDescription = "حالت نقشه",
-                                    tint = if (isSimpleMode) Color.Gray else accentColor,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-
-                            // UTM Grid Toggle Button
-                            val showGridsState = showGrids
-                            IconButton(
-                                onClick = { gisViewModel.toggleGrids(!showGridsState) },
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .background(
-                                        if (showGridsState) accentColor.copy(alpha = 0.15f) else Color(0xFFF5F5F5),
-                                        shape = RoundedCornerShape(8.dp)
-                                    )
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.GridView,
-                                    contentDescription = "شبکه UTM",
-                                    tint = if (showGridsState) accentColor else Color.Gray,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(if (currentAccuracy < 3.0) Color(0xFF4CAF50) else Color(0xFFFF9800))
+                            )
+                            Text(
+                                text = "±${String.format(Locale.US, "%.1fm", currentAccuracy)}",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (currentAccuracy < 3.0) Color(0xFF2E7D32) else Color(0xFFE65100),
+                                fontFamily = FontFamily.Monospace
+                            )
                         }
 
-                        // MIDDLE SECTION: Real-time Coordinate Readout Box (Click to Cycle WGS84 / UTM / MGRS)
-                        var coordinateFormatIndex by remember { mutableStateOf(0) } // 0: WGS84, 1: UTM, 2: MGRS
-                        
-                        // Convert to UTM dynamically
-                        val utmCoord = remember(currentLat, currentLon) {
-                            try {
-                                com.example.UtmConverter.convertLatLngToUtm(currentLat, currentLon)
-                            } catch (e: Exception) {
-                                null
-                            }
-                        }
+                        // Thin vertical divider
+                        Box(modifier = Modifier.height(16.dp).width(1.dp).background(fontColor.copy(alpha = 0.15f)))
 
-                        // Simulated MGRS string
-                        val mgrsString = remember(currentLat, currentLon, utmCoord) {
-                            if (utmCoord == null) {
-                                "MGRS converting..."
-                            } else {
-                                val z = utmCoord.zoneNumber
-                                val band = utmCoord.zoneChar
-                                val colLetters = "ABCDEFGHJKLMNPQRSTUVXYZ"
-                                val colIndex = (utmCoord.easting / 100000).toInt()
-                                val colLetter = colLetters[(colIndex - 1 + ((z - 1) % 3) * 8) % colLetters.length]
-                                val rowLetters = "ABCDEFGHJKLMNPQRSTUV"
-                                val rowIndex = (utmCoord.northing / 100000).toInt() % 20
-                                val rowLetter = rowLetters[(rowIndex + (if (z % 2 != 0) 0 else 5)) % rowLetters.length]
-                                val eStr = String.format(Locale.US, "%05d", (utmCoord.easting % 100000).toInt().coerceIn(0, 99999))
-                                val nStr = String.format(Locale.US, "%05d", (utmCoord.northing % 100000).toInt().coerceIn(0, 99999))
-                                "$z$band $colLetter$rowLetter $eStr $nStr"
-                            }
-                        }
-
-                        val readoutText = when (coordinateFormatIndex) {
-                            0 -> "${String.format(Locale.US, "%.5f", currentLat)}°N  ${String.format(Locale.US, "%.5f", currentLon)}°E"
-                            1 -> {
-                                if (utmCoord != null) {
-                                    "${utmCoord.zoneString}  ${String.format(Locale.US, "%.0f", utmCoord.easting)}m E  ${String.format(Locale.US, "%.0f", utmCoord.northing)}m N"
-                                } else {
-                                    "UTM Converting..."
-                                }
-                            }
-                            else -> "MGRS: $mgrsString"
-                        }
-
-                        val formatLabel = when (coordinateFormatIndex) {
-                            0 -> "WGS84 (لمس جهت تغییر)"
-                            1 -> "UTM Grid (لمس جهت تغییر)"
-                            else -> "MGRS Grid (لمس جهت تغییر)"
-                        }
-
-                        Column(
+                        // Coordinates & Altitude (click to cycle WGS84 / UTM / MGRS)
+                        Row(
                             modifier = Modifier
-                                .weight(1f)
                                 .clip(RoundedCornerShape(6.dp))
-                                .clickable {
-                                    coordinateFormatIndex = (coordinateFormatIndex + 1) % 3
-                                }
-                                .padding(vertical = 2.dp, horizontal = 4.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                                .clickable { coordinateFormatIndex = (coordinateFormatIndex + 1) % 3 }
+                                .padding(horizontal = 4.dp, vertical = 2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
                                 text = readoutText,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace,
-                                color = accentColor,
-                                maxLines = 1
+                                color = accentColor
                             )
-                            Spacer(modifier = Modifier.height(1.dp))
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = formatLabel,
-                                    fontSize = 7.5.sp,
-                                    color = fontColor.copy(alpha = 0.7f),
-                                    fontFamily = FontFamily.SansSerif
-                                )
-                                Text(
-                                    text = "• ALT: ${currentEle.toInt()}m",
-                                    fontSize = 7.5.sp,
-                                    color = fontColor.copy(alpha = 0.8f),
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                        }
-
-                        // RIGHT SECTION: GPS Status telemetry
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.End,
-                                modifier = Modifier.padding(end = 4.dp)
-                            ) {
-                                Text(
-                                    text = "ACC: ${String.format(Locale.US, "%.1fm", currentAccuracy)}",
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (currentAccuracy < 3.0) Color(0xFF2E7D32) else Color(0xFFE65100),
-                                    fontFamily = FontFamily.Monospace
-                                )
-                                Text(
-                                    text = "ZOOM: $zoomLevel",
-                                    fontSize = 8.sp,
-                                    color = Color.Gray,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                            
-                            // Glowing green dot indicating perfect GPS fix
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(if (currentAccuracy < 3.0) Color(0xFF4CAF50) else Color(0xFFFF9800))
+                            Text(
+                                text = "▲${currentEle.toInt()}m",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = fontColor.copy(alpha = 0.75f),
+                                fontFamily = FontFamily.Monospace
                             )
                         }
-                    }
-                }
 
-                // Small scale bar row that floats neatly below the HUD
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Spacer(modifier = Modifier.width(1.dp))
-                    ScaleBar(
-                        zoomLevel = zoomLevel,
-                        isOutdoorMode = isOutdoorMode
-                    )
-                }
-
-                // AlpineQuest Waypoint Target Navigation HUD
-            if (navigationTargetStation != null) {
-                val target = navigationTargetStation!!
-                val geodesicDist = remember(currentLat, currentLon, target) {
-                    val r = 6371000.0 // meters
-                    val dLat = Math.toRadians(target.latitude - currentLat)
-                    val dLon = Math.toRadians(target.longitude - currentLon)
-                    val a = sin(dLat / 2) * sin(dLat / 2) +
-                            cos(Math.toRadians(currentLat)) * cos(Math.toRadians(target.latitude)) *
-                            sin(dLon / 2) * sin(dLon / 2)
-                    val c = 2 * atan2(sqrt(a), sqrt(1 - a))
-                    r * c
-                }
-
-                val bearingToTarget = remember(currentLat, currentLon, target) {
-                    val phi1 = Math.toRadians(currentLat)
-                    val phi2 = Math.toRadians(target.latitude)
-                    val deltaLambda = Math.toRadians(target.longitude - currentLon)
-                    val y = sin(deltaLambda) * cos(phi2)
-                    val x = cos(phi1) * sin(phi2) - sin(phi1) * cos(phi2) * cos(deltaLambda)
-                    val b = Math.toDegrees(atan2(y, x))
-                    (b + 360.0) % 360.0
-                }
-
-                val turnDeviation = remember(bearingToTarget, currentHeading) {
-                    var diff = bearingToTarget - currentHeading
-                    while (diff < -180.0) diff += 360.0
-                    while (diff > 180.0) diff -= 360.0
-                    diff
-                }
-
-                val directionIndicator = remember(bearingToTarget) {
-                    val dirs = listOf("N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW")
-                    val idx = ((bearingToTarget + 11.25) / 22.5).toInt() % 16
-                    dirs[idx]
-                }
-
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = (if (isOutdoorMode) Color.White else Color(0xFF0F1412)).copy(alpha = 0.9f)
-                    ),
-                    border = BorderStroke(1.dp, accentColor.copy(alpha = 0.5f)),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(
-                            modifier = Modifier.weight(1f),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        // UTM Grid toggle icon button
+                        IconButton(
+                            onClick = { gisViewModel.toggleGrids(!showGrids) },
+                            modifier = Modifier.size(24.dp)
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(accentColor.copy(alpha = 0.15f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Navigation,
-                                    contentDescription = "Target Direction",
-                                    tint = accentColor,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Default.GridView,
+                                contentDescription = "شبکه UTM",
+                                tint = if (showGrids) accentColor else fontColor.copy(alpha = 0.4f),
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
 
-                            Column {
+                        // Active Offline Map (MBTiles) chip if loaded
+                        val activeMbtilesEntries = activeMbtiles.toList()
+                        if (activeMbtilesEntries.isNotEmpty()) {
+                            val primary = activeMbtilesEntries.first()
+                            Box(modifier = Modifier.height(16.dp).width(1.dp).background(fontColor.copy(alpha = 0.15f)))
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = accentColor.copy(alpha = 0.15f),
+                                border = BorderStroke(0.5.dp, accentColor.copy(alpha = 0.4f)),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { showQuickOpacitySlider = !showQuickOpacitySlider }
+                            ) {
                                 Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    Icon(Icons.Default.Layers, contentDescription = null, tint = accentColor, modifier = Modifier.size(11.dp))
                                     Text(
-                                        text = "NAV TARGET: ${target.stationCode}",
-                                        fontSize = 11.sp,
+                                        text = "${primary.first.take(8)} ${(primary.second * 100).toInt()}%",
+                                        fontSize = 9.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = accentColor,
                                         fontFamily = FontFamily.Monospace
                                     )
-                                    Text(
-                                        text = "(${directionIndicator})",
-                                        fontSize = 10.sp,
-                                        color = fontColor.copy(alpha = 0.6f),
-                                        fontWeight = FontWeight.Bold
-                                    )
                                 }
-                                
+                            }
+                        } else if (importedFeatures.isNotEmpty()) {
+                            Box(modifier = Modifier.height(16.dp).width(1.dp).background(fontColor.copy(alpha = 0.15f)))
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = Color(0xFF29B6F6).copy(alpha = 0.15f),
+                                border = BorderStroke(0.5.dp, Color(0xFF29B6F6).copy(alpha = 0.4f)),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { showImportMapDialog = true }
+                            ) {
                                 Row(
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    Icon(Icons.Default.Public, contentDescription = null, tint = Color(0xFF29B6F6), modifier = Modifier.size(11.dp))
                                     Text(
-                                        text = "DIST: " + (if (geodesicDist >= 1000.0) String.format(Locale.US, "%.2f km", geodesicDist / 1000.0) else String.format(Locale.US, "%.0f m", geodesicDist)),
-                                        fontSize = 12.sp,
+                                        text = "وکتور (${importedFeatures.size})",
+                                        fontSize = 9.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = fontColor,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                    Text(
-                                        text = "BEARING: ${String.format(Locale.US, "%.0f°", bearingToTarget)}",
-                                        fontSize = 11.sp,
-                                        color = fontColor.copy(alpha = 0.8f),
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                    Text(
-                                        text = if (abs(turnDeviation) < 12.0) "🟢 ON TRACK" else if (turnDeviation > 0) "➡️ TURN R ${(turnDeviation).toInt()}°" else "⬅️ TURN L ${abs(turnDeviation).toInt()}°",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (abs(turnDeviation) < 12.0) Color(0xFF4CAF50) else Color(0xFFFFA726)
+                                        color = Color(0xFF29B6F6)
                                     )
                                 }
                             }
                         }
+                    }
+                }
 
-                        IconButton(
-                            onClick = { navigationTargetStation = null },
-                            modifier = Modifier.size(30.dp)
+
+
+                // 🎚️ QUICK FLOATING OPACITY MINI-PANEL FOR THE ACTIVE OFFLINE MAP
+                if (showQuickOpacitySlider && activeMbtiles.isNotEmpty()) {
+                    val primary = activeMbtiles.toList().first()
+                    val fileName = primary.first
+                    val opacity = primary.second
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = (if (isOutdoorMode) Color.White else Color(0xFF161E1B)).copy(alpha = 0.95f)
+                        ),
+                        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 4.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Cancel Navigation",
-                                tint = Color.Red.copy(alpha = 0.8f),
-                                modifier = Modifier.size(16.dp)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Layers,
+                                        contentDescription = null,
+                                        tint = accentColor,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "شفافیت نقشه آفلاین: $fileName",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = fontColor,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                }
+                                Text(
+                                    text = "${(opacity * 100).toInt()}%",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = accentColor,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            Slider(
+                                value = opacity,
+                                onValueChange = { gisViewModel.setMbtilesOpacity(fileName, it) },
+                                colors = SliderDefaults.colors(
+                                    thumbColor = accentColor,
+                                    activeTrackColor = accentColor,
+                                    inactiveTrackColor = fontColor.copy(alpha = 0.15f)
+                                ),
+                                modifier = Modifier.height(24.dp)
                             )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    listOf(0.25f, 0.50f, 0.75f, 1.0f).forEach { preset ->
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(
+                                                    if (kotlin.math.abs(opacity - preset) < 0.05f) accentColor else fontColor.copy(alpha = 0.08f)
+                                                )
+                                                .clickable { gisViewModel.setMbtilesOpacity(fileName, preset) }
+                                                .padding(horizontal = 8.dp, vertical = 2.dp)
+                                        ) {
+                                            Text(
+                                                text = "${(preset * 100).toInt()}%",
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (kotlin.math.abs(opacity - preset) < 0.05f) Color.White else fontColor.copy(alpha = 0.8f)
+                                            )
+                                        }
+                                    }
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    TextButton(
+                                        onClick = {
+                                            showQuickOpacitySlider = false
+                                            gisViewModel.updateUiState(MapUiState.LayersExpanded)
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                        modifier = Modifier.height(24.dp)
+                                    ) {
+                                        Text("مدیریت لایه‌ها", fontSize = 10.sp, color = accentColor)
+                                    }
+                                    TextButton(
+                                        onClick = { showQuickOpacitySlider = false },
+                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                        modifier = Modifier.height(24.dp)
+                                    ) {
+                                        Text("بستن", fontSize = 10.sp, color = fontColor.copy(alpha = 0.6f))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 🧭 SLIM WAYPOINT TARGET NAVIGATION STRIP
+                if (navigationTargetStation != null) {
+                    val target = navigationTargetStation!!
+                    val geodesicDist = remember(currentLat, currentLon, target) {
+                        val r = 6371000.0 // meters
+                        val dLat = Math.toRadians(target.latitude - currentLat)
+                        val dLon = Math.toRadians(target.longitude - currentLon)
+                        val a = sin(dLat / 2) * sin(dLat / 2) +
+                                cos(Math.toRadians(currentLat)) * cos(Math.toRadians(target.latitude)) *
+                                sin(dLon / 2) * sin(dLon / 2)
+                        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+                        r * c
+                    }
+
+                    val bearingToTarget = remember(currentLat, currentLon, target) {
+                        val phi1 = Math.toRadians(currentLat)
+                        val phi2 = Math.toRadians(target.latitude)
+                        val deltaLambda = Math.toRadians(target.longitude - currentLon)
+                        val y = sin(deltaLambda) * cos(phi2)
+                        val x = cos(phi1) * sin(phi2) - sin(phi1) * cos(phi2) * cos(deltaLambda)
+                        val b = Math.toDegrees(atan2(y, x))
+                        (b + 360.0) % 360.0
+                    }
+
+                    val turnDeviation = remember(bearingToTarget, currentHeading) {
+                        var diff = bearingToTarget - currentHeading
+                        while (diff < -180.0) diff += 360.0
+                        while (diff > 180.0) diff -= 360.0
+                        diff
+                    }
+
+                    val directionIndicator = remember(bearingToTarget) {
+                        val dirs = listOf("N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW")
+                        val idx = ((bearingToTarget + 11.25) / 22.5).toInt() % 16
+                        dirs[idx]
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = (if (isOutdoorMode) Color.White else Color(0xFF0F1412)).copy(alpha = 0.95f),
+                        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.6f)),
+                        shadowElevation = 3.dp,
+                        modifier = Modifier.wrapContentWidth().height(36.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(imageVector = Icons.Default.Navigation, contentDescription = null, tint = accentColor, modifier = Modifier.size(14.dp))
+                            Text(
+                                text = "${target.stationCode} ($directionIndicator)",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = accentColor,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
+                                text = "• " + (if (geodesicDist >= 1000.0) String.format(Locale.US, "%.2f km", geodesicDist / 1000.0) else String.format(Locale.US, "%.0f m", geodesicDist)),
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = fontColor,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
+                                text = if (abs(turnDeviation) < 12.0) "🟢 ON TRACK" else if (turnDeviation > 0) "➡️ R ${turnDeviation.toInt()}°" else "⬅️ L ${abs(turnDeviation).toInt()}°",
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (abs(turnDeviation) < 12.0) Color(0xFF4CAF50) else Color(0xFFFFA726)
+                            )
+                            IconButton(
+                                onClick = { navigationTargetStation = null },
+                                modifier = Modifier.size(20.dp)
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = "Cancel", tint = Color.Red.copy(alpha = 0.8f), modifier = Modifier.size(13.dp))
+                            }
+                        }
+                    }
+                }
+
+                // 🔴 SLIM GPS TRACK RECORDING STRIP
+                if (isTrackRecordingActive) {
+                    val activeTrackPoints = activePoints
+                    val trackLength = remember(activeTrackPoints) {
+                        if (activeTrackPoints.size < 2) 0.0
+                        else {
+                            var dist = 0.0
+                            for (i in 0 until activeTrackPoints.size - 1) {
+                                val p1 = activeTrackPoints[i]
+                                val p2 = activeTrackPoints[i + 1]
+                                val r = 6371000.0 // meters
+                                val dLat = Math.toRadians(p2.lat - p1.lat)
+                                val dLon = Math.toRadians(p2.lon - p1.lon)
+                                val a = sin(dLat / 2) * sin(dLat / 2) +
+                                        cos(Math.toRadians(p1.lat)) * cos(Math.toRadians(p2.lat)) *
+                                        sin(dLon / 2) * sin(dLon / 2)
+                                val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+                                dist += r * c
+                            }
+                            dist
+                        }
+                    }
+
+                    val durationFormatted = remember(recordingDurationSec) {
+                        val h = recordingDurationSec / 3600
+                        val m = (recordingDurationSec % 3600) / 60
+                        val s = recordingDurationSec % 60
+                        String.format(Locale.US, "%02d:%02d:%02d", h, m, s)
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(18.dp),
+                        color = (if (isOutdoorMode) Color.White else Color(0xFF141A17)).copy(alpha = 0.95f),
+                        border = BorderStroke(1.dp, Color.Red.copy(alpha = 0.5f)),
+                        shadowElevation = 3.dp,
+                        modifier = Modifier.wrapContentWidth().height(36.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val blinkAlpha = if (recordingDurationSec % 2 == 0L) 1f else 0.3f
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.Red.copy(alpha = blinkAlpha))
+                            )
+                            Text(
+                                text = if (isTrackRecordingPaused) "PAUSED" else durationFormatted,
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isTrackRecordingPaused) Color.Yellow else Color.Red,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            Text(
+                                text = "• " + (if (trackLength >= 1000.0) String.format(Locale.US, "%.2f km", trackLength / 1000.0) else String.format(Locale.US, "%.0f m", trackLength)),
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = fontColor,
+                                fontFamily = FontFamily.Monospace
+                            )
+                            IconButton(
+                                onClick = {
+                                    if (isTrackRecordingPaused) geologyViewModel.resumeRecordingTrack()
+                                    else geologyViewModel.pauseRecordingTrack()
+                                },
+                                modifier = Modifier.size(22.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isTrackRecordingPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                                    contentDescription = null,
+                                    tint = accentColor,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                            IconButton(
+                                onClick = {
+                                    geologyViewModel.stopRecordingTrack { pointsJson, length, duration ->
+                                        geologyViewModel.saveTrack(
+                                            name = "GisWalk_" + SimpleDateFormat("HHmm", Locale.US).format(java.util.Date()),
+                                            pointsJson = pointsJson,
+                                            lengthMeters = length,
+                                            durationSeconds = duration
+                                        )
+                                        Toast.makeText(context, "Track saved successfully!", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier.size(22.dp)
+                            ) {
+                                Icon(Icons.Default.Stop, contentDescription = null, tint = Color.Red, modifier = Modifier.size(14.dp))
+                            }
                         }
                     }
                 }
             }
         }
-    }
 
         // --- LAYER 2: UNIFIED EXPANDABLE GIS MENU & CONTROLS ---
         if (uiState is MapUiState.Idle) {
@@ -772,30 +903,50 @@ fun MapScreen(
                 if (showMoveSimulator) {
                     Card(
                         colors = CardDefaults.cardColors(
-                            containerColor = if (isOutdoorMode) Color.White.copy(alpha = 0.95f) else Color(0xDD000000)
+                            containerColor = (if (isOutdoorMode) Color.White else Color(0xFF0F1412)).copy(alpha = 0.95f)
                         ),
-                        border = BorderStroke(0.5.dp, fontColor.copy(alpha = 0.2f)),
+                        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(16.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
-                            .width(135.dp)
-                            .height(115.dp)
+                            .padding(bottom = 12.dp)
+                            .width(140.dp)
                     ) {
                         Column(
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp, horizontal = 6.dp),
                             verticalArrangement = Arrangement.Center,
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text(
-                                text = "MOVE SIMULATOR | شبیه‌ساز",
-                                fontSize = 8.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = accentColor,
-                                fontFamily = FontFamily.Monospace
-                            )
-                            Spacer(modifier = Modifier.height(3.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "SIMULATOR",
+                                    fontSize = 8.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = accentColor,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                                IconButton(
+                                    onClick = { showMoveSimulator = false },
+                                    modifier = Modifier.size(18.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Close simulator",
+                                        tint = fontColor.copy(alpha = 0.6f),
+                                        modifier = Modifier.size(12.dp)
+                                    )
+                                }
+                            }
                             IconButton(
                                 onClick = { simulateWalk("NORTH") },
-                                modifier = Modifier.size(32.dp)
+                                modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(imageVector = Icons.Default.ArrowDropUp, contentDescription = "Sim step North", tint = fontColor)
                             }
@@ -806,30 +957,31 @@ fun MapScreen(
                             ) {
                                 IconButton(
                                     onClick = { simulateWalk("WEST") },
-                                    modifier = Modifier.size(32.dp)
+                                    modifier = Modifier.size(28.dp)
                                 ) {
                                     Icon(imageVector = Icons.Default.ArrowLeft, contentDescription = "Sim step West", tint = fontColor)
                                 }
                                 IconButton(
                                     onClick = { lockGpsCenter = !lockGpsCenter },
-                                    modifier = Modifier.size(32.dp)
+                                    modifier = Modifier.size(28.dp)
                                 ) {
                                     Icon(
                                         imageVector = if (lockGpsCenter) Icons.Default.GpsFixed else Icons.Default.GpsNotFixed,
                                         contentDescription = "Lock walk pointer to center",
-                                        tint = accentColor
+                                        tint = if (lockGpsCenter) accentColor else fontColor.copy(alpha = 0.5f),
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
                                 IconButton(
                                     onClick = { simulateWalk("EAST") },
-                                    modifier = Modifier.size(32.dp)
+                                    modifier = Modifier.size(28.dp)
                                 ) {
                                     Icon(imageVector = Icons.Default.ArrowRight, contentDescription = "Sim step East", tint = fontColor)
                                 }
                             }
                             IconButton(
                                 onClick = { simulateWalk("SOUTH") },
-                                modifier = Modifier.size(32.dp)
+                                modifier = Modifier.size(28.dp)
                             ) {
                                 Icon(imageVector = Icons.Default.ArrowDropDown, contentDescription = "Sim step South", tint = fontColor)
                             }
@@ -872,7 +1024,7 @@ fun MapScreen(
                         Toast.makeText(context, "Approx bounding block area: ${String.format(Locale.US, "%.1f", a)} sq-meters", Toast.LENGTH_LONG).show()
                     },
                     onImportGpx = {
-                        gisFileImportLauncher.launch("*/*")
+                        showImportMapDialog = true
                     },
                     onExportGpx = {
                         showExportDialog = true
@@ -898,483 +1050,100 @@ fun MapScreen(
                         .padding(end = 4.dp)
                 )
 
-            // Real-time Track Recording Status Widget
-            if (isTrackRecordingActive) {
-                val activeTrackPoints = activePoints
-                val recordingDurationSec by geologyViewModel.recordingDurationSec.collectAsStateWithLifecycle()
-                val isTrackRecordingPaused by geologyViewModel.isTrackRecordingPaused.collectAsStateWithLifecycle()
-                
-                val trackLength = remember(activeTrackPoints) {
-                    if (activeTrackPoints.size < 2) 0.0
-                    else {
-                        var dist = 0.0
-                        for (i in 0 until activeTrackPoints.size - 1) {
-                            val p1 = activeTrackPoints[i]
-                            val p2 = activeTrackPoints[i + 1]
-                            val r = 6371000.0 // meters
-                            val dLat = Math.toRadians(p2.lat - p1.lat)
-                            val dLon = Math.toRadians(p2.lon - p1.lon)
-                            val a = sin(dLat / 2) * sin(dLat / 2) +
-                                    cos(Math.toRadians(p1.lat)) * cos(Math.toRadians(p2.lat)) *
-                                    sin(dLon / 2) * sin(dLon / 2)
-                            val c = 2 * atan2(sqrt(a), sqrt(1 - a))
-                            dist += r * c
-                        }
-                        dist
-                    }
-                }
-                
-                val avgSpeedKmh = remember(trackLength, recordingDurationSec) {
-                    if (recordingDurationSec < 2) 0.0
-                    else {
-                        val hours = recordingDurationSec / 3600.0
-                        val km = trackLength / 1000.0
-                        km / hours
-                    }
-                }
-                
-                val durationFormatted = remember(recordingDurationSec) {
-                    val h = recordingDurationSec / 3600
-                    val m = (recordingDurationSec % 3600) / 60
-                    val s = recordingDurationSec % 60
-                    String.format(Locale.US, "%02d:%02d:%02d", h, m, s)
-                }
 
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = (if (isOutdoorMode) Color.White else Color(0xFF141A17)).copy(alpha = 0.9f)
-                    ),
-                    border = BorderStroke(1.dp, Color.Red.copy(alpha = 0.4f)),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = if (!isSimpleMode) 170.dp else 110.dp)
-                        .width(180.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                val blinkAlpha = if (recordingDurationSec % 2 == 0L) 1f else 0.3f
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(Color.Red.copy(alpha = blinkAlpha))
-                                )
-                                Text(
-                                    text = if (isTrackRecordingPaused) "PAUSED" else "RECORDING",
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isTrackRecordingPaused) Color.Yellow else Color.Red,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                            
-                            Text(
-                                text = durationFormatted,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = fontColor,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                        
-                        Divider(color = fontColor.copy(alpha = 0.1f))
-                        
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column {
-                                Text("DISTANCE", fontSize = 8.sp, color = fontColor.copy(alpha = 0.5f))
-                                Text(
-                                    text = if (trackLength >= 1000.0) String.format(Locale.US, "%.2f km", trackLength / 1000.0) else String.format(Locale.US, "%.0f m", trackLength),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = fontColor,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text("AVG SPEED", fontSize = 8.sp, color = fontColor.copy(alpha = 0.5f))
-                                Text(
-                                    text = String.format(Locale.US, "%.1f km/h", avgSpeedKmh),
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = fontColor,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                        }
-                        
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceEvenly,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            IconButton(
-                                onClick = {
-                                    if (isTrackRecordingPaused) {
-                                        geologyViewModel.resumeRecordingTrack()
-                                    } else {
-                                        geologyViewModel.pauseRecordingTrack()
-                                    }
-                                },
-                                modifier = Modifier.size(28.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (isTrackRecordingPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
-                                    contentDescription = "Pause or resume",
-                                    tint = accentColor,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                            
-                            IconButton(
-                                onClick = {
-                                    showElevationProfile = !showElevationProfile
-                                    elevationProfilePoints = emptyList() // clear so it tracks activePoints
-                                },
-                                modifier = Modifier.size(28.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Terrain,
-                                    contentDescription = "نمایش پروفایل ارتفاعی",
-                                    tint = if (showElevationProfile && elevationProfilePoints.isEmpty()) accentColor else fontColor.copy(alpha = 0.6f),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                            
-                            IconButton(
-                                onClick = {
-                                    geologyViewModel.stopRecordingTrack { pointsJson, length, duration ->
-                                        geologyViewModel.saveTrack(
-                                            name = "GisWalk_" + SimpleDateFormat("HHmm", Locale.US).format(java.util.Date()),
-                                            pointsJson = pointsJson,
-                                            lengthMeters = length,
-                                            durationSeconds = duration
-                                        )
-                                        Toast.makeText(context, "Track saved successfully!", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                modifier = Modifier.size(28.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Stop,
-                                    contentDescription = "Stop",
-                                    tint = Color.Red,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            // --- LAYER 2: MINIMALIST QUICK MAP DECK (DECLUTTERING CONTROL DECK) ---
-            if (uiState is MapUiState.Idle && !isSimpleMode) {
-                Box(
+                // 📏 BOTTOM-START DOCK: Map ScaleBar & Quick Layers Button
+                Row(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .padding(bottom = 80.dp, start = 12.dp)
+                        .padding(bottom = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                if (!isQuickMapDeckExpanded) {
-                    // Small circular button when collapsed
-                    IconButton(
-                        onClick = { isQuickMapDeckExpanded = true },
-                        modifier = Modifier
-                            .size(44.dp)
-                            .background(
-                                color = (if (isOutdoorMode) Color.White else Color(0xFF141A17)).copy(alpha = 0.9f),
-                                shape = CircleShape
-                            )
-                            .border(
-                                width = 1.5.dp,
-                                color = accentColor.copy(alpha = 0.7f),
-                                shape = CircleShape
-                            )
+                    ScaleBar(
+                        zoomLevel = zoomLevel,
+                        isOutdoorMode = isOutdoorMode
+                    )
+
+                    Surface(
+                        onClick = { gisViewModel.updateUiState(MapUiState.LayersExpanded) },
+                        shape = CircleShape,
+                        color = (if (isOutdoorMode) Color.White else Color(0xFF141A17)).copy(alpha = 0.92f),
+                        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.6f)),
+                        shadowElevation = 3.dp,
+                        modifier = Modifier.size(36.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Layers,
-                            contentDescription = "کنترل لایه‌ها و خلوت‌سازی",
-                            tint = accentColor,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Layers,
+                                contentDescription = "مدیریت لایه‌ها و نقشه‌های آفلاین",
+                                tint = accentColor,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     }
-                } else {
-                    // Expanded translucent control deck
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = (if (isOutdoorMode) Color.White else Color(0xFF141A17)).copy(alpha = 0.92f)
-                        ),
-                        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.5f)),
+                }
+
+                // 🎯 BOTTOM-END DOCK: Quick GPS Recenter & Vertical Zoom Pill
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(bottom = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Quick GPS Center FAB
+                    Surface(
+                        onClick = {
+                            lockGpsCenter = true
+                            liveLocation?.let {
+                                simulatorLat = it.latitude
+                                simulatorLon = it.longitude
+                            }
+                            Toast.makeText(context, "موقعیت در مرکز نقشه قفل شد", Toast.LENGTH_SHORT).show()
+                        },
+                        shape = CircleShape,
+                        color = (if (isOutdoorMode) Color.White else Color(0xFF141A17)).copy(alpha = 0.92f),
+                        border = BorderStroke(1.5.dp, if (lockGpsCenter) accentColor else fontColor.copy(alpha = 0.3f)),
+                        shadowElevation = 4.dp,
+                        modifier = Modifier.size(42.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = if (lockGpsCenter) Icons.Default.GpsFixed else Icons.Default.GpsNotFixed,
+                                contentDescription = "مرکز بر روی GPS",
+                                tint = if (lockGpsCenter) accentColor else fontColor.copy(alpha = 0.6f),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    // Compact Zoom Controls Pill (+ / -)
+                    Surface(
                         shape = RoundedCornerShape(16.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                        modifier = Modifier
-                            .wrapContentSize()
-                            .widthIn(max = 300.dp)
+                        color = (if (isOutdoorMode) Color.White else Color(0xFF141A17)).copy(alpha = 0.92f),
+                        border = BorderStroke(1.dp, fontColor.copy(alpha = 0.2f)),
+                        shadowElevation = 3.dp
                     ) {
                         Column(
-                            modifier = Modifier.padding(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.width(36.dp)
                         ) {
-                            // Header Row
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                            IconButton(
+                                onClick = { gisViewModel.setZoomLevel((zoomLevel + 1).coerceAtMost(18)) },
+                                modifier = Modifier.size(36.dp)
                             ) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Layers,
-                                        contentDescription = null,
-                                        tint = accentColor,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Text(
-                                        text = "تنظیمات لایه‌ها / Map Layers",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = fontColor
-                                    )
-                                }
-                                IconButton(
-                                    onClick = { isQuickMapDeckExpanded = false },
-                                    modifier = Modifier.size(20.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = "بستن",
-                                        tint = fontColor.copy(alpha = 0.6f),
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                }
+                                Icon(Icons.Default.Add, contentDescription = "بزرگ‌نمایی", tint = fontColor, modifier = Modifier.size(18.dp))
                             }
-
-                            Divider(color = fontColor.copy(alpha = 0.1f))
-
-                            // Grid of toggles
-                            Column(
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            Divider(color = fontColor.copy(alpha = 0.15f), modifier = Modifier.width(22.dp))
+                            IconButton(
+                                onClick = { gisViewModel.setZoomLevel((zoomLevel - 1).coerceAtLeast(1)) },
+                                modifier = Modifier.size(36.dp)
                             ) {
-                                // 1. Placemarks/Stations Layer Toggle
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .clickable { gisViewModel.toggleStations(!showStations) }
-                                        .background(if (showStations) accentColor.copy(alpha = 0.1f) else Color.Transparent)
-                                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Place,
-                                            contentDescription = null,
-                                            tint = if (showStations) accentColor else fontColor.copy(alpha = 0.5f),
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = "ایستگاه‌ها / Stations",
-                                            fontSize = 10.sp,
-                                            color = fontColor
-                                        )
-                                    }
-                                    Switch(
-                                        checked = showStations,
-                                        onCheckedChange = { gisViewModel.toggleStations(it) },
-                                        colors = SwitchDefaults.colors(
-                                            checkedThumbColor = Color.White,
-                                            checkedTrackColor = accentColor,
-                                            uncheckedThumbColor = fontColor.copy(alpha = 0.5f),
-                                            uncheckedTrackColor = fontColor.copy(alpha = 0.1f)
-                                        ),
-                                        modifier = Modifier.scale(0.7f)
-                                    )
-                                }
-
-                                // 2. Geological Symbols Layer Toggle
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .clickable { gisViewModel.toggleSymbols(!showSymbols) }
-                                        .background(if (showSymbols) accentColor.copy(alpha = 0.1f) else Color.Transparent)
-                                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Category,
-                                            contentDescription = null,
-                                            tint = if (showSymbols) accentColor else fontColor.copy(alpha = 0.5f),
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = "نمادها / Symbols",
-                                            fontSize = 10.sp,
-                                            color = fontColor
-                                        )
-                                    }
-                                    Switch(
-                                        checked = showSymbols,
-                                        onCheckedChange = { gisViewModel.toggleSymbols(it) },
-                                        colors = SwitchDefaults.colors(
-                                            checkedThumbColor = Color.White,
-                                            checkedTrackColor = accentColor,
-                                            uncheckedThumbColor = fontColor.copy(alpha = 0.5f),
-                                            uncheckedTrackColor = fontColor.copy(alpha = 0.1f)
-                                        ),
-                                        modifier = Modifier.scale(0.7f)
-                                    )
-                                }
-
-                                // 3. Fault Lines Layer Toggle
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .clickable { gisViewModel.toggleFaultLines(!showFaultLines) }
-                                        .background(if (showFaultLines) accentColor.copy(alpha = 0.1f) else Color.Transparent)
-                                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.TrendingFlat,
-                                            contentDescription = null,
-                                            tint = if (showFaultLines) accentColor else fontColor.copy(alpha = 0.5f),
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = "خطوط گسل / Faults",
-                                            fontSize = 10.sp,
-                                            color = fontColor
-                                        )
-                                    }
-                                    Switch(
-                                        checked = showFaultLines,
-                                        onCheckedChange = { gisViewModel.toggleFaultLines(it) },
-                                        colors = SwitchDefaults.colors(
-                                            checkedThumbColor = Color.White,
-                                            checkedTrackColor = accentColor,
-                                            uncheckedThumbColor = fontColor.copy(alpha = 0.5f),
-                                            uncheckedTrackColor = fontColor.copy(alpha = 0.1f)
-                                        ),
-                                        modifier = Modifier.scale(0.7f)
-                                    )
-                                }
-
-                                // 4. Walk simulator controller toggle
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .clickable { showMoveSimulator = !showMoveSimulator }
-                                        .background(if (showMoveSimulator) accentColor.copy(alpha = 0.1f) else Color.Transparent)
-                                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.DirectionsWalk,
-                                            contentDescription = null,
-                                            tint = if (showMoveSimulator) accentColor else fontColor.copy(alpha = 0.5f),
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = "شبیه‌ساز / Walk D-Pad",
-                                            fontSize = 10.sp,
-                                            color = fontColor
-                                        )
-                                    }
-                                    Switch(
-                                        checked = showMoveSimulator,
-                                        onCheckedChange = { showMoveSimulator = it },
-                                        colors = SwitchDefaults.colors(
-                                            checkedThumbColor = Color.White,
-                                            checkedTrackColor = accentColor,
-                                            uncheckedThumbColor = fontColor.copy(alpha = 0.5f),
-                                            uncheckedTrackColor = fontColor.copy(alpha = 0.1f)
-                                        ),
-                                        modifier = Modifier.scale(0.7f)
-                                    )
-                                }
-
-                                // 5. Show Top HUD Toggle
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .clickable { showTopHud = !showTopHud }
-                                        .background(if (showTopHud) accentColor.copy(alpha = 0.1f) else Color.Transparent)
-                                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Info,
-                                            contentDescription = null,
-                                            tint = if (showTopHud) accentColor else fontColor.copy(alpha = 0.5f),
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = "پنل بالا / Top HUD Info",
-                                            fontSize = 10.sp,
-                                            color = fontColor
-                                        )
-                                    }
-                                    Switch(
-                                        checked = showTopHud,
-                                        onCheckedChange = { showTopHud = it },
-                                        colors = SwitchDefaults.colors(
-                                            checkedThumbColor = Color.White,
-                                            checkedTrackColor = accentColor,
-                                            uncheckedThumbColor = fontColor.copy(alpha = 0.5f),
-                                            uncheckedTrackColor = fontColor.copy(alpha = 0.1f)
-                                        ),
-                                        modifier = Modifier.scale(0.7f)
-                                    )
-                                }
+                                Icon(Icons.Default.Remove, contentDescription = "کوچک‌نمایی", tint = fontColor, modifier = Modifier.size(18.dp))
                             }
                         }
                     }
                 }
-            }
-        }
 
             // 📊 1. Exploration Survey Stats Dialog (داشبورد آمارهای اکتشافی پروژه)
             if (showProjectStatsDialog) {
@@ -1697,6 +1466,321 @@ fun MapScreen(
                     confirmButton = {
                         TextButton(onClick = { showWaypointSelectorDialog = false }) {
                             Text("CLOSE", color = fontColor.copy(alpha = 0.6f))
+                        }
+                    },
+                    containerColor = if (isOutdoorMode) Color.White else Color(0xFF161E1B)
+                )
+            }
+
+            // 📥 OFFLINE MAP & GIS LAYER IMPORTER DIALOG
+            if (showImportMapDialog) {
+                AlertDialog(
+                    onDismissRequest = { showImportMapDialog = false },
+                    title = {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Download, contentDescription = null, tint = accentColor, modifier = Modifier.size(24.dp))
+                            Column {
+                                Text(
+                                    text = "درون‌ریزی نقشه و لایه‌های آفلاین",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = fontColor
+                                )
+                                Text(
+                                    text = "Import Offline Maps & GIS Layers",
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = fontColor.copy(alpha = 0.5f)
+                                )
+                            }
+                        }
+                    },
+                    text = {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            Text(
+                                text = "فرمت مورد نظر خود را برای بارگذاری مستقیم روی نقشه انتخاب نمایید (بدون نیاز به اینترنت یا API):",
+                                fontSize = 11.sp,
+                                color = fontColor.copy(alpha = 0.8f),
+                                lineHeight = 16.sp
+                            )
+
+                            // 1. MBTiles Card
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = accentColor.copy(alpha = 0.08f)),
+                                border = BorderStroke(0.8.dp, accentColor.copy(alpha = 0.3f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        showImportMapDialog = false
+                                        mbtilesImportLauncher.launch("*/*")
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Layers, contentDescription = null, tint = accentColor, modifier = Modifier.size(26.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "نقشه ماهواره‌ای / توپوگرافی (MBTiles / SQLite)",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = fontColor
+                                        )
+                                        Text(
+                                            text = "فایل‌های تایل رستری خروجی SAS.Planet و QGIS (سرعت بالا و حجم نامحدود)",
+                                            fontSize = 9.5.sp,
+                                            color = fontColor.copy(alpha = 0.6f)
+                                        )
+                                    }
+                                    Icon(Icons.Default.FolderOpen, contentDescription = null, tint = accentColor, modifier = Modifier.size(18.dp))
+                                }
+                            }
+
+                            // 2. GeoJSON Card
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = fontColor.copy(alpha = 0.04f)),
+                                border = BorderStroke(0.5.dp, fontColor.copy(alpha = 0.15f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        showImportMapDialog = false
+                                        gisFileImportLauncher.launch("*/*")
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Public, contentDescription = null, tint = Color(0xFF29B6F6), modifier = Modifier.size(26.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "لایه‌های وکتور و زمین‌شناسی (GeoJSON / JSON)",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = fontColor
+                                        )
+                                        Text(
+                                            text = "خطوط گسل، مرزهای چینه‌شناسی، لیتولوژی و زون‌های دگرسانی",
+                                            fontSize = 9.5.sp,
+                                            color = fontColor.copy(alpha = 0.6f)
+                                        )
+                                    }
+                                    Icon(Icons.Default.FolderOpen, contentDescription = null, tint = Color(0xFF29B6F6), modifier = Modifier.size(18.dp))
+                                }
+                            }
+
+                            // 3. KML / KMZ Card
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = fontColor.copy(alpha = 0.04f)),
+                                border = BorderStroke(0.5.dp, fontColor.copy(alpha = 0.15f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        showImportMapDialog = false
+                                        gisFileImportLauncher.launch("*/*")
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Place, contentDescription = null, tint = Color(0xFFFFB300), modifier = Modifier.size(26.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "نقشه‌های گوگل ارث (KML / KMZ)",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = fontColor
+                                        )
+                                        Text(
+                                            text = "نقاط، خطوط پیمایش و چندضلعی‌های خروجی از Google Earth",
+                                            fontSize = 9.5.sp,
+                                            color = fontColor.copy(alpha = 0.6f)
+                                        )
+                                    }
+                                    Icon(Icons.Default.FolderOpen, contentDescription = null, tint = Color(0xFFFFB300), modifier = Modifier.size(18.dp))
+                                }
+                            }
+
+                            // 4. GPX Card
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = fontColor.copy(alpha = 0.04f)),
+                                border = BorderStroke(0.5.dp, fontColor.copy(alpha = 0.15f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        showImportMapDialog = false
+                                        gisFileImportLauncher.launch("*/*")
+                                    }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(10.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Route, contentDescription = null, tint = Color(0xFF00E676), modifier = Modifier.size(26.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "مسیرها و نقاط GPS گارمین (GPX)",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = fontColor
+                                        )
+                                        Text(
+                                            text = "ایستگاه‌های ثبت‌شده با دستگاه‌های دستی GPS و ساعت‌های ناوبری",
+                                            fontSize = 9.5.sp,
+                                            color = fontColor.copy(alpha = 0.6f)
+                                        )
+                                    }
+                                    Icon(Icons.Default.FolderOpen, contentDescription = null, tint = Color(0xFF00E676), modifier = Modifier.size(18.dp))
+                                }
+                            }
+
+                            // Tutorial Prompt Button
+                            OutlinedButton(
+                                onClick = {
+                                    showImportMapDialog = false
+                                    showDownloadTutorialDialog = true
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = accentColor),
+                                border = BorderStroke(1.dp, accentColor)
+                            ) {
+                                Icon(Icons.Default.HelpOutline, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("آموزش: چطور نقشه آفلاین دانلود کنیم؟", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        TextButton(onClick = { showImportMapDialog = false }) {
+                            Text("بستن / Close", color = fontColor.copy(alpha = 0.6f))
+                        }
+                    },
+                    containerColor = if (isOutdoorMode) Color.White else Color(0xFF161E1B)
+                )
+            }
+
+            // 💡 TUTORIAL DIALOG: HOW TO DOWNLOAD OFFLINE MAPS FOR THE APP
+            if (showDownloadTutorialDialog) {
+                AlertDialog(
+                    onDismissRequest = { showDownloadTutorialDialog = false },
+                    title = {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.HelpOutline, contentDescription = null, tint = accentColor, modifier = Modifier.size(24.dp))
+                            Text(
+                                text = "راهنمای دانلود نقشه‌های آفلاین",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = fontColor
+                            )
+                        }
+                    },
+                    text = {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState())
+                        ) {
+                            Text(
+                                text = "برای استفاده کاملاً آفلاین بدون اینترنت یا نیاز به Google/Bing API، می‌توانید نقشه‌ها را با ابزارهای رایگان دانلود کنید:",
+                                fontSize = 11.sp,
+                                color = fontColor.copy(alpha = 0.8f),
+                                lineHeight = 16.sp
+                            )
+
+                            // Method 1: SAS.Planet
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = fontColor.copy(alpha = 0.04f)),
+                                border = BorderStroke(0.5.dp, fontColor.copy(alpha = 0.15f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text("۱. بهترین روش: نرم‌افزار رایگان SAS.Planet", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = accentColor)
+                                    Text(
+                                        "• نرم‌افزار SAS.Planet را دانلود کنید (نیاز به نصب ندارد).\n" +
+                                        "• نقشه دلخواه را انتخاب کنید (Google Satellite, Bing, Esri, OpenTopoMap).\n" +
+                                        "• با ابزار Selection محدوده کانسار یا پروژه خود را مشخص کنید.\n" +
+                                        "• در پنجره باز شده، به تب Export رفته و فرمت MBTiles (SQLite) را انتخاب کنید.\n" +
+                                        "• زوم‌های مورد نظر (مثلاً Z11 تا Z18) را تیک زده و Start را بزنید.\n" +
+                                        "• فایل خروجی .mbtiles را به گوشی انتقال داده و با دکمه درون‌ریزی MBTiles برنامه بارگذاری کنید.",
+                                        fontSize = 10.sp,
+                                        color = fontColor.copy(alpha = 0.75f),
+                                        lineHeight = 15.sp
+                                    )
+                                }
+                            }
+
+                            // Method 2: QGIS
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = fontColor.copy(alpha = 0.04f)),
+                                border = BorderStroke(0.5.dp, fontColor.copy(alpha = 0.15f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text("۲. لایه‌های زمین‌شناسی با QGIS", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFF29B6F6))
+                                    Text(
+                                        "• شیپ‌فایل‌های سازمان زمین‌شناسی، خطوط گسل یا زون‌های دگرسانی را در QGIS باز کنید.\n" +
+                                        "• روی لایه راست‌کلیک کرده و Export > Save Features As را بزنید.\n" +
+                                        "• فرمت را GeoJSON انتخاب کرده و ذخیره نمایید.\n" +
+                                        "• فایل را با گزینه GeoJSON برنامه مستقیماً روی نقشه نمایش دهید.",
+                                        fontSize = 10.sp,
+                                        color = fontColor.copy(alpha = 0.75f),
+                                        lineHeight = 15.sp
+                                    )
+                                }
+                            }
+
+                            // Method 3: Google Earth
+                            Card(
+                                colors = CardDefaults.cardColors(containerColor = fontColor.copy(alpha = 0.04f)),
+                                border = BorderStroke(0.5.dp, fontColor.copy(alpha = 0.15f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text("۳. پین‌ها و ترانشه‌ها با Google Earth", fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color(0xFFFFB300))
+                                    Text(
+                                        "• در Google Earth مسیرها یا پلیگون‌های محدوده را رسم کنید.\n" +
+                                        "• روی پوشه راست‌کلیک کرده و Save Place As را انتخاب کنید.\n" +
+                                        "• با پسوند .kmz یا .kml ذخیره و در این برنامه بارگذاری کنید.",
+                                        fontSize = 10.sp,
+                                        color = fontColor.copy(alpha = 0.75f),
+                                        lineHeight = 15.sp
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                showDownloadTutorialDialog = false
+                                showImportMapDialog = true
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = accentColor)
+                        ) {
+                            Text("شروع درون‌ریزی فایل", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDownloadTutorialDialog = false }) {
+                            Text("بستن / Close", color = fontColor.copy(alpha = 0.6f))
                         }
                     },
                     containerColor = if (isOutdoorMode) Color.White else Color(0xFF161E1B)

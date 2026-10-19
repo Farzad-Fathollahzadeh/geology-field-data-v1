@@ -326,9 +326,10 @@ fun LayerManagerSheet(
 
                         if (importedMbtilesFiles.isEmpty()) {
                             Text(
-                                text = "No MBTiles maps imported yet. Use the 'Import' button above to load a .mbtiles file directly into the app (instant AlpineQuest-style offline rendering).",
+                                text = "هنوز نقشه آفلاینی وارد نشده است. با زدن دکمه درون‌ریزی، فایل‌های MBTiles (خروجی SAS.Planet و QGIS) را مستقیماً لود کنید تا بدون نیاز به اینترنت نمایش داده شوند.\nNo MBTiles maps imported yet. Use 'Import' button above to load .mbtiles or .sqlite files directly into the app.",
                                 fontSize = 10.sp,
-                                color = textColor.copy(alpha = 0.5f),
+                                color = textColor.copy(alpha = 0.6f),
+                                lineHeight = 14.sp,
                                 modifier = Modifier.padding(vertical = 4.dp)
                             )
                         } else {
@@ -361,14 +362,37 @@ fun LayerManagerSheet(
                                                     modifier = Modifier.size(24.dp)
                                                 )
                                                 Spacer(modifier = Modifier.width(2.dp))
-                                                Text(
-                                                    text = fileName,
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = textColor,
-                                                    maxLines = 1,
-                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                                )
+                                                val sizeMb = file.length().toDouble() / (1024.0 * 1024.0)
+                                                val sizeStr = if (sizeMb >= 1.0) String.format(Locale.US, "%.1f MB", sizeMb) else String.format(Locale.US, "%.0f KB", file.length() / 1024.0)
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = fileName,
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = textColor,
+                                                        maxLines = 1,
+                                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                    )
+                                                    Row(
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Text(
+                                                            text = sizeStr,
+                                                            fontSize = 9.sp,
+                                                            color = textColor.copy(alpha = 0.5f),
+                                                            fontFamily = FontFamily.Monospace
+                                                        )
+                                                        if (isActive) {
+                                                            Text(
+                                                                text = "• فعال روی نقشه",
+                                                                fontSize = 9.sp,
+                                                                color = accentColor,
+                                                                fontWeight = FontWeight.Bold
+                                                            )
+                                                        }
+                                                    }
+                                                }
                                             }
                                             
                                             IconButton(

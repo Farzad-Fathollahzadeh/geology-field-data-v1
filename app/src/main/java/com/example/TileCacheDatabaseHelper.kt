@@ -8,6 +8,10 @@ import android.database.sqlite.SQLiteOpenHelper
 class TileCacheDatabaseHelper private constructor(context: Context) :
     SQLiteOpenHelper(context.applicationContext, DATABASE_NAME, null, DATABASE_VERSION) {
 
+    init {
+        setWriteAheadLoggingEnabled(true)
+    }
+
     // Fast in-memory LRU cache for up to 120 map tiles to eliminate disk reads on pan/zoom
     private val memoryCache = object : android.util.LruCache<String, TileData>(120) {}
 
@@ -32,7 +36,6 @@ class TileCacheDatabaseHelper private constructor(context: Context) :
     }
 
     override fun onCreate(db: SQLiteDatabase) {
-        db.enableWriteAheadLogging()
         val createTable = """
             CREATE TABLE IF NOT EXISTS $TABLE_TILE_CACHE (
                 $COLUMN_URL_KEY TEXT PRIMARY KEY,
@@ -46,7 +49,6 @@ class TileCacheDatabaseHelper private constructor(context: Context) :
 
     override fun onConfigure(db: SQLiteDatabase) {
         super.onConfigure(db)
-        db.enableWriteAheadLogging()
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {

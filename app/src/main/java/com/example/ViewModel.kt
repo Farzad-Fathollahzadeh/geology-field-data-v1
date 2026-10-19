@@ -61,7 +61,8 @@ data class ImportedFeature(
 class GeologyViewModel(
     val application: Application,
     val dao: GeologyDao,
-    val repository: GeologyRepository = (application as GeologyApplication).repository
+    val repository: GeologyRepository = (application as? GeologyApplication)?.repository
+        ?: GeologyRepository(dao, GeologyDatabase.getInstance(application))
 ) : ViewModel() {
 
     private val prefs = application.getSharedPreferences("geofieldpro_prefs", Context.MODE_PRIVATE)
@@ -793,17 +794,64 @@ class GeologyViewModel(
     fun importMapFile(context: Context, uri: android.net.Uri) {
         viewModelScope.launch {
             try {
-                val uriStr = uri.toString()
-                val mimeType = context.contentResolver.getType(uri) ?: ""
-                val isGpx = uriStr.endsWith(".gpx", ignoreCase = true) || mimeType.contains("gpx", ignoreCase = true)
-                val isKmz = uriStr.endsWith(".kmz", ignoreCase = true) || mimeType.contains("kmz", ignoreCase = true)
-                
+                var fileName = ""
+                if (uri.scheme == "content") {
+                    try {
+                        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                            if (cursor.moveToFirst()) {
+                                val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                                if (idx != -1) fileName = cursor.getString(idx) ?: ""
+                            }
+                        }
+                    } catch (e: Exception) {}
+                }
+                if (fileName.isEmpty()) {
+                    fileName = uri.lastPathSegment ?: ""
+                }
+
+                val uriStr = uri.toString().lowercase()
+                val lowerName = fileName.lowercase()
+                val mimeType = (context.contentResolver.getType(uri) ?: "").lowercase()
+
+                val isMbtiles = lowerName.endsWith(".mbtiles") || lowerName.endsWith(".sqlite") || uriStr.endsWith(".mbtiles") || uriStr.endsWith(".sqlite")
+
+                if (isMbtiles) {
+                    // Copy to MBTiles storage
+                    val mbtilesDir = java.io.File(context.filesDir, "mbtiles")
+                    if (!mbtilesDir.exists()) mbtilesDir.mkdirs()
+                    val sanitized = (if (fileName.isNotBlank()) fileName else "imported_${System.currentTimeMillis()}.mbtiles").replace(Regex("[^a-zA-Z0-9._-]"), "_")
+                    val destFile = java.io.File(mbtilesDir, sanitized)
+
+                    withContext(Dispatchers.IO) {
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            java.io.FileOutputStream(destFile).use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                    }
+
+                    withContext(Dispatchers.Main) {
+                        val isFarsi = isFarsiModeSetting.value
+                        val message = if (isFarsi) {
+                            "نقشه MBTiles '$sanitized' با موفقیت وارد شد و در لایه‌ها آماده است!"
+                        } else {
+                            "MBTiles map '$sanitized' imported successfully into Layers!"
+                        }
+                        android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
+                    }
+                    return@launch
+                }
+
+                val isGpx = lowerName.endsWith(".gpx") || uriStr.endsWith(".gpx") || mimeType.contains("gpx")
+                val isKmz = lowerName.endsWith(".kmz") || uriStr.endsWith(".kmz") || mimeType.contains("kmz")
+                val isGeoJson = lowerName.endsWith(".geojson") || lowerName.endsWith(".json") || uriStr.endsWith(".geojson") || uriStr.endsWith(".json") || mimeType.contains("geo+json") || mimeType.contains("json")
+
                 val features = withContext(Dispatchers.IO) {
                     context.contentResolver.openInputStream(uri)?.use { inputStream ->
-                        if (isGpx) {
-                            GpxParser.parse(inputStream)
-                        } else {
-                            KmlParser.parse(inputStream, isKmz)
+                        when {
+                            isGeoJson -> GeoJsonParser.parse(inputStream)
+                            isGpx -> GpxParser.parse(inputStream)
+                            else -> KmlParser.parse(inputStream, isKmz)
                         }
                     } ?: emptyList()
                 }
@@ -813,9 +861,9 @@ class GeologyViewModel(
                     withContext(Dispatchers.Main) {
                         val isFarsi = isFarsiModeSetting.value
                         val message = if (isFarsi) {
-                            "تعداد ${features.size} لایه با موفقیت وارد شد!"
+                            "تعداد ${features.size} لایه/عارضه با موفقیت وارد شد!"
                         } else {
-                            "Successfully imported ${features.size} map layers!"
+                            "Successfully imported ${features.size} map features!"
                         }
                         android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
                     }
@@ -823,9 +871,9 @@ class GeologyViewModel(
                     withContext(Dispatchers.Main) {
                         val isFarsi = isFarsiModeSetting.value
                         val message = if (isFarsi) {
-                            "هیچ لایه‌ای یافت نشد یا فرمت فایل نامعتبر است."
+                            "هیچ لایه‌ای یافت نشد یا فرمت فایل نامعتبر است (فرمت‌های مجاز: MBTiles, GeoJSON, KML, KMZ, GPX)."
                         } else {
-                            "No map layers found or invalid KML/KMZ format."
+                            "No map layers found or invalid format (supported: MBTiles, GeoJSON, KML, KMZ, GPX)."
                         }
                         android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
                     }
@@ -1501,7 +1549,8 @@ class GeologyViewModel(
 class GeologyViewModelFactory(
     private val application: Application,
     private val dao: GeologyDao,
-    private val repository: GeologyRepository = (application as GeologyApplication).repository
+    private val repository: GeologyRepository = (application as? GeologyApplication)?.repository
+        ?: GeologyRepository(dao, GeologyDatabase.getInstance(application))
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(GeologyViewModel::class.java)) {

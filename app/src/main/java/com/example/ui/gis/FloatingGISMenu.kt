@@ -362,8 +362,8 @@ fun FloatingGISMenu(
                     )
 
                     GISMenuButton(
-                        label = "ورود فایل (GPX/KML/KMZ) | Import",
-                        icon = Icons.Default.CloudUpload,
+                        label = "مرکز نقشه‌های آفلاین (MBTiles/GeoJSON)",
+                        icon = Icons.Default.CloudDownload,
                         accentColor = accentColor,
                         textColor = fontColor,
                         onClick = {
@@ -373,8 +373,8 @@ fun FloatingGISMenu(
                     )
 
                     GISMenuButton(
-                        label = "خروجی اطلاعات | Export Data",
-                        icon = Icons.Default.CloudDownload,
+                        label = "خروجی نقشه و داده‌ها | Export GIS",
+                        icon = Icons.Default.CloudUpload,
                         accentColor = accentColor,
                         textColor = fontColor,
                         onClick = {

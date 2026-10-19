@@ -599,4 +599,24 @@ interface GeologyDao {
 )
 abstract class GeologyDatabase : RoomDatabase() {
     abstract fun dao(): GeologyDao
+
+    companion object {
+        @Volatile
+        private var INSTANCE: GeologyDatabase? = null
+
+        fun getInstance(context: android.content.Context): GeologyDatabase {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: androidx.room.Room.databaseBuilder(
+                    context.applicationContext,
+                    GeologyDatabase::class.java,
+                    "geology_db"
+                )
+                .setJournalMode(androidx.room.RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
+                .fallbackToDestructiveMigration()
+                .fallbackToDestructiveMigrationOnDowngrade()
+                .build()
+                .also { INSTANCE = it }
+            }
+        }
+    }
 }

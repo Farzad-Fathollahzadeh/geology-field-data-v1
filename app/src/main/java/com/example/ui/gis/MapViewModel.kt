@@ -284,12 +284,12 @@ class MapViewModel(application: android.app.Application) : AndroidViewModel(appl
                 )
                 
                 val tableCheckCursor = db.rawQuery(
-                    "SELECT name FROM sqlite_master WHERE type='table' AND name='tiles'",
+                    "SELECT name FROM sqlite_master WHERE (type='table' OR type='view') AND (name='tiles' OR name='metadata')",
                     null
                 )
                 val hasTilesTable = tableCheckCursor.use { it.moveToFirst() }
                 if (!hasTilesTable) {
-                    _mbtilesImportStatus.value = "Error: Invalid MBTiles format (Missing 'tiles' table)."
+                    _mbtilesImportStatus.value = "Error: Invalid MBTiles format (Missing 'tiles' or 'metadata')."
                     destFile.delete()
                     _isImportingMbtiles.value = false
                     return@launch

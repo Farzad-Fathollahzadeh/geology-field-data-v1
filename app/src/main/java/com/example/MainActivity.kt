@@ -89,8 +89,11 @@ val mineralizationSuggestions = listOf("Disseminated", "Massive Sulfide", "Stock
 
 class MainActivity : ComponentActivity() {
     private val viewModel: GeologyViewModel by viewModels {
-        val app = application as GeologyApplication
-        GeologyViewModelFactory(app, app.dao)
+        val app = application as? GeologyApplication
+        val db = app?.database ?: GeologyDatabase.getInstance(applicationContext)
+        val dao = app?.dao ?: db.dao()
+        val repo = app?.repository ?: GeologyRepository(dao, db)
+        GeologyViewModelFactory(application, dao, repo)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -258,8 +261,6 @@ fun MainScreenContent(
     val gpsMinDisplacement by viewModel.gpsMinDisplacement.collectAsStateWithLifecycle()
     val isKalmanSmoothingEnabled by viewModel.isKalmanSmoothingEnabled.collectAsStateWithLifecycle()
 
-    val utmBackgroundCoord by UtmBackgroundService.utmString.collectAsStateWithLifecycle()
-
     val rootLocationPermissionsState = rememberMultiplePermissionsState(
         permissions = listOf(
             android.Manifest.permission.ACCESS_FINE_LOCATION,
@@ -271,8 +272,7 @@ fun MainScreenContent(
     LaunchedEffect(isRootLocationPermitted) {
         if (isRootLocationPermitted) {
             try {
-                val intent = Intent(context, UtmBackgroundService::class.java)
-                context.startService(intent)
+                viewModel.startLocationTracking(context)
             } catch (t: Throwable) {
                 t.printStackTrace()
             }

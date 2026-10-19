@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.location.Location
 import android.os.Build
 import android.os.IBinder
@@ -27,8 +28,27 @@ class UtmBackgroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-        startLocationUpdates()
+        try {
+            createNotificationChannel()
+            val notification = createNotification()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(1001, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION)
+            } else {
+                startForeground(1001, notification)
+            }
+        } catch (e: Exception) {
+            // If background permissions are not met on Android 14+, avoid fatal crash
+            e.printStackTrace()
+            stopSelf()
+            return
+        }
+
+        try {
+            fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+            startLocationUpdates()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun startLocationUpdates() {
@@ -52,13 +72,16 @@ class UtmBackgroundService : Service() {
         }
 
         try {
+            val callback = locationCallback ?: return
             fusedLocationClient?.requestLocationUpdates(
                 locationRequest,
-                locationCallback!!,
+                callback,
                 android.os.Looper.getMainLooper()
             )
         } catch (e: SecurityException) {
             // Permission check missing or denied
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
     }
 
@@ -71,8 +94,8 @@ class UtmBackgroundService : Service() {
             ).apply {
                 description = "Updates UTM Coordinates in Background"
             }
-            val manager = getSystemService(NotificationManager::class.java) as NotificationManager
-            manager.createNotificationChannel(channel)
+            val manager = getSystemService(NotificationManager::class.java) as? NotificationManager
+            manager?.createNotificationChannel(channel)
         }
     }
 
@@ -82,11 +105,12 @@ class UtmBackgroundService : Service() {
             .setContentText("Tracking UTM coordinates in the background (5s updates)")
             .setSmallIcon(android.R.drawable.ic_menu_compass)
             .setOngoing(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -94,7 +118,11 @@ class UtmBackgroundService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         locationCallback?.let {
-            fusedLocationClient?.removeLocationUpdates(it)
+            try {
+                fusedLocationClient?.removeLocationUpdates(it)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
         serviceJob.cancel()
     }
