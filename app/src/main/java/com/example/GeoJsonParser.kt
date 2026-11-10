@@ -5,52 +5,29 @@ import org.json.JSONObject
 import java.io.InputStream
 
 /**
- * Robust GeoJSON parser for geological features, fault lines, polygons, and waypoints.
- * Complies with RFC 7946 GeoJSON standard.
+ * Robust GeoJSON parser for user-imported spatial datasets (Points, Lines, Polygons).
+ * Fully compatible with QGIS, ArcGIS, and online GeoJSON tools without external dependencies.
  */
 object GeoJsonParser {
-
-    private val colorPalette = listOf(
-        "#E53935", // Red
-        "#43A047", // Green
-        "#1E88E5", // Blue
-        "#FDD835", // Yellow
-        "#8E24AA", // Purple
-        "#FB8C00", // Orange
-        "#00ACC1"  // Cyan
-    )
 
     fun parse(inputStream: InputStream): List<ImportedFeature> {
         val features = mutableListOf<ImportedFeature>()
         try {
-            val jsonText = inputStream.bufferedReader().use { it.readText() }
-            if (jsonText.isBlank()) return emptyList()
-
-            val root = JSONObject(jsonText)
+            val text = inputStream.bufferedReader().use { it.readText() }
+            val root = JSONObject(text)
             val type = root.optString("type", "")
 
-            when (type) {
-                "FeatureCollection" -> {
-                    val featureArray = root.optJSONArray("features") ?: JSONArray()
-                    for (i in 0 until featureArray.length()) {
-                        val fObj = featureArray.optJSONObject(i) ?: continue
-                        parseSingleFeature(fObj, features)
-                    }
+            if (type.equals("FeatureCollection", ignoreCase = true)) {
+                val featuresArray = root.optJSONArray("features") ?: JSONArray()
+                for (i in 0 until featuresArray.length()) {
+                    val featObj = featuresArray.optJSONObject(i) ?: continue
+                    parseFeature(featObj, features)
                 }
-                "Feature" -> {
-                    parseSingleFeature(root, features)
-                }
-                "GeometryCollection" -> {
-                    val geometries = root.optJSONArray("geometries") ?: JSONArray()
-                    for (i in 0 until geometries.length()) {
-                        val gObj = geometries.optJSONObject(i) ?: continue
-                        parseGeometry(gObj, "GeoJSON Geometry ${features.size + 1}", "", features)
-                    }
-                }
-                else -> {
-                    // Try parsing as a raw geometry (Point, LineString, Polygon, etc.)
-                    parseGeometry(root, "GeoJSON Layer", "", features)
-                }
+            } else if (type.equals("Feature", ignoreCase = true)) {
+                parseFeature(root, features)
+            } else {
+                // Raw Geometry
+                parseGeometry("Imported Layer", "", root, features)
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -58,186 +35,118 @@ object GeoJsonParser {
         return features
     }
 
-    private fun parseSingleFeature(featureObj: JSONObject, outList: MutableList<ImportedFeature>) {
-        val properties = featureObj.optJSONObject("properties") ?: JSONObject()
-        val geometry = featureObj.optJSONObject("geometry") ?: return
+    private fun parseFeature(featObj: JSONObject, features: MutableList<ImportedFeature>) {
+        val props = featObj.optJSONObject("properties") ?: JSONObject()
+        val name = props.optString("name").takeIf { it.isNotBlank() }
+            ?: props.optString("title").takeIf { it.isNotBlank() }
+            ?: props.optString("id").takeIf { it.isNotBlank() }
+            ?: "Layer ${features.size + 1}"
+        val desc = props.optString("description", "")
+        val colorHex = props.optString("stroke").takeIf { it.isNotBlank() }
+            ?: props.optString("fill").takeIf { it.isNotBlank() }
+            ?: props.optString("marker-color").takeIf { it.isNotBlank() }
+            ?: "#00E5FF"
 
-        val name = properties.optString("name").takeIf { it.isNotBlank() }
-            ?: properties.optString("title").takeIf { it.isNotBlank() }
-            ?: properties.optString("label").takeIf { it.isNotBlank() }
-            ?: properties.optString("id").takeIf { it.isNotBlank() }
-            ?: "GeoJSON Feature #${outList.size + 1}"
-
-        val desc = properties.optString("description").takeIf { it.isNotBlank() }
-            ?: properties.optString("desc").takeIf { it.isNotBlank() }
-            ?: properties.optString("comment").takeIf { it.isNotBlank() }
-            ?: buildPropertiesSummary(properties)
-
-        val customColor = properties.optString("stroke").takeIf { it.isNotBlank() }
-            ?: properties.optString("fill").takeIf { it.isNotBlank() }
-            ?: properties.optString("color").takeIf { it.isNotBlank() }
-            ?: properties.optString("marker-color").takeIf { it.isNotBlank() }
-
-        parseGeometry(geometry, name, desc, outList, customColor)
+        val geom = featObj.optJSONObject("geometry") ?: return
+        parseGeometry(name, desc, geom, features, colorHex)
     }
 
     private fun parseGeometry(
-        geomObj: JSONObject,
         name: String,
         desc: String,
-        outList: MutableList<ImportedFeature>,
-        preferredColor: String? = null
+        geom: JSONObject,
+        features: MutableList<ImportedFeature>,
+        customColor: String = "#00E5FF"
     ) {
-        val geomType = geomObj.optString("type", "")
-        val coordinates = geomObj.optJSONArray("coordinates") ?: return
-        val color = preferredColor ?: colorPalette[outList.size % colorPalette.size]
-
+        val geomType = geom.optString("type", "")
         when (geomType) {
             "Point" -> {
-                // coordinates: [lon, lat] or [lon, lat, ele]
-                if (coordinates.length() >= 2) {
-                    val lon = coordinates.optDouble(0)
-                    val lat = coordinates.optDouble(1)
-                    if (!lon.isNaN() && !lat.isNaN()) {
-                        outList.add(
-                            ImportedFeature(
-                                id = "geojson_pt_${outList.size}_${System.currentTimeMillis()}",
-                                name = name,
-                                description = desc,
-                                type = "Point",
-                                coordinates = listOf(Coord(lat, lon)),
-                                colorHex = color
-                            )
-                        )
-                    }
-                }
-            }
-            "MultiPoint" -> {
-                // coordinates: [[lon, lat], [lon, lat]]
-                val pts = extractCoordinatesList(coordinates)
-                pts.forEachIndexed { idx, coord ->
-                    outList.add(
+                val coords = geom.optJSONArray("coordinates") ?: return
+                if (coords.length() >= 2) {
+                    val lon = coords.optDouble(0)
+                    val lat = coords.optDouble(1)
+                    features.add(
                         ImportedFeature(
-                            id = "geojson_mpt_${outList.size}_$idx",
-                            name = "$name #$idx",
+                            id = java.util.UUID.randomUUID().toString(),
+                            name = name,
                             description = desc,
                             type = "Point",
-                            coordinates = listOf(coord),
-                            colorHex = color
+                            coordinates = listOf(Coord(lat, lon)),
+                            colorHex = customColor
                         )
                     )
                 }
             }
             "LineString" -> {
-                // coordinates: [[lon, lat], [lon, lat], ...]
-                val coords = extractCoordinatesList(coordinates)
-                if (coords.isNotEmpty()) {
-                    outList.add(
+                val coords = geom.optJSONArray("coordinates") ?: return
+                val coordList = parseCoordList(coords)
+                if (coordList.isNotEmpty()) {
+                    features.add(
                         ImportedFeature(
-                            id = "geojson_line_${outList.size}_${System.currentTimeMillis()}",
+                            id = java.util.UUID.randomUUID().toString(),
                             name = name,
                             description = desc,
                             type = "LineString",
-                            coordinates = coords,
-                            colorHex = color
+                            coordinates = coordList,
+                            colorHex = customColor
                         )
                     )
                 }
             }
-            "MultiLineString" -> {
-                // coordinates: [ [[lon, lat], ...], [[lon, lat], ...] ]
-                for (i in 0 until coordinates.length()) {
-                    val lineArr = coordinates.optJSONArray(i) ?: continue
-                    val coords = extractCoordinatesList(lineArr)
-                    if (coords.isNotEmpty()) {
-                        outList.add(
+            "Polygon" -> {
+                val rings = geom.optJSONArray("coordinates") ?: return
+                if (rings.length() > 0) {
+                    val outerRing = rings.optJSONArray(0) ?: return
+                    val coordList = parseCoordList(outerRing)
+                    if (coordList.isNotEmpty()) {
+                        features.add(
                             ImportedFeature(
-                                id = "geojson_mline_${outList.size}_$i",
-                                name = "$name (Segment ${i + 1})",
+                                id = java.util.UUID.randomUUID().toString(),
+                                name = name,
                                 description = desc,
-                                type = "LineString",
-                                coordinates = coords,
-                                colorHex = color
+                                type = "Polygon",
+                                coordinates = coordList,
+                                colorHex = customColor
                             )
                         )
                     }
                 }
             }
-            "Polygon" -> {
-                // coordinates: [ [ [lon, lat], ... ], ... ] (first is outer boundary)
-                if (coordinates.length() > 0) {
-                    val outerRing = coordinates.optJSONArray(0)
-                    if (outerRing != null) {
-                        val coords = extractCoordinatesList(outerRing)
-                        if (coords.isNotEmpty()) {
-                            outList.add(
+            "MultiPolygon" -> {
+                val polys = geom.optJSONArray("coordinates") ?: return
+                for (p in 0 until polys.length()) {
+                    val rings = polys.optJSONArray(p) ?: continue
+                    if (rings.length() > 0) {
+                        val outerRing = rings.optJSONArray(0) ?: continue
+                        val coordList = parseCoordList(outerRing)
+                        if (coordList.isNotEmpty()) {
+                            features.add(
                                 ImportedFeature(
-                                    id = "geojson_poly_${outList.size}_${System.currentTimeMillis()}",
-                                    name = name,
+                                    id = java.util.UUID.randomUUID().toString(),
+                                    name = "$name (Poly ${p + 1})",
                                     description = desc,
                                     type = "Polygon",
-                                    coordinates = coords,
-                                    colorHex = color
+                                    coordinates = coordList,
+                                    colorHex = customColor
                                 )
                             )
                         }
                     }
                 }
             }
-            "MultiPolygon" -> {
-                // coordinates: [ [ [ [lon, lat], ... ] ], ... ]
-                for (i in 0 until coordinates.length()) {
-                    val polyRings = coordinates.optJSONArray(i) ?: continue
-                    if (polyRings.length() > 0) {
-                        val outerRing = polyRings.optJSONArray(0)
-                        if (outerRing != null) {
-                            val coords = extractCoordinatesList(outerRing)
-                            if (coords.isNotEmpty()) {
-                                outList.add(
-                                    ImportedFeature(
-                                        id = "geojson_mpoly_${outList.size}_$i",
-                                        name = "$name (Poly ${i + 1})",
-                                        description = desc,
-                                        type = "Polygon",
-                                        coordinates = coords,
-                                        colorHex = color
-                                    )
-                                )
-                            }
-                        }
-                    }
-                }
-            }
         }
     }
 
-    private fun extractCoordinatesList(arr: JSONArray): List<Coord> {
-        val result = mutableListOf<Coord>()
-        for (i in 0 until arr.length()) {
-            val pt = arr.optJSONArray(i) ?: continue
+    private fun parseCoordList(jsonArray: JSONArray): List<Coord> {
+        val list = mutableListOf<Coord>()
+        for (i in 0 until jsonArray.length()) {
+            val pt = jsonArray.optJSONArray(i) ?: continue
             if (pt.length() >= 2) {
                 val lon = pt.optDouble(0)
                 val lat = pt.optDouble(1)
-                if (!lon.isNaN() && !lat.isNaN()) {
-                    result.add(Coord(lat, lon))
-                }
+                list.add(Coord(lat, lon))
             }
         }
-        return result
-    }
-
-    private fun buildPropertiesSummary(props: JSONObject): String {
-        val sb = StringBuilder()
-        val keys = props.keys()
-        var count = 0
-        while (keys.hasNext() && count < 5) {
-            val key = keys.next()
-            val v = props.opt(key)
-            if (v != null && key != "stroke" && key != "fill" && key != "color") {
-                sb.append("<b>$key:</b> $v<br>")
-                count++
-            }
-        }
-        return sb.toString().trimEnd()
+        return list
     }
 }

@@ -198,106 +198,10 @@ fun FloatingGISMenu(
 
                     Divider(color = fontColor.copy(alpha = 0.06f))
 
-                    // SECTION 2: Map Controls & View Tuning
-                    MenuSectionHeader("تنظیمات و نمایش نقشه / MAP TUNING", accentColor, fontColor)
+                    Divider(color = fontColor.copy(alpha = 0.08f))
 
-                    // Zoom Controls row
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(itemBgColor, RoundedCornerShape(8.dp))
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "بزرگنمایی / Zoom: $zoomLevel",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = fontColor
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            IconButton(
-                                onClick = onZoomOut,
-                                modifier = Modifier
-                                    .size(28.dp)
-                                    .background(fontColor.copy(alpha = 0.08f), CircleShape)
-                            ) {
-                                Icon(Icons.Default.ZoomOut, contentDescription = "Zoom Out", tint = fontColor, modifier = Modifier.size(16.dp))
-                            }
-                            IconButton(
-                                onClick = onZoomIn,
-                                modifier = Modifier
-                                    .size(28.dp)
-                                    .background(fontColor.copy(alpha = 0.08f), CircleShape)
-                            ) {
-                                Icon(Icons.Default.ZoomIn, contentDescription = "Zoom In", tint = fontColor, modifier = Modifier.size(16.dp))
-                            }
-                        }
-                    }
-
-                    // Opacity Slider Block
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(itemBgColor, RoundedCornerShape(8.dp))
-                            .padding(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("شفافیت نقشه پایه / Opacity", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = fontColor)
-                            Text("${(baseMapOpacity * 100).toInt()}%", fontSize = 10.sp, color = accentColor, fontWeight = FontWeight.Bold)
-                        }
-                        Slider(
-                            value = baseMapOpacity,
-                            onValueChange = onBaseMapOpacityChange,
-                            colors = SliderDefaults.colors(
-                                thumbColor = accentColor,
-                                activeTrackColor = accentColor,
-                                inactiveTrackColor = fontColor.copy(alpha = 0.1f)
-                            ),
-                            modifier = Modifier.height(24.dp)
-                        )
-                    }
-
-                    // Grid lines toggle
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(itemBgColor, RoundedCornerShape(8.dp))
-                            .clickable { onToggleGrids(!showGrids) }
-                            .padding(horizontal = 8.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(Icons.Default.GridView, contentDescription = null, tint = accentColor, modifier = Modifier.size(16.dp))
-                            Text("شبکه‌بندی UTM / Grid Lines", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = fontColor)
-                        }
-                        Switch(
-                            checked = showGrids,
-                            onCheckedChange = onToggleGrids,
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = accentColor,
-                                checkedTrackColor = accentColor.copy(alpha = 0.4f)
-                            ),
-                            modifier = Modifier
-                                .height(20.dp)
-                                .width(36.dp)
-                        )
-                    }
-
-                    Divider(color = fontColor.copy(alpha = 0.06f))
-
-                    // SECTION 3: Tracking & Simulation
-                    MenuSectionHeader("مسیر و شبیه‌ساز / TRACKS & SIM", accentColor, fontColor)
+                    // SECTION 2: Navigation & Field Tools
+                    MenuSectionHeader("ابزارهای ناوبری و اندازه‌گیری / FIELD TOOLS", accentColor, fontColor)
 
                     // Track Recording Trigger
                     GISMenuButton(
@@ -307,34 +211,6 @@ fun FloatingGISMenu(
                         textColor = fontColor,
                         onClick = {
                             onToggleTrackRecording()
-                            isExpanded = false
-                        }
-                    )
-
-                    // Move simulator toggle
-                    GISMenuButton(
-                        label = if (showMoveSimulator) "پنهان‌سازی کنترل شبیه‌ساز | Hide Sim" else "شبیه‌ساز راه رفتن | Walk Simulator",
-                        icon = Icons.Default.DirectionsWalk,
-                        accentColor = if (showMoveSimulator) accentColor else fontColor.copy(alpha = 0.7f),
-                        textColor = fontColor,
-                        onClick = {
-                            onToggleMoveSimulator()
-                            isExpanded = false
-                        }
-                    )
-
-                    Divider(color = fontColor.copy(alpha = 0.06f))
-
-                    // SECTION 4: GIS Utilities
-                    MenuSectionHeader("ابزارها و فایل‌ها / GIS UTILITIES", accentColor, fontColor)
-
-                    GISMenuButton(
-                        label = "لایه‌ها و نقشه‌ها | Manage Layers",
-                        icon = Icons.Default.Layers,
-                        accentColor = accentColor,
-                        textColor = fontColor,
-                        onClick = {
-                            onManageLayers()
                             isExpanded = false
                         }
                     )
@@ -361,13 +237,30 @@ fun FloatingGISMenu(
                         }
                     )
 
+                    // Move simulator toggle
                     GISMenuButton(
-                        label = "مرکز نقشه‌های آفلاین (MBTiles/GeoJSON)",
-                        icon = Icons.Default.CloudDownload,
+                        label = if (showMoveSimulator) "پنهان‌سازی کنترل شبیه‌ساز | Hide Sim" else "شبیه‌ساز راه رفتن | Walk Simulator",
+                        icon = Icons.Default.DirectionsWalk,
+                        accentColor = if (showMoveSimulator) accentColor else fontColor.copy(alpha = 0.7f),
+                        textColor = fontColor,
+                        onClick = {
+                            onToggleMoveSimulator()
+                            isExpanded = false
+                        }
+                    )
+
+                    Divider(color = fontColor.copy(alpha = 0.08f))
+
+                    // SECTION 3: Maps, Data & Stats
+                    MenuSectionHeader("نقشه‌ها و خروجی / MAPS & DATA", accentColor, fontColor)
+
+                    GISMenuButton(
+                        label = "مدیریت نقشه‌های آفلاین و لایه‌ها | Layers",
+                        icon = Icons.Default.Layers,
                         accentColor = accentColor,
                         textColor = fontColor,
                         onClick = {
-                            onImportGpx()
+                            onManageLayers()
                             isExpanded = false
                         }
                     )
@@ -383,10 +276,16 @@ fun FloatingGISMenu(
                         }
                     )
 
-                    Divider(color = fontColor.copy(alpha = 0.06f))
-
-                    // SECTION 5: SUPPORT & GUIDE
-                    MenuSectionHeader("آمارهای پروژه و راهنما / UTILS & GUIDE", accentColor, fontColor)
+                    GISMenuButton(
+                        label = "داشبورد آماری پروژه | Project Stats",
+                        icon = Icons.Default.BarChart,
+                        accentColor = accentColor,
+                        textColor = fontColor,
+                        onClick = {
+                            onShowStats()
+                            isExpanded = false
+                        }
+                    )
 
                     GISMenuButton(
                         label = "داشبورد آماری پروژه | Project Stats",

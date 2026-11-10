@@ -61,8 +61,7 @@ data class ImportedFeature(
 class GeologyViewModel(
     val application: Application,
     val dao: GeologyDao,
-    val repository: GeologyRepository = (application as? GeologyApplication)?.repository
-        ?: GeologyRepository(dao, GeologyDatabase.getInstance(application))
+    val repository: GeologyRepository = (application as GeologyApplication).repository
 ) : ViewModel() {
 
     private val prefs = application.getSharedPreferences("geofieldpro_prefs", Context.MODE_PRIVATE)
@@ -127,6 +126,21 @@ class GeologyViewModel(
     // Dynamic Spatial Data Overlays
     val importedFeatures = MutableStateFlow<List<ImportedFeature>>(emptyList())
 
+    // User-Imported Maps State Flows (MBTiles & Calibrated Geological Overlays)
+    val calibratedMaps = MutableStateFlow<List<CalibratedMap>>(emptyList())
+    val activeMbtilesMap = MutableStateFlow<Map<String, Float>>(emptyMap())
+    val importedMbtilesFiles = MutableStateFlow<List<java.io.File>>(emptyList())
+    val requestOpenUserMapImport = MutableStateFlow(false)
+
+    // SAS.Planet (sasgis/sas.planet.src) Map Providers, Overlays & ZMP Sources
+    val sasCustomSources = MutableStateFlow<List<SasMapSource>>(emptyList())
+    val activeSasSourceId = MutableStateFlow(prefs.getString("active_sas_source_id", "sas_google_sat") ?: "sas_google_sat")
+    val activeSasOverlayIds = MutableStateFlow<Set<String>>(prefs.getStringSet("active_sas_overlay_ids", emptySet()) ?: emptySet())
+    val sasOverlayOpacity = MutableStateFlow(prefs.getFloat("sas_overlay_opacity", 0.72f))
+    val sasDownloadProgress = MutableStateFlow<SasDownloadProgress?>(null)
+    val sasCacheStats = MutableStateFlow(Pair(0, 0L))
+    private var sasDownloadJob: Job? = null
+
     // Location Tracking Flows
     val liveLocation = MutableStateFlow<Location?>(null)
     val gpsState = MutableStateFlow(GpsState())
@@ -151,9 +165,275 @@ class GeologyViewModel(
 
     // Initialize state
     init {
-        viewModelScope.launch {
-            // Load initial states if needed
+        refreshUserMaps()
+    }
+
+    fun refreshUserMaps() {
+        calibratedMaps.value = UserMapManager.getCalibratedMaps(application)
+        activeMbtilesMap.value = UserMapManager.getActiveMbtiles(application)
+        importedMbtilesFiles.value = UserMapManager.getImportedMbtilesFiles(application)
+        sasCustomSources.value = SasZmpStorage.getCustomSources(application)
+        refreshSasCacheStats()
+    }
+
+    fun refreshSasCacheStats() {
+        viewModelScope.launch(Dispatchers.IO) {
+            sasCacheStats.value = TileCacheDatabaseHelper.getInstance(application).getCacheStats()
         }
+    }
+
+    fun clearSasTileCache() {
+        viewModelScope.launch(Dispatchers.IO) {
+            TileCacheDatabaseHelper.getInstance(application).clearCache()
+            sasCacheStats.value = Pair(0, 0L)
+        }
+    }
+
+    fun startSasAreaDownload(
+        centerLat: Double,
+        centerLon: Double,
+        radiusKm: Double,
+        minZoom: Int,
+        maxZoom: Int
+    ) {
+        sasDownloadJob?.cancel()
+        sasDownloadJob = viewModelScope.launch(Dispatchers.IO) {
+            val baseSource = SasZmpStorage.findSourceById(application, activeSasSourceId.value)
+                ?: SasPlanetCatalog.builtInBaseMaps.first()
+            val effectiveMaxZoom = maxZoom.coerceAtMost(baseSource.maxZoom).coerceAtLeast(minZoom)
+            val tiles = SasAreaDownloader.computeTileList(centerLat, centerLon, radiusKm, minZoom, effectiveMaxZoom)
+            var completed = 0
+            var skipped = 0
+            var failed = 0
+            sasDownloadProgress.value = SasDownloadProgress(
+                sourceId = baseSource.id,
+                sourceName = baseSource.name,
+                centerLat = centerLat,
+                centerLon = centerLon,
+                radiusKm = radiusKm,
+                minZoom = minZoom,
+                maxZoom = maxZoom,
+                totalTiles = tiles.size,
+                completedTiles = 0,
+                skippedCached = 0,
+                failedTiles = 0,
+                isRunning = true
+            )
+            for ((z, x, y) in tiles) {
+                if (!isActive) break
+                val res = SasAreaDownloader.downloadSingleTile(application, baseSource, z, x, y)
+                when (res) {
+                    0 -> skipped++
+                    1 -> completed++
+                    else -> failed++
+                }
+                if ((completed + skipped + failed) % 5 == 0 || (completed + skipped + failed) == tiles.size) {
+                    sasDownloadProgress.value = SasDownloadProgress(
+                        sourceId = baseSource.id,
+                        sourceName = baseSource.name,
+                        centerLat = centerLat,
+                        centerLon = centerLon,
+                        radiusKm = radiusKm,
+                        minZoom = minZoom,
+                        maxZoom = maxZoom,
+                        totalTiles = tiles.size,
+                        completedTiles = completed,
+                        skippedCached = skipped,
+                        failedTiles = failed,
+                        isRunning = true
+                    )
+                }
+            }
+            sasDownloadProgress.value = SasDownloadProgress(
+                sourceId = baseSource.id,
+                sourceName = baseSource.name,
+                centerLat = centerLat,
+                centerLon = centerLon,
+                radiusKm = radiusKm,
+                minZoom = minZoom,
+                maxZoom = maxZoom,
+                totalTiles = tiles.size,
+                completedTiles = completed,
+                skippedCached = skipped,
+                failedTiles = failed,
+                isRunning = false
+            )
+            refreshSasCacheStats()
+        }
+    }
+
+    fun saveDownloadedAreaToMbtiles(
+        customName: String? = null,
+        onResult: (Result<Pair<java.io.File, Int>>) -> Unit = {}
+    ) {
+        val prog = sasDownloadProgress.value ?: run {
+            onResult(Result.failure(Exception("ابتدا یک محدوده را دانلود کنید.")))
+            return
+        }
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                val source = SasZmpStorage.findSourceById(application, prog.sourceId)
+                    ?: SasPlanetCatalog.builtInBaseMaps.first()
+                val safeBase = (customName?.takeIf { it.isNotBlank() }
+                    ?: "SAS_${source.id}_Z${prog.minZoom}-${prog.maxZoom}_${System.currentTimeMillis() / 1000}")
+                    .replace(Regex("[^a-zA-Z0-9_\\-]"), "_")
+                val fileName = if (safeBase.endsWith(".mbtiles", true)) safeBase else "$safeBase.mbtiles"
+                val destFile = java.io.File(UserMapManager.getMbtilesDir(application), fileName)
+
+                val exportRes = SasAreaDownloader.exportAreaToMbtiles(
+                    context = application,
+                    source = source,
+                    mapTitle = customName?.takeIf { it.isNotBlank() } ?: "${source.name} (${prog.radiusKm.toInt()}km)",
+                    centerLat = prog.centerLat,
+                    centerLon = prog.centerLon,
+                    radiusKm = prog.radiusKm,
+                    minZoom = prog.minZoom,
+                    maxZoom = prog.maxZoom,
+                    outputFile = destFile
+                )
+                exportRes.map { count ->
+                    UserMapManager.toggleMbtilesActive(application, fileName, true)
+                    Pair(destFile, count)
+                }
+            }
+            result.onSuccess { refreshUserMaps() }
+            onResult(result)
+        }
+    }
+
+    fun exportDownloadedAreaToUri(
+        context: Context,
+        uri: android.net.Uri,
+        onResult: (Result<Int>) -> Unit = {}
+    ) {
+        val prog = sasDownloadProgress.value ?: run {
+            onResult(Result.failure(Exception("ابتدا یک محدوده را دانلود کنید.")))
+            return
+        }
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                val source = SasZmpStorage.findSourceById(application, prog.sourceId)
+                    ?: SasPlanetCatalog.builtInBaseMaps.first()
+                val tempFile = java.io.File(context.cacheDir, "export_${System.currentTimeMillis()}.mbtiles")
+                val exportRes = SasAreaDownloader.exportAreaToMbtiles(
+                    context = application,
+                    source = source,
+                    mapTitle = "${source.name} (${prog.radiusKm.toInt()}km)",
+                    centerLat = prog.centerLat,
+                    centerLon = prog.centerLon,
+                    radiusKm = prog.radiusKm,
+                    minZoom = prog.minZoom,
+                    maxZoom = prog.maxZoom,
+                    outputFile = tempFile
+                )
+                exportRes.mapCatching { count ->
+                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                        tempFile.inputStream().use { inp -> inp.copyTo(out) }
+                    } ?: throw Exception("Cannot write to selected file")
+                    tempFile.delete()
+                    count
+                }
+            }
+            onResult(result)
+        }
+    }
+
+    fun cancelSasAreaDownload() {
+        sasDownloadJob?.cancel()
+        sasDownloadProgress.value = sasDownloadProgress.value?.copy(isRunning = false)
+        refreshSasCacheStats()
+    }
+
+    fun setActiveSasSourceId(sourceId: String) {
+        activeSasSourceId.value = sourceId
+        prefs.edit().putString("active_sas_source_id", sourceId).apply()
+    }
+
+    fun toggleSasOverlay(overlayId: String) {
+        val current = activeSasOverlayIds.value.toMutableSet()
+        if (current.contains(overlayId)) current.remove(overlayId) else current.add(overlayId)
+        activeSasOverlayIds.value = current
+        prefs.edit().putStringSet("active_sas_overlay_ids", current).apply()
+    }
+
+    fun setSasOverlayOpacity(opacity: Float) {
+        val clamped = opacity.coerceIn(0.1f, 1.0f)
+        sasOverlayOpacity.value = clamped
+        prefs.edit().putFloat("sas_overlay_opacity", clamped).apply()
+    }
+
+    fun importSasZmp(context: Context, uri: android.net.Uri, onResult: (Result<SasMapSource>) -> Unit = {}) {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                SasZmpParser.importFromUri(context, uri)
+            }
+            result.onSuccess { source ->
+                SasZmpStorage.addOrUpdateSource(application, source)
+                sasCustomSources.value = SasZmpStorage.getCustomSources(application)
+                if (source.isOverlay) {
+                    val current = activeSasOverlayIds.value.toMutableSet()
+                    current.add(source.id)
+                    activeSasOverlayIds.value = current
+                    prefs.edit().putStringSet("active_sas_overlay_ids", current).apply()
+                } else {
+                    setActiveSasSourceId(source.id)
+                }
+            }
+            onResult(result)
+        }
+    }
+
+    fun deleteSasCustomSource(sourceId: String) {
+        SasZmpStorage.deleteSource(application, sourceId)
+        sasCustomSources.value = SasZmpStorage.getCustomSources(application)
+        if (activeSasSourceId.value == sourceId) {
+            setActiveSasSourceId("sas_google_sat")
+        }
+        if (activeSasOverlayIds.value.contains(sourceId)) {
+            val current = activeSasOverlayIds.value.toMutableSet()
+            current.remove(sourceId)
+            activeSasOverlayIds.value = current
+            prefs.edit().putStringSet("active_sas_overlay_ids", current).apply()
+        }
+    }
+
+    fun toggleCalibratedMap(id: String, visible: Boolean) {
+        UserMapManager.toggleCalibratedMapVisibility(application, id, visible)
+        calibratedMaps.value = UserMapManager.getCalibratedMaps(application)
+    }
+
+    fun setCalibratedMapOpacity(id: String, opacity: Float) {
+        UserMapManager.updateCalibratedMapOpacity(application, id, opacity)
+        calibratedMaps.value = UserMapManager.getCalibratedMaps(application)
+    }
+
+    fun deleteCalibratedMap(id: String) {
+        UserMapManager.deleteCalibratedMap(application, id)
+        calibratedMaps.value = UserMapManager.getCalibratedMaps(application)
+    }
+
+    fun toggleMbtilesActive(fileName: String, active: Boolean) {
+        UserMapManager.toggleMbtilesActive(application, fileName, active)
+        activeMbtilesMap.value = UserMapManager.getActiveMbtiles(application)
+    }
+
+    fun setMbtilesOpacity(fileName: String, opacity: Float) {
+        UserMapManager.setMbtilesOpacity(application, fileName, opacity)
+        activeMbtilesMap.value = UserMapManager.getActiveMbtiles(application)
+    }
+
+    fun deleteMbtiles(fileName: String) {
+        UserMapManager.deleteMbtilesFile(application, fileName)
+        importedMbtilesFiles.value = UserMapManager.getImportedMbtilesFiles(application)
+        activeMbtilesMap.value = UserMapManager.getActiveMbtiles(application)
+    }
+
+    fun requestOpenUserMapCenter() {
+        requestOpenUserMapImport.value = true
+    }
+
+    fun clearOpenUserMapCenterRequest() {
+        requestOpenUserMapImport.value = false
     }
 
     // Navigation & State loader
@@ -794,57 +1074,43 @@ class GeologyViewModel(
     fun importMapFile(context: Context, uri: android.net.Uri) {
         viewModelScope.launch {
             try {
-                var fileName = ""
-                if (uri.scheme == "content") {
-                    try {
-                        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                            if (cursor.moveToFirst()) {
-                                val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                                if (idx != -1) fileName = cursor.getString(idx) ?: ""
-                            }
-                        }
-                    } catch (e: Exception) {}
-                }
-                if (fileName.isEmpty()) {
-                    fileName = uri.lastPathSegment ?: ""
-                }
-
                 val uriStr = uri.toString().lowercase()
-                val lowerName = fileName.lowercase()
                 val mimeType = (context.contentResolver.getType(uri) ?: "").lowercase()
+                val isGpx = uriStr.endsWith(".gpx") || mimeType.contains("gpx")
+                val isKmz = uriStr.endsWith(".kmz") || mimeType.contains("kmz")
+                val isGeoJson = uriStr.endsWith(".geojson") || uriStr.endsWith(".json") || mimeType.contains("json")
+                val isZmp = uriStr.endsWith(".zmp") || uriStr.endsWith("params.txt")
+                val isMbtiles = uriStr.endsWith(".mbtiles") || uriStr.endsWith(".sqlite") || uriStr.endsWith(".sqlitedb") || mimeType.contains("sqlite") || mimeType.contains("mbtiles")
 
-                val isMbtiles = lowerName.endsWith(".mbtiles") || lowerName.endsWith(".sqlite") || uriStr.endsWith(".mbtiles") || uriStr.endsWith(".sqlite")
-
-                if (isMbtiles) {
-                    // Copy to MBTiles storage
-                    val mbtilesDir = java.io.File(context.filesDir, "mbtiles")
-                    if (!mbtilesDir.exists()) mbtilesDir.mkdirs()
-                    val sanitized = (if (fileName.isNotBlank()) fileName else "imported_${System.currentTimeMillis()}.mbtiles").replace(Regex("[^a-zA-Z0-9._-]"), "_")
-                    val destFile = java.io.File(mbtilesDir, sanitized)
-
-                    withContext(Dispatchers.IO) {
-                        context.contentResolver.openInputStream(uri)?.use { input ->
-                            java.io.FileOutputStream(destFile).use { output ->
-                                input.copyTo(output)
-                            }
+                if (isZmp) {
+                    importSasZmp(context, uri) { res ->
+                        res.onSuccess { src ->
+                            val isFarsi = isFarsiModeSetting.value
+                            val msg = if (isFarsi) "منبع نقشه SAS.Planet (${src.name}) با موفقیت وارد شد!" else "SAS.Planet ZMP (${src.name}) imported!"
+                            android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+                        }.onFailure { err ->
+                            android.widget.Toast.makeText(context, "خطا در بارگذاری ZMP: ${err.message}", android.widget.Toast.LENGTH_LONG).show()
                         }
-                    }
-
-                    withContext(Dispatchers.Main) {
-                        val isFarsi = isFarsiModeSetting.value
-                        val message = if (isFarsi) {
-                            "نقشه MBTiles '$sanitized' با موفقیت وارد شد و در لایه‌ها آماده است!"
-                        } else {
-                            "MBTiles map '$sanitized' imported successfully into Layers!"
-                        }
-                        android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
                     }
                     return@launch
                 }
 
-                val isGpx = lowerName.endsWith(".gpx") || uriStr.endsWith(".gpx") || mimeType.contains("gpx")
-                val isKmz = lowerName.endsWith(".kmz") || uriStr.endsWith(".kmz") || mimeType.contains("kmz")
-                val isGeoJson = lowerName.endsWith(".geojson") || lowerName.endsWith(".json") || uriStr.endsWith(".geojson") || uriStr.endsWith(".json") || mimeType.contains("geo+json") || mimeType.contains("json")
+                if (isMbtiles) {
+                    val result = withContext(Dispatchers.IO) {
+                        UserMapManager.importMbtilesFromUri(context, uri) { _, _ -> }
+                    }
+                    withContext(Dispatchers.Main) {
+                        result.onSuccess {
+                            refreshUserMaps()
+                            val isFarsi = isFarsiModeSetting.value
+                            val msg = if (isFarsi) "نقشه آفلاین MBTiles با موفقیت بارگذاری شد!" else "MBTiles offline map successfully loaded!"
+                            android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_LONG).show()
+                        }.onFailure { err ->
+                            android.widget.Toast.makeText(context, "خطا در بارگذاری MBTiles: ${err.message}", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    return@launch
+                }
 
                 val features = withContext(Dispatchers.IO) {
                     context.contentResolver.openInputStream(uri)?.use { inputStream ->
@@ -861,9 +1127,9 @@ class GeologyViewModel(
                     withContext(Dispatchers.Main) {
                         val isFarsi = isFarsiModeSetting.value
                         val message = if (isFarsi) {
-                            "تعداد ${features.size} لایه/عارضه با موفقیت وارد شد!"
+                            "تعداد ${features.size} لایه با موفقیت وارد شد!"
                         } else {
-                            "Successfully imported ${features.size} map features!"
+                            "Successfully imported ${features.size} map layers!"
                         }
                         android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
                     }
@@ -871,9 +1137,9 @@ class GeologyViewModel(
                     withContext(Dispatchers.Main) {
                         val isFarsi = isFarsiModeSetting.value
                         val message = if (isFarsi) {
-                            "هیچ لایه‌ای یافت نشد یا فرمت فایل نامعتبر است (فرمت‌های مجاز: MBTiles, GeoJSON, KML, KMZ, GPX)."
+                            "هیچ لایه‌ای یافت نشد یا فرمت فایل نامعتبر است."
                         } else {
-                            "No map layers found or invalid format (supported: MBTiles, GeoJSON, KML, KMZ, GPX)."
+                            "No map layers found or invalid spatial format."
                         }
                         android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show()
                     }
@@ -1549,8 +1815,7 @@ class GeologyViewModel(
 class GeologyViewModelFactory(
     private val application: Application,
     private val dao: GeologyDao,
-    private val repository: GeologyRepository = (application as? GeologyApplication)?.repository
-        ?: GeologyRepository(dao, GeologyDatabase.getInstance(application))
+    private val repository: GeologyRepository = (application as GeologyApplication).repository
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(GeologyViewModel::class.java)) {

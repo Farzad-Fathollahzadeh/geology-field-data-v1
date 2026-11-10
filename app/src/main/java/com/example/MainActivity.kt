@@ -89,11 +89,8 @@ val mineralizationSuggestions = listOf("Disseminated", "Massive Sulfide", "Stock
 
 class MainActivity : ComponentActivity() {
     private val viewModel: GeologyViewModel by viewModels {
-        val app = application as? GeologyApplication
-        val db = app?.database ?: GeologyDatabase.getInstance(applicationContext)
-        val dao = app?.dao ?: db.dao()
-        val repo = app?.repository ?: GeologyRepository(dao, db)
-        GeologyViewModelFactory(application, dao, repo)
+        val app = application as GeologyApplication
+        GeologyViewModelFactory(app, app.dao)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -261,6 +258,8 @@ fun MainScreenContent(
     val gpsMinDisplacement by viewModel.gpsMinDisplacement.collectAsStateWithLifecycle()
     val isKalmanSmoothingEnabled by viewModel.isKalmanSmoothingEnabled.collectAsStateWithLifecycle()
 
+    val utmBackgroundCoord by UtmBackgroundService.utmString.collectAsStateWithLifecycle()
+
     val rootLocationPermissionsState = rememberMultiplePermissionsState(
         permissions = listOf(
             android.Manifest.permission.ACCESS_FINE_LOCATION,
@@ -272,7 +271,8 @@ fun MainScreenContent(
     LaunchedEffect(isRootLocationPermitted) {
         if (isRootLocationPermitted) {
             try {
-                viewModel.startLocationTracking(context)
+                val intent = Intent(context, UtmBackgroundService::class.java)
+                context.startService(intent)
             } catch (t: Throwable) {
                 t.printStackTrace()
             }
@@ -7546,6 +7546,62 @@ fun HomeDashboardContent(
                         )
                     }
 
+                    // Hero Card: User Map Import & Calibration Center
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                viewModel.requestOpenUserMapCenter()
+                                onNavigateToTab(MainTab.Map)
+                            },
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f)
+                        ),
+                        border = BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
+                        shape = RoundedCornerShape(14.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(46.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.primary),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CloudUpload,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (isFarsiMode) "مرکز ورود نقشه‌های اختصاصی کاربر" else "User Map Import & Calibration",
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = if (isFarsiMode) "ایمپورت MBTiles آفلاین، تصاویر کالیبره زمین‌شناسی با UTM، لایه‌های KML/GPX" else "Import offline MBTiles, UTM-calibrated geological scans & KML/GPX",
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    lineHeight = 14.sp
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
                     // Dynamic localized active workspace shortcuts
                     val workspaces = listOf(
                         Triple(
@@ -10467,10 +10523,21 @@ fun generateLeafletHtml(
     isSimpleMode: Boolean = false,
     gridSizeSetting: Int = 0,
     gridColorSetting: String = "",
-    activeMbtilesList: List<Pair<String, Float>> = emptyList()
+    activeMbtilesList: List<Pair<String, Float>> = emptyList(),
+    calibratedMapsList: List<CalibratedMap> = emptyList(),
+    sasOverlayIds: Set<String> = emptySet(),
+    sasOverlayOpacity: Float = 0.72f
 ): String {
+    val sasOverlaysJson = sasOverlayIds.joinToString(prefix = "[", postfix = "]") { id ->
+        """{"id": "${id.replace("\"", "\\\"")}", "opacity": $sasOverlayOpacity}"""
+    }
+
     val activeMbtilesJson = activeMbtilesList.joinToString(prefix = "[", postfix = "]") { (name, opacity) ->
         """{"name": "${name.replace("\"", "\\\"")}", "opacity": $opacity}"""
+    }
+
+    val calibratedMapsJson = calibratedMapsList.filter { it.isVisible }.joinToString(prefix = "[", postfix = "]") { map ->
+        """{"fileName": "${map.fileName.replace("\"", "\\\"")}", "name": "${map.name.replace("\"", "\\\"")}", "northLat": ${map.northLat}, "southLat": ${map.southLat}, "eastLon": ${map.eastLon}, "westLon": ${map.westLon}, "opacity": ${map.opacity}}"""
     }
 
     val savedTracksJson = if (showTracksOverlay) {
@@ -11649,6 +11716,16 @@ fun generateLeafletHtml(
                     opacity: $baseMapOpacity
                 }).addTo(map);
 
+                // Add active SAS.Planet transparent overlay layers (asLayer=1)
+                var sasOverlays = $sasOverlaysJson;
+                sasOverlays.forEach(function(ov) {
+                    L.tileLayer('https://sas.local/' + encodeURIComponent(ov.id) + '/{z}/{x}/{y}.tile', {
+                        maxZoom: 21,
+                        opacity: ov.opacity,
+                        zIndex: 90
+                    }).addTo(map);
+                });
+
                 // Add active MBTiles overlays
                 var activeMbtiles = $activeMbtilesJson;
                 activeMbtiles.forEach(function(item) {
@@ -11656,6 +11733,17 @@ fun generateLeafletHtml(
                         maxZoom: 21,
                         opacity: item.opacity,
                         zIndex: 100
+                    }).addTo(map);
+                });
+
+                // Add active Calibrated Geological Map Overlays (Ground Overlays)
+                var calibratedMaps = $calibratedMapsJson;
+                calibratedMaps.forEach(function(cm) {
+                    var bounds = [[cm.southLat, cm.westLon], [cm.northLat, cm.eastLon]];
+                    L.imageOverlay('https://georef.local/' + encodeURIComponent(cm.fileName), bounds, {
+                        opacity: cm.opacity,
+                        zIndex: 105,
+                        interactive: false
                     }).addTo(map);
                 });
 
@@ -12151,8 +12239,21 @@ object MbtilesDatabaseCache {
             if (cursor.moveToFirst()) {
                 return cursor.getBlob(0)
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
+        } catch (_: Exception) {
+            // Fallback for SAS.Planet / RMaps / OsmAnd .sqlitedb schema: tiles(x, y, z, s, image)
+            cursor?.close()
+            try {
+                val rmapsZ = 17 - z
+                cursor = db.rawQuery(
+                    "SELECT image FROM tiles WHERE x = ? AND y = ? AND (z = ? OR z = ?)",
+                    arrayOf(x.toString(), y.toString(), z.toString(), rmapsZ.toString())
+                )
+                if (cursor.moveToFirst()) {
+                    return cursor.getBlob(0)
+                }
+            } catch (e2: Exception) {
+                e2.printStackTrace()
+            }
         } finally {
             cursor?.close()
         }
@@ -12193,6 +12294,9 @@ fun WebViewMap(
     gridSizeSetting: Int = 0,
     gridColorSetting: String = "",
     activeMbtilesList: List<Pair<String, Float>> = emptyList(),
+    calibratedMapsList: List<CalibratedMap> = emptyList(),
+    sasOverlayIds: Set<String> = emptySet(),
+    sasOverlayOpacity: Float = 0.72f,
     modifier: Modifier = Modifier
 ) {
     val resolvedTileUrl = if (tileUrl.contains("{token}")) {
@@ -12206,7 +12310,7 @@ fun WebViewMap(
     val initialLat = remember(isDefaultCoordinates) { currentLat }
     val initialLon = remember(isDefaultCoordinates) { currentLon }
     
-    val htmlContent = remember(stations, observations, contactsList, resolvedTileUrl, isOutdoorMode, baseMapOpacity, offlineModeForce, showOfflineBoundaries, downloadedRegions, importedFeatures, savedTracks, showTracksOverlay, isSimpleMode, gridSizeSetting, gridColorSetting, activeMbtilesList) {
+    val htmlContent = remember(stations, observations, contactsList, resolvedTileUrl, isOutdoorMode, baseMapOpacity, offlineModeForce, showOfflineBoundaries, downloadedRegions, importedFeatures, savedTracks, showTracksOverlay, isSimpleMode, gridSizeSetting, gridColorSetting, activeMbtilesList, calibratedMapsList, sasOverlayIds, sasOverlayOpacity) {
         generateLeafletHtml(
             stations = stations,
             observations = observations,
@@ -12230,7 +12334,10 @@ fun WebViewMap(
             isSimpleMode = isSimpleMode,
             gridSizeSetting = gridSizeSetting,
             gridColorSetting = gridColorSetting,
-            activeMbtilesList = activeMbtilesList
+            activeMbtilesList = activeMbtilesList,
+            calibratedMapsList = calibratedMapsList,
+            sasOverlayIds = sasOverlayIds,
+            sasOverlayOpacity = sasOverlayOpacity
         )
     }
 
@@ -12281,6 +12388,12 @@ fun WebViewMap(
                             request: android.webkit.WebResourceRequest?
                         ): android.webkit.WebResourceResponse? {
                             val url = request?.url?.toString() ?: return null
+
+                            // Handle SAS.Planet ZMP & built-in providers (QuadKey, EPSG:3395, Headers, SQLite Cache)
+                            if (url.startsWith("https://sas.local/")) {
+                                val ctx = view?.context ?: return null
+                                return SasTileProxy.interceptTileRequest(ctx, url, offlineModeForceState.value)
+                            }
                             
                             // Handle custom local mbtiles tiles directly from disk!
                             if (url.startsWith("https://mbtiles.local/")) {
@@ -12312,6 +12425,32 @@ fun WebViewMap(
                                     } catch (e: Exception) {
                                         e.printStackTrace()
                                     }
+                                }
+                                return android.webkit.WebResourceResponse("image/png", "UTF-8", java.io.ByteArrayInputStream(ByteArray(0)))
+                            }
+
+                            // Handle custom user-calibrated geological map image overlays
+                            if (url.startsWith("https://georef.local/")) {
+                                val ctx = view?.context ?: return null
+                                val rawName = url.substring("https://georef.local/".length)
+                                try {
+                                    val fileName = java.net.URLDecoder.decode(rawName, "UTF-8")
+                                    val dir = UserMapManager.getGeorefDir(ctx)
+                                    val file = java.io.File(dir, fileName)
+                                    if (file.exists() && file.canonicalPath.startsWith(dir.canonicalPath)) {
+                                        val contentType = when {
+                                            fileName.endsWith(".jpg", true) || fileName.endsWith(".jpeg", true) -> "image/jpeg"
+                                            fileName.endsWith(".webp", true) -> "image/webp"
+                                            else -> "image/png"
+                                        }
+                                        return android.webkit.WebResourceResponse(
+                                            contentType,
+                                            "UTF-8",
+                                            java.io.FileInputStream(file)
+                                        )
+                                    }
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
                                 }
                                 return android.webkit.WebResourceResponse("image/png", "UTF-8", java.io.ByteArrayInputStream(ByteArray(0)))
                             }
@@ -12721,10 +12860,19 @@ fun UnifiedMapPanelContainer(
     importedFeaturesCount: Int,
     onImportKmlClick: () -> Unit,
     onClearKmlClick: () -> Unit,
+    onOpenUserMapCenter: () -> Unit = {},
     mapMode: MapMode,
     onMapModeChange: (MapMode) -> Unit,
     mapLayer: MapLayerProvider,
     onMapLayerChange: (MapLayerProvider) -> Unit,
+    activeSasSourceId: String = "sas_google_sat",
+    onSasSourceChange: (String) -> Unit = {},
+    sasCustomSources: List<SasMapSource> = emptyList(),
+    activeSasOverlayIds: Set<String> = emptySet(),
+    onToggleSasOverlay: (String) -> Unit = {},
+    sasOverlayOpacity: Float = 0.72f,
+    onSasOverlayOpacityChange: (Float) -> Unit = {},
+    onQuickCacheArea: () -> Unit = {},
     showUtmGrid: Boolean,
     onShowUtmGridChange: (Boolean) -> Unit,
     currentLat: Double,
@@ -12818,38 +12966,46 @@ fun UnifiedMapPanelContainer(
                                 }
                             }
                             Divider(color = if (isOutdoorMode) Color.LightGray.copy(0.4f) else Color.DarkGray.copy(0.4f), thickness = 1.dp)
-                            Text(if (isFarsiMode) "لایه‌های کمکی مکانی (KML/KMZ)" else "GEOSPATIAL OVERLAYS (KML/KMZ)", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = if (isOutdoorMode) Color.DarkGray else Color.LightGray, modifier = androidx.compose.ui.Modifier.padding(horizontal = 4.dp))
-                            Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Button(
-                                    onClick = onImportKmlClick,
-                                    modifier = androidx.compose.ui.Modifier.weight(1f).height(36.dp).testTag("import_kml_button"),
-                                    colors = ButtonDefaults.buttonColors(containerColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), contentColor = if (isOutdoorMode) Color.White else Color(0xFF0C100D)),
+                            Text(if (isFarsiMode) "مرکز ورود نقشه‌های کاربر (MBTiles / کالیبراسیون)" else "USER MAPS & OVERLAYS", fontSize = 8.5.sp, fontWeight = FontWeight.Bold, color = if (isOutdoorMode) Color.DarkGray else Color.LightGray, modifier = androidx.compose.ui.Modifier.padding(horizontal = 4.dp))
+                            Button(
+                                onClick = onOpenUserMapCenter,
+                                modifier = androidx.compose.ui.Modifier.fillMaxWidth().height(38.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), contentColor = if (isOutdoorMode) Color.White else Color(0xFF0C100D)),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp)
+                            ) {
+                                Icon(Icons.Default.CloudUpload, null, modifier = androidx.compose.ui.Modifier.size(16.dp))
+                                Spacer(androidx.compose.ui.Modifier.width(6.dp))
+                                Text(if (isFarsiMode) "ورود نقشه آفلاین یا تصویر کالیبره‌شده" else "Import User Map & Overlays", fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                            }
+                            if (importedFeaturesCount > 0) {
+                                OutlinedButton(
+                                    onClick = onClearKmlClick,
+                                    modifier = androidx.compose.ui.Modifier.fillMaxWidth().height(32.dp).testTag("clear_kml_button"),
+                                    border = BorderStroke(1.dp, if (isOutdoorMode) Color(0xFFC62828) else Color(0xFFFF5252)),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = if (isOutdoorMode) Color(0xFFC62828) else Color(0xFFFF5252)),
                                     shape = RoundedCornerShape(6.dp),
                                     contentPadding = PaddingValues(horizontal = 8.dp)
                                 ) {
-                                    Icon(Icons.Default.CloudUpload, null, modifier = androidx.compose.ui.Modifier.size(14.dp))
+                                    Icon(Icons.Default.Delete, null, modifier = androidx.compose.ui.Modifier.size(14.dp))
                                     Spacer(androidx.compose.ui.Modifier.width(4.dp))
-                                    Text(if (isFarsiMode) "وارد کردن فایل" else "Import File", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                }
-                                if (importedFeaturesCount > 0) {
-                                    OutlinedButton(
-                                        onClick = onClearKmlClick,
-                                        modifier = androidx.compose.ui.Modifier.weight(1f).height(36.dp).testTag("clear_kml_button"),
-                                        border = BorderStroke(1.dp, if (isOutdoorMode) Color(0xFFC62828) else Color(0xFFFF5252)),
-                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = if (isOutdoorMode) Color(0xFFC62828) else Color(0xFFFF5252)),
-                                        shape = RoundedCornerShape(6.dp),
-                                        contentPadding = PaddingValues(horizontal = 8.dp)
-                                    ) {
-                                        Icon(Icons.Default.Delete, null, modifier = androidx.compose.ui.Modifier.size(14.dp))
-                                        Spacer(androidx.compose.ui.Modifier.width(4.dp))
-                                        Text(if (isFarsiMode) "حذف لایه‌ها ($importedFeaturesCount)" else "Clear Overlay ($importedFeaturesCount)", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                                    }
+                                    Text(if (isFarsiMode) "حذف لایه‌ها ($importedFeaturesCount)" else "Clear Overlay ($importedFeaturesCount)", fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
                     }
                     MapPanel.LAYERS -> {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = onOpenUserMapCenter,
+                                modifier = androidx.compose.ui.Modifier.fillMaxWidth().height(38.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF), contentColor = if (isOutdoorMode) Color.White else Color(0xFF0C100D)),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(Icons.Default.AddPhotoAlternate, null, modifier = androidx.compose.ui.Modifier.size(15.dp))
+                                Spacer(androidx.compose.ui.Modifier.width(6.dp))
+                                Text(if (isFarsiMode) "مرکز ورود نقشه‌های کاربر (MBTiles / تصویر)" else "User Map Import Center", fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                            }
                             Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth().background(if (isOutdoorMode) Color(0xFFF1F1F1) else Color.Black.copy(0.3f), RoundedCornerShape(6.dp)).padding(3.dp)) {
                                 Button(onClick = { onMapModeChange(MapMode.ONLINE) }, modifier = androidx.compose.ui.Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = if (mapMode == MapMode.ONLINE) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)) else Color.Transparent, contentColor = if (mapMode == MapMode.ONLINE) (if (isOutdoorMode) Color.White else Color.Black) else (if (isOutdoorMode) Color.Black else Color.White)), contentPadding = PaddingValues(0.dp), shape = RoundedCornerShape(4.dp)) {
                                     Text(if (isFarsiMode) "آنلاین وب" else "Online Webs", fontSize = 10.sp, fontWeight = FontWeight.Bold)
@@ -12859,16 +13015,96 @@ fun UnifiedMapPanelContainer(
                                 }
                             }
                             if (mapMode == MapMode.ONLINE) {
-                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                    Text(if (isFarsiMode) "لایه‌های نقشه اینترنتی:" else "Standard Map Layers:", fontSize = 9.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
-                                    MapLayerProvider.values().forEach { provider ->
-                                        val selected = mapLayer == provider
-                                        Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth().clickable { onMapLayerChange(provider); onActiveMapPanelChange(null) }.background(if (selected) (if (isOutdoorMode) Color(0xFF00796B).copy(0.12f) else Color(0xFF00E5FF).copy(0.12f)) else Color.Transparent, RoundedCornerShape(4.dp)).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(if (selected) Icons.Default.CheckCircle else Icons.Default.Layers, null, tint = if (selected) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)) else Color.Gray, modifier = androidx.compose.ui.Modifier.size(14.dp))
-                                            Spacer(androidx.compose.ui.Modifier.width(6.dp))
-                                            Text(provider.label, fontSize = 11.sp, color = if (selected) (if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0)) else (if (isOutdoorMode) Color.Black else Color.White))
+                                var selectedCategory by remember { mutableStateOf("All") }
+                                val categories = listOf(
+                                    "All" to (if (isFarsiMode) "همه" else "All"),
+                                    "Satellite" to (if (isFarsiMode) "ماهواره" else "Sat"),
+                                    "Topo" to (if (isFarsiMode) "توپو" else "Topo"),
+                                    "Geology" to (if (isFarsiMode) "زمین‌شناسی" else "Geo")
+                                )
+                                Row(
+                                    modifier = androidx.compose.ui.Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    categories.forEach { (catKey, catLabel) ->
+                                        val isCatSel = selectedCategory == catKey
+                                        Box(
+                                            modifier = androidx.compose.ui.Modifier
+                                                .weight(1f)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(if (isCatSel) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)) else Color.Gray.copy(alpha = 0.15f))
+                                                .clickable { selectedCategory = catKey }
+                                                .padding(vertical = 4.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                catLabel,
+                                                fontSize = 9.sp,
+                                                fontWeight = if (isCatSel) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (isCatSel) (if (isOutdoorMode) Color.White else Color.Black) else (if (isOutdoorMode) Color.Black else Color.White),
+                                                maxLines = 1
+                                            )
                                         }
                                     }
+                                }
+
+                                Column(
+                                    modifier = androidx.compose.ui.Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(max = 260.dp)
+                                        .verticalScroll(rememberScrollState()),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(if (isFarsiMode) "منابع نقشه SAS.Planet:" else "SAS.Planet Base Maps:", fontSize = 9.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                                    val allBaseSources = sasCustomSources.filter { !it.isOverlay } + SasPlanetCatalog.builtInBaseMaps
+                                    val filteredBase = if (selectedCategory == "All") allBaseSources else allBaseSources.filter {
+                                        it.category.contains(selectedCategory, ignoreCase = true) || (selectedCategory == "Satellite" && it.category.contains("Custom", ignoreCase = true))
+                                    }
+                                    filteredBase.forEach { src ->
+                                        val selected = activeSasSourceId == src.id
+                                        Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth().clickable { onSasSourceChange(src.id); onActiveMapPanelChange(null) }.background(if (selected) (if (isOutdoorMode) Color(0xFF00796B).copy(0.12f) else Color(0xFF00E5FF).copy(0.12f)) else Color.Transparent, RoundedCornerShape(4.dp)).padding(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(if (selected) Icons.Default.CheckCircle else Icons.Default.Layers, null, tint = if (selected) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)) else Color.Gray, modifier = androidx.compose.ui.Modifier.size(14.dp))
+                                            Spacer(androidx.compose.ui.Modifier.width(6.dp))
+                                            Text(if (isFarsiMode) src.nameFa else src.name, fontSize = 10.5.sp, color = if (selected) (if (isOutdoorMode) Color(0xFF004D40) else Color(0xFF00FFE0)) else (if (isOutdoorMode) Color.Black else Color.White), maxLines = 1)
+                                        }
+                                    }
+                                    Divider(color = Color.Gray.copy(alpha = 0.2f), modifier = androidx.compose.ui.Modifier.padding(vertical = 2.dp))
+                                    Text(if (isFarsiMode) "لایه‌های ترکیبی (Overlays):" else "SAS.Planet Overlays:", fontSize = 9.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                                    val overlaySources = sasCustomSources.filter { it.isOverlay } + SasPlanetCatalog.builtInOverlays
+                                    overlaySources.forEach { ov ->
+                                        val checked = activeSasOverlayIds.contains(ov.id)
+                                        Row(modifier = androidx.compose.ui.Modifier.fillMaxWidth().clickable { onToggleSasOverlay(ov.id) }.background(if (checked) (if (isOutdoorMode) Color(0xFF00796B).copy(0.10f) else Color(0xFF00E5FF).copy(0.10f)) else Color.Transparent, RoundedCornerShape(4.dp)).padding(5.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(if (checked) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank, null, tint = if (checked) (if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00E5FF)) else Color.Gray, modifier = androidx.compose.ui.Modifier.size(14.dp))
+                                            Spacer(androidx.compose.ui.Modifier.width(6.dp))
+                                            Text(if (isFarsiMode) ov.nameFa else ov.name, fontSize = 10.sp, color = if (isOutdoorMode) Color.Black else Color.White, maxLines = 1)
+                                        }
+                                    }
+                                    if (activeSasOverlayIds.isNotEmpty()) {
+                                        Row(
+                                            modifier = androidx.compose.ui.Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Text(if (isFarsiMode) "شفافیت:" else "Opacity:", fontSize = 9.sp, color = Color.Gray)
+                                            Slider(
+                                                value = sasOverlayOpacity,
+                                                onValueChange = onSasOverlayOpacityChange,
+                                                valueRange = 0.15f..1.0f,
+                                                modifier = androidx.compose.ui.Modifier.weight(1f)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                OutlinedButton(
+                                    onClick = onQuickCacheArea,
+                                    modifier = androidx.compose.ui.Modifier.fillMaxWidth().height(32.dp),
+                                    shape = RoundedCornerShape(6.dp),
+                                    contentPadding = PaddingValues(horizontal = 8.dp)
+                                ) {
+                                    Icon(Icons.Default.Download, null, modifier = androidx.compose.ui.Modifier.size(14.dp))
+                                    Spacer(androidx.compose.ui.Modifier.width(4.dp))
+                                    Text(if (isFarsiMode) "ذخیره آفلاین محدوده فعلی (3km)" else "Cache Current Area (3km)", fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
                                 }
                             } else {
                                 Column(modifier = androidx.compose.ui.Modifier.padding(4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -13158,7 +13394,10 @@ fun UnifiedMapPanelContainer(
     }
 }
 
-@OptIn(com.google.accompanist.permissions.ExperimentalPermissionsApi::class)
+@OptIn(
+    com.google.accompanist.permissions.ExperimentalPermissionsApi::class,
+    androidx.compose.material3.ExperimentalMaterial3Api::class
+)
 @Composable
 fun MapContent(viewModel: GeologyViewModel) {
     val context = LocalContext.current
@@ -13170,10 +13409,26 @@ fun MapContent(viewModel: GeologyViewModel) {
     val customEpsgCode by viewModel.customEpsgCode.collectAsStateWithLifecycle()
     val allObservationsList by viewModel.allObservations.collectAsStateWithLifecycle()
     val importedFeaturesList by viewModel.importedFeatures.collectAsStateWithLifecycle()
+    val calibratedMaps by viewModel.calibratedMaps.collectAsStateWithLifecycle()
+    val activeMbtilesMap by viewModel.activeMbtilesMap.collectAsStateWithLifecycle()
+    var showUserMapImportCenter by remember { mutableStateOf(false) }
+
+    val requestOpenUserMapImport by viewModel.requestOpenUserMapImport.collectAsStateWithLifecycle()
+    LaunchedEffect(requestOpenUserMapImport) {
+        if (requestOpenUserMapImport) {
+            showUserMapImportCenter = true
+            viewModel.clearOpenUserMapCenterRequest()
+        }
+    }
 
     val customTileUrl by viewModel.customTileUrl.collectAsStateWithLifecycle()
     val customTileLabel by viewModel.customTileLabel.collectAsStateWithLifecycle()
     val useCustomTile by viewModel.useCustomTile.collectAsStateWithLifecycle()
+    val sasCustomSources by viewModel.sasCustomSources.collectAsStateWithLifecycle()
+    val activeSasSourceId by viewModel.activeSasSourceId.collectAsStateWithLifecycle()
+    val activeSasOverlayIds by viewModel.activeSasOverlayIds.collectAsStateWithLifecycle()
+    val sasOverlayOpacity by viewModel.sasOverlayOpacity.collectAsStateWithLifecycle()
+    val sasCacheStats by viewModel.sasCacheStats.collectAsStateWithLifecycle()
 
     val stationsToShow = if (projectStations.isNotEmpty()) projectStations else allStationsList
     var zoomLevel by remember { mutableStateOf(14) } // 3 to 21, default 14
@@ -13689,7 +13944,7 @@ fun MapContent(viewModel: GeologyViewModel) {
         // -------------------------------------------------------------
         // LAYER 1: THE MAP CANVAS / WEBVIEW (OCCUPIES 100% SIZE)
         // -------------------------------------------------------------
-        if (mapMode == MapMode.ONLINE) {
+        if (mapMode == MapMode.ONLINE || activeMbtilesMap.isNotEmpty() || calibratedMaps.isNotEmpty() || sasCacheStats.first > 0) {
             WebViewMap(
                 stations = filteredStations,
                 observations = filteredObservations,
@@ -13699,7 +13954,7 @@ fun MapContent(viewModel: GeologyViewModel) {
                 currentLat = currentLat,
                 currentLon = currentLon,
                 zoom = zoomLevel,
-                tileUrl = if (useCustomTile && customTileUrl.isNotBlank()) customTileUrl else mapLayer.url,
+                tileUrl = if (useCustomTile && customTileUrl.isNotBlank()) customTileUrl else SasTileProxy.buildLocalTileUrl(activeSasSourceId),
                 gpsAccuracy = currentAccuracy,
                 lockGpsCenter = lockGpsCenter,
                 mapboxToken = mapboxTokenInput,
@@ -13712,12 +13967,17 @@ fun MapContent(viewModel: GeologyViewModel) {
                 },
                 navigationTargetStation = navigationTargetStation,
                 showUtmGrid = showUtmGrid,
+                offlineModeForce = (mapMode == MapMode.OFFLINE),
                 importedFeatures = importedFeaturesList,
                 rulerAnchor = rulerAnchor,
                 pannedCenterLat = pannedCenterLat,
                 pannedCenterLon = pannedCenterLon,
                 savedTracks = savedTracks,
                 showTracksOverlay = showTracksOverlay,
+                activeMbtilesList = activeMbtilesMap.toList(),
+                calibratedMapsList = calibratedMaps,
+                sasOverlayIds = activeSasOverlayIds,
+                sasOverlayOpacity = sasOverlayOpacity,
                 modifier = Modifier.fillMaxSize()
             )
         } else {
@@ -14636,6 +14896,36 @@ fun MapContent(viewModel: GeologyViewModel) {
                     thickness = 0.8.dp
                 )
 
+                // USER MAP IMPORT CENTER (MBTiles, Calibrated Georef, KML/GPX)
+                IconButton(
+                    onClick = { showUserMapImportCenter = true },
+                    modifier = Modifier
+                        .size(38.dp)
+                        .background(
+                            if (activeMbtilesMap.isNotEmpty() || calibratedMaps.isNotEmpty()) {
+                                (if (isOutdoorMode) Color(0xFF00796B).copy(alpha = 0.15f) else Color(0xFF00FFE0).copy(alpha = 0.15f))
+                            } else Color.Transparent, 
+                            CircleShape
+                        )
+                        .testTag("user_map_import_toggle")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CloudUpload,
+                        contentDescription = "User Map Import Center",
+                        tint = if (activeMbtilesMap.isNotEmpty() || calibratedMaps.isNotEmpty()) {
+                            if (isOutdoorMode) Color(0xFF00796B) else Color(0xFF00FFE0)
+                        } else toolbarIconColorClosed,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                // Divider
+                Divider(
+                    color = (if (isOutdoorMode) Color.LightGray else Color(0xFF00E5FF)).copy(alpha = 0.15f),
+                    modifier = Modifier.width(30.dp),
+                    thickness = 0.8.dp
+                )
+
                 // GIS COLLAPSIBLE TOOLBOX TRIGGER
                 IconButton(
                     onClick = { 
@@ -14745,10 +15035,29 @@ fun MapContent(viewModel: GeologyViewModel) {
             importedFeaturesCount = importedFeaturesList.size,
             onImportKmlClick = { kmlPickerLauncher.launch(arrayOf("application/vnd.google-earth.kml+xml", "application/vnd.google-earth.kmz", "application/xml", "text/xml")) },
             onClearKmlClick = { viewModel.clearImportedFeatures() },
+            onOpenUserMapCenter = { showUserMapImportCenter = true },
             mapMode = mapMode,
             onMapModeChange = { mapMode = it },
             mapLayer = mapLayer,
             onMapLayerChange = { mapLayer = it },
+            activeSasSourceId = activeSasSourceId,
+            onSasSourceChange = { id ->
+                viewModel.setUseCustomTile(false)
+                viewModel.setActiveSasSourceId(id)
+            },
+            sasCustomSources = sasCustomSources,
+            activeSasOverlayIds = activeSasOverlayIds,
+            onToggleSasOverlay = { id -> viewModel.toggleSasOverlay(id) },
+            sasOverlayOpacity = sasOverlayOpacity,
+            onSasOverlayOpacityChange = { op -> viewModel.setSasOverlayOpacity(op) },
+            onQuickCacheArea = {
+                viewModel.startSasAreaDownload(currentLat, currentLon, 3.0, 11, 15)
+                android.widget.Toast.makeText(
+                    context,
+                    if (isFarsiMode) "دانلود آفلاین محدوده ۳ کیلومتری آغاز شد..." else "Caching 3km area offline...",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            },
             showUtmGrid = showUtmGrid,
             onShowUtmGridChange = { showUtmGrid = it },
             currentLat = currentLat,
@@ -16170,6 +16479,38 @@ fun MapContent(viewModel: GeologyViewModel) {
                         }
                     }
                 }
+            }
+        }
+
+        // -------------------------------------------------------------
+        // USER MAP IMPORT & CALIBRATION CENTER BOTTOM SHEET
+        // -------------------------------------------------------------
+        if (showUserMapImportCenter) {
+            androidx.compose.material3.ModalBottomSheet(
+                onDismissRequest = { showUserMapImportCenter = false },
+                containerColor = if (isOutdoorMode) Color.White else Color(0xFF161B18),
+                dragHandle = { androidx.compose.material3.BottomSheetDefaults.DragHandle() },
+                modifier = Modifier.fillMaxHeight(0.92f)
+            ) {
+                com.example.ui.UserMapImportCenterSheet(
+                    viewModel = viewModel,
+                    onDismiss = { showUserMapImportCenter = false },
+                    isOutdoorMode = isOutdoorMode,
+                    mapCenterLat = if (pannedCenterLat != 0.0) pannedCenterLat else currentLat,
+                    mapCenterLon = if (pannedCenterLon != 0.0) pannedCenterLon else currentLon,
+                    onZoomToCoordinates = { lat, lon, zoom ->
+                        pannedCenterLat = lat
+                        pannedCenterLon = lon
+                        lockGpsCenter = false
+                        zoomLevel = zoom
+                    },
+                    onZoomToBounds = { south, west, north, east ->
+                        pannedCenterLat = (south + north) / 2.0
+                        pannedCenterLon = (west + east) / 2.0
+                        lockGpsCenter = false
+                        zoomLevel = 15
+                    }
+                )
             }
         }
     }

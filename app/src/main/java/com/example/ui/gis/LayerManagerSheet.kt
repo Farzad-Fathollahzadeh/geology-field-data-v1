@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -22,7 +23,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.Date
@@ -39,26 +39,26 @@ fun LayerManagerSheet(
     onToggleSymbols: (Boolean) -> Unit,
     showFaultLines: Boolean,
     onToggleFaultLines: (Boolean) -> Unit,
-    onSeedDemoDataset: () -> Unit,
+    onSeedDemoDataset: () -> Unit = {},
     onDismiss: () -> Unit,
     
     // Core Offline & Opacity features
     activeBaseMapOpacity: Float,
     onBaseMapOpacityChange: (Float) -> Unit,
-    offlineModeForce: Boolean,
-    onToggleOfflineModeForce: (Boolean) -> Unit,
-    showOfflineBoundaries: Boolean,
-    onToggleOfflineBoundaries: (Boolean) -> Unit,
-    downloadedRegionsList: List<OfflineRegion>,
-    onDownloadRegion: (String, List<String>, Double, Int, Double, Double) -> Unit,
-    onDeleteRegion: (String) -> Unit,
-    isDownloading: Boolean,
-    downloadProgress: Float,
-    downloadStatusText: String,
-    currentLat: Double,
-    currentLon: Double,
+    offlineModeForce: Boolean = false,
+    onToggleOfflineModeForce: (Boolean) -> Unit = {},
+    showOfflineBoundaries: Boolean = false,
+    onToggleOfflineBoundaries: (Boolean) -> Unit = {},
+    downloadedRegionsList: List<OfflineRegion> = emptyList(),
+    onDownloadRegion: (String, List<String>, Double, Int, Double, Double) -> Unit = { _, _, _, _, _, _ -> },
+    onDeleteRegion: (String) -> Unit = {},
+    isDownloading: Boolean = false,
+    downloadProgress: Float = 0f,
+    downloadStatusText: String = "",
+    currentLat: Double = 0.0,
+    currentLon: Double = 0.0,
 
-    // Survey locations tile caching parameters
+    // Survey locations tile caching parameters (kept for backward compatibility)
     surveyStationsList: List<com.example.Station> = emptyList(),
     onDownloadSurveyLocationsTiles: (List<com.example.Station>, Double, List<String>, String) -> Unit = { _, _, _, _ -> },
 
@@ -75,6 +75,13 @@ fun LayerManagerSheet(
     onMbtilesOpacityChange: (String, Float) -> Unit = { _, _ -> },
     onDeleteMbtiles: (String) -> Unit = {},
     onImportMbtilesClick: () -> Unit = {},
+    onImportGisVectorClick: () -> Unit = {},
+    importedFeaturesCount: Int = 0,
+    onClearImportedFeatures: () -> Unit = {},
+    onStartRuler: () -> Unit = {},
+    onStartArea: () -> Unit = {},
+    onShowStats: () -> Unit = {},
+    onExportData: () -> Unit = {},
 
     modifier: Modifier = Modifier,
     isOutdoorMode: Boolean = false
@@ -84,17 +91,17 @@ fun LayerManagerSheet(
     val cardColor = if (isOutdoorMode) Color.White else Color(0xFF161E1B)
     val textColor = if (isOutdoorMode) Color.Black else Color.White
 
-    val mapProviders = listOf("Esri Satellite (No-Key)", "Google Satellite", "OpenTopoMap", "OpenStreetMap", "Offline Topo-Raster")
-    var selectedTab by remember { mutableStateOf(0) } // 0: Layers & Opacity, 1: Offline Caching, 2: Tracks
+    val mapProviders = listOf("Google Satellite", "Esri Satellite (No-Key)", "OpenTopoMap", "Offline Topo-Raster")
+    var selectedTab by remember { mutableStateOf(0) } // 0: Maps & Layers, 1: Saved Walks, 2: Field Tools
     val scrollState = rememberScrollState()
 
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(max = 580.dp)
+            .heightIn(max = 600.dp)
             .background(overlayBgColor)
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         // --- HEADER ---
         Row(
@@ -104,15 +111,15 @@ fun LayerManagerSheet(
         ) {
             Column {
                 Text(
-                    text = "FIELD GIS WORKSTATION / میز کار زمین‌شناسی",
-                    fontSize = 11.sp,
+                    text = "OFFLINE GIS WORKSTATION / مدیریت نقشه‌ها",
+                    fontSize = 10.5.sp,
                     fontWeight = FontWeight.Bold,
                     color = accentColor,
                     fontFamily = FontFamily.Monospace
                 )
                 Text(
-                    text = if (selectedTab == 0) "Configure Layers / لایه‌های نقشه" else if (selectedTab == 1) "Offline Cache / ذخیره آفلاین" else "Logged Walks / کتابخانه مسیرها",
-                    fontSize = 18.sp,
+                    text = if (selectedTab == 0) "نقشه‌های آفلاین و لایه‌ها / Maps" else "مسیرهای پیمایش / Logged Walks",
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
                     color = textColor
                 )
@@ -129,17 +136,17 @@ fun LayerManagerSheet(
             }
         }
 
-        // --- TAB BAR CONTROL ---
+        // --- 2 FOCUSED TABS ---
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(10.dp))
                 .background(textColor.copy(alpha = 0.05f))
                 .padding(3.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             TabButton(
-                text = "Layers / لایه‌ها",
+                text = "نقشه‌ها و لایه‌ها",
                 icon = Icons.Default.Layers,
                 isSelected = selectedTab == 0,
                 activeColor = accentColor,
@@ -148,8 +155,8 @@ fun LayerManagerSheet(
                 modifier = Modifier.weight(1f)
             )
             TabButton(
-                text = "Offline / ذخیره",
-                icon = Icons.Default.OfflineBolt,
+                text = "مسیرها (${savedTracks.size})",
+                icon = Icons.Default.DirectionsWalk,
                 isSelected = selectedTab == 1,
                 activeColor = accentColor,
                 textColor = textColor,
@@ -157,8 +164,8 @@ fun LayerManagerSheet(
                 modifier = Modifier.weight(1f)
             )
             TabButton(
-                text = "Walks / مسیرها",
-                icon = Icons.Default.DirectionsWalk,
+                text = "ابزارها و آمار",
+                icon = Icons.Default.Straighten,
                 isSelected = selectedTab == 2,
                 activeColor = accentColor,
                 textColor = textColor,
@@ -174,124 +181,112 @@ fun LayerManagerSheet(
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(scrollState),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             if (selectedTab == 0) {
-                // TAB 0: LAYER PROTOCOLS & STAC OPACITIES
-                
-                // RASTER TILES SELECTION CARD
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = cardColor),
-                    border = BorderStroke(0.5.dp, textColor.copy(alpha = 0.1f)),
-                    modifier = Modifier.fillMaxWidth()
+                // ==========================================
+                // 🚀 ACTION: QUICK MAP & VECTOR IMPORT BAR
+                // ==========================================
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                    // 1. Import MBTiles Button
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = accentColor.copy(alpha = 0.12f)
+                        ),
+                        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { onImportMbtilesClick() }
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Icon(imageVector = Icons.Default.Map, contentDescription = null, tint = accentColor, modifier = Modifier.size(16.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AddPhotoAlternate,
+                                    contentDescription = null,
+                                    tint = accentColor,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = "+ افزودن نقشه MBTiles",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = accentColor
+                                )
+                            }
                             Text(
-                                text = "BASEMAP RASTER PROVIDER / نوع نقشه پایه",
-                                fontSize = 11.sp,
-                                color = accentColor,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
+                                text = "تصاویر ماهواره‌ای و نقشه‌های ۱:۱۰۰k زمین‌شناسی",
+                                fontSize = 9.sp,
+                                color = textColor.copy(alpha = 0.7f),
+                                lineHeight = 12.sp
                             )
                         }
+                    }
 
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                mapProviders.take(2).forEach { provider ->
-                                    val isChosen = activeBaseMap == provider
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(if (isChosen) accentColor.copy(alpha = 0.15f) else Color.Transparent)
-                                            .border(1.dp, if (isChosen) accentColor else textColor.copy(alpha = 0.1f), RoundedCornerShape(6.dp))
-                                            .clickable { onBaseMapChange(provider) }
-                                            .padding(vertical = 10.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = provider,
-                                            fontSize = 11.sp,
-                                            fontWeight = if (isChosen) FontWeight.Bold else FontWeight.Normal,
-                                            color = if (isChosen) accentColor else textColor
-                                        )
-                                    }
-                                }
-                            }
-
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                mapProviders.drop(2).forEach { provider ->
-                                    val isChosen = activeBaseMap == provider
-                                    Box(
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(if (isChosen) accentColor.copy(alpha = 0.15f) else Color.Transparent)
-                                            .border(1.dp, if (isChosen) accentColor else textColor.copy(alpha = 0.1f), RoundedCornerShape(6.dp))
-                                            .clickable { onBaseMapChange(provider) }
-                                            .padding(vertical = 10.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = provider,
-                                            fontSize = 11.sp,
-                                            fontWeight = if (isChosen) FontWeight.Bold else FontWeight.Normal,
-                                            color = if (isChosen) accentColor else textColor
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(4.dp))
-                        
-                        // OPACITY SLIDER CONTROLLER
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    // 2. Import Vector (KMZ / GeoJSON) Button
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFF29B6F6).copy(alpha = 0.10f)
+                        ),
+                        border = BorderStroke(1.dp, Color(0xFF29B6F6).copy(alpha = 0.4f)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { onImportGisVectorClick() }
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Text(
-                                    text = "Basemap Opacity / شفافیت نقشه پایه",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = textColor.copy(alpha = 0.7f)
+                                Icon(
+                                    imageVector = Icons.Default.UploadFile,
+                                    contentDescription = null,
+                                    tint = Color(0xFF29B6F6),
+                                    modifier = Modifier.size(18.dp)
                                 )
                                 Text(
-                                    text = "${(activeBaseMapOpacity * 100).toInt()}%",
-                                    fontSize = 11.sp,
+                                    text = "+ افزودن وکتور GIS",
+                                    fontSize = 11.5.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = accentColor,
-                                    fontFamily = FontFamily.Monospace
+                                    color = Color(0xFF29B6F6)
                                 )
                             }
-                            Slider(
-                                value = activeBaseMapOpacity,
-                                onValueChange = onBaseMapOpacityChange,
-                                colors = SliderDefaults.colors(
-                                    thumbColor = accentColor,
-                                    activeTrackColor = accentColor,
-                                    inactiveTrackColor = textColor.copy(alpha = 0.1f)
-                                ),
-                                modifier = Modifier.height(24.dp)
+                            Text(
+                                text = "گسل‌ها، زون‌های کانسار، فایل‌های KMZ و GeoJSON",
+                                fontSize = 9.sp,
+                                color = textColor.copy(alpha = 0.7f),
+                                lineHeight = 12.sp
                             )
                         }
                     }
                 }
 
-                // MBTILES OVERLAYS CARD
+                // ==========================================
+                // 🗺️ SECTION 1: MY OFFLINE MBTILES MAPS
+                // ==========================================
                 Card(
                     colors = CardDefaults.cardColors(containerColor = cardColor),
-                    border = BorderStroke(0.5.dp, textColor.copy(alpha = 0.1f)),
+                    border = BorderStroke(0.5.dp, textColor.copy(alpha = 0.12f)),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -301,137 +296,159 @@ fun LayerManagerSheet(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(imageVector = Icons.Default.Layers, contentDescription = null, tint = accentColor, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.Layers, contentDescription = null, tint = accentColor, modifier = Modifier.size(18.dp))
                                 Text(
-                                    text = "OFFLINE MBTILES OVERLAYS / لایه‌های آفلاین MBTiles",
-                                    fontSize = 11.sp,
-                                    color = accentColor,
+                                    text = "نقشه‌های آفلاین من (MBTiles / SQLite)",
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
+                                    color = textColor
                                 )
                             }
-                            
-                            Button(
-                                onClick = onImportMbtilesClick,
-                                colors = ButtonDefaults.buttonColors(containerColor = accentColor.copy(alpha = 0.15f), contentColor = accentColor),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                shape = RoundedCornerShape(4.dp),
-                                modifier = Modifier.height(28.dp)
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(12.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Import / درون‌ریزی", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                            }
+                            Text(
+                                text = "${importedMbtilesFiles.size} نقشه",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = accentColor,
+                                fontFamily = FontFamily.Monospace
+                            )
                         }
 
                         if (importedMbtilesFiles.isEmpty()) {
-                            Text(
-                                text = "هنوز نقشه آفلاینی وارد نشده است. با زدن دکمه درون‌ریزی، فایل‌های MBTiles (خروجی SAS.Planet و QGIS) را مستقیماً لود کنید تا بدون نیاز به اینترنت نمایش داده شوند.\nNo MBTiles maps imported yet. Use 'Import' button above to load .mbtiles or .sqlite files directly into the app.",
-                                fontSize = 10.sp,
-                                color = textColor.copy(alpha = 0.6f),
-                                lineHeight = 14.sp,
-                                modifier = Modifier.padding(vertical = 4.dp)
-                            )
+                            // Helpful instructions for first-time use
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(textColor.copy(alpha = 0.03f), RoundedCornerShape(8.dp))
+                                    .border(1.dp, textColor.copy(alpha = 0.06f), RoundedCornerShape(8.dp))
+                                    .padding(12.dp)
+                            ) {
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(
+                                        text = "هنوز فایل نقشه‌ای وارد نشده است.",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = textColor.copy(alpha = 0.8f)
+                                    )
+                                    Text(
+                                        text = "• برای نمایش آفلاین کامل، فایل‌های .mbtiles یا .sqlite (خروجی SAS.Planet، QGIS یا Global Mapper) را با دکمه بالا وارد کنید.\n• فایل‌های نقشه زمین‌شناسی و تصاویر ماهواره‌ای با هر حجمی بدون نیاز به اینترنت لود می‌شوند.",
+                                        fontSize = 10.sp,
+                                        color = textColor.copy(alpha = 0.6f),
+                                        lineHeight = 15.sp
+                                    )
+                                }
+                            }
                         } else {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                                 importedMbtilesFiles.forEach { file ->
                                     val fileName = file.name
                                     val isActive = activeMbtiles.containsKey(fileName)
                                     val opacity = activeMbtiles[fileName] ?: 1.0f
-                                    
+                                    val sizeMb = String.format(Locale.US, "%.1f", file.length() / (1024.0 * 1024.0))
+
                                     Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .background(textColor.copy(alpha = 0.03f), RoundedCornerShape(6.dp))
-                                            .padding(8.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(if (isActive) accentColor.copy(alpha = 0.07f) else textColor.copy(alpha = 0.03f))
+                                            .border(1.dp, if (isActive) accentColor.copy(alpha = 0.4f) else textColor.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+                                            .padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
+                                        // Header Row: Status, File Name, and Delete
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                                modifier = Modifier.weight(1f)
+                                                modifier = Modifier.weight(1f),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Checkbox(
-                                                    checked = isActive,
-                                                    onCheckedChange = { onToggleMbtilesActive(fileName, it) },
-                                                    colors = CheckboxDefaults.colors(checkedColor = accentColor),
-                                                    modifier = Modifier.size(24.dp)
+                                                Icon(
+                                                    imageVector = if (isActive) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                                    contentDescription = null,
+                                                    tint = if (isActive) accentColor else textColor.copy(alpha = 0.4f),
+                                                    modifier = Modifier.size(18.dp)
                                                 )
-                                                Spacer(modifier = Modifier.width(2.dp))
-                                                val sizeMb = file.length().toDouble() / (1024.0 * 1024.0)
-                                                val sizeStr = if (sizeMb >= 1.0) String.format(Locale.US, "%.1f MB", sizeMb) else String.format(Locale.US, "%.0f KB", file.length() / 1024.0)
-                                                Column(modifier = Modifier.weight(1f)) {
+                                                Column {
                                                     Text(
                                                         text = fileName,
-                                                        fontSize = 11.sp,
+                                                        fontSize = 11.5.sp,
                                                         fontWeight = FontWeight.Bold,
                                                         color = textColor,
                                                         maxLines = 1,
                                                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                                     )
-                                                    Row(
-                                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                                        verticalAlignment = Alignment.CenterVertically
-                                                    ) {
-                                                        Text(
-                                                            text = sizeStr,
-                                                            fontSize = 9.sp,
-                                                            color = textColor.copy(alpha = 0.5f),
-                                                            fontFamily = FontFamily.Monospace
-                                                        )
-                                                        if (isActive) {
-                                                            Text(
-                                                                text = "• فعال روی نقشه",
-                                                                fontSize = 9.sp,
-                                                                color = accentColor,
-                                                                fontWeight = FontWeight.Bold
-                                                            )
-                                                        }
-                                                    }
+                                                    Text(
+                                                        text = "$sizeMb MB • ${if (isActive) "فعال روی نقشه" else "غیرفعال"}",
+                                                        fontSize = 9.5.sp,
+                                                        color = if (isActive) accentColor else textColor.copy(alpha = 0.5f),
+                                                        fontFamily = FontFamily.Monospace
+                                                    )
                                                 }
                                             }
-                                            
-                                            IconButton(
-                                                onClick = { onDeleteMbtiles(fileName) },
-                                                modifier = Modifier.size(24.dp)
+
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                                             ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Delete,
-                                                    contentDescription = "Delete",
-                                                    tint = Color.Red.copy(alpha = 0.7f),
-                                                    modifier = Modifier.size(16.dp)
+                                                Switch(
+                                                    checked = isActive,
+                                                    onCheckedChange = { onToggleMbtilesActive(fileName, it) },
+                                                    colors = SwitchDefaults.colors(
+                                                        checkedThumbColor = Color.White,
+                                                        checkedTrackColor = accentColor,
+                                                        uncheckedThumbColor = textColor.copy(alpha = 0.4f),
+                                                        uncheckedTrackColor = textColor.copy(alpha = 0.1f)
+                                                    ),
+                                                    modifier = Modifier.scaleScaleHelper()
                                                 )
+                                                IconButton(
+                                                    onClick = { onDeleteMbtiles(fileName) },
+                                                    modifier = Modifier.size(28.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.DeleteOutline,
+                                                        contentDescription = "حذف نقشه",
+                                                        tint = Color(0xFFEF5350).copy(alpha = 0.8f),
+                                                        modifier = Modifier.size(16.dp)
+                                                    )
+                                                }
                                             }
                                         }
-                                        
+
+                                        // Opacity Slider (Only if active)
                                         if (isActive) {
+                                            Divider(color = textColor.copy(alpha = 0.06f))
                                             Row(
-                                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Text(
-                                                    text = "Opacity: ${(opacity * 100).toInt()}%",
+                                                    text = "شفافیت نقشه (Opacity)",
                                                     fontSize = 10.sp,
-                                                    color = textColor.copy(alpha = 0.6f),
-                                                    fontFamily = FontFamily.Monospace,
-                                                    modifier = Modifier.width(68.dp)
+                                                    color = textColor.copy(alpha = 0.7f)
                                                 )
-                                                Slider(
-                                                    value = opacity,
-                                                    onValueChange = { onMbtilesOpacityChange(fileName, it) },
-                                                    colors = SliderDefaults.colors(
-                                                        thumbColor = accentColor,
-                                                        activeTrackColor = accentColor,
-                                                        inactiveTrackColor = textColor.copy(alpha = 0.1f)
-                                                    ),
-                                                    modifier = Modifier.height(18.dp).weight(1f)
+                                                Text(
+                                                    text = "${(opacity * 100).toInt()}%",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = accentColor,
+                                                    fontFamily = FontFamily.Monospace
                                                 )
                                             }
+                                            Slider(
+                                                value = opacity,
+                                                onValueChange = { onMbtilesOpacityChange(fileName, it) },
+                                                colors = SliderDefaults.colors(
+                                                    thumbColor = accentColor,
+                                                    activeTrackColor = accentColor,
+                                                    inactiveTrackColor = textColor.copy(alpha = 0.12f)
+                                                ),
+                                                modifier = Modifier.height(20.dp)
+                                            )
                                         }
                                     }
                                 }
@@ -440,489 +457,247 @@ fun LayerManagerSheet(
                     }
                 }
 
-                // GIS VECTOR OVERLAYS VISIDILITY
+                // ==========================================
+                // 📍 SECTION 2: IMPORTED VECTOR OVERLAYS
+                // ==========================================
                 Card(
                     colors = CardDefaults.cardColors(containerColor = cardColor),
-                    border = BorderStroke(0.5.dp, textColor.copy(alpha = 0.1f)),
+                    border = BorderStroke(0.5.dp, textColor.copy(alpha = 0.12f)),
+                    shape = RoundedCornerShape(12.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(imageVector = Icons.Default.FilterFrames, contentDescription = null, tint = accentColor, modifier = Modifier.size(16.dp))
-                            Text(
-                                text = "VECTOR DATA VISIBILITY / قابلیت رویت لایه‌ها",
-                                fontSize = 11.sp,
-                                color = accentColor,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
-                            )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Timeline, contentDescription = null, tint = Color(0xFF29B6F6), modifier = Modifier.size(18.dp))
+                                Text(
+                                    text = "لایه‌های وکتور فعال (GeoJSON / KMZ)",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = textColor
+                                )
+                            }
+                            if (importedFeaturesCount > 0) {
+                                TextButton(
+                                    onClick = onClearImportedFeatures,
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                    modifier = Modifier.height(24.dp)
+                                ) {
+                                    Text("پاک‌سازی وکتورها", fontSize = 10.sp, color = Color(0xFFEF5350))
+                                }
+                            }
                         }
 
-                        OverlaySwitchRow(
-                            label = "Coordinate Grid lines / بیضی شبکه قائم UTM",
-                            checked = showGrids,
-                            onCheckedChange = onToggleGrids,
-                            textColor = textColor,
-                            accentColor = accentColor
+                        if (importedFeaturesCount > 0) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFF29B6F6).copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF29B6F6), modifier = Modifier.size(16.dp))
+                                    Text(
+                                        text = "$importedFeaturesCount عارضه وکتور در حال حاضر روی نقشه ترسیم شده است",
+                                        fontSize = 10.5.sp,
+                                        color = textColor
+                                    )
+                                }
+                            }
+                        } else {
+                            Text(
+                                text = "هیچ لایه وکتوری لود نشده است. با دکمه «+ افزودن وکتور GIS» بالا می‌توانید خطوط گسل، عوارض لیتولوژی و فایل‌های گوگل ارث (KMZ/KML) را اضافه کنید.",
+                                fontSize = 10.sp,
+                                color = textColor.copy(alpha = 0.6f),
+                                lineHeight = 14.sp
+                            )
+                        }
+                    }
+                }
+
+                // ==========================================
+                // ⚙️ SECTION 3: GEOLOGICAL SYMBOLS & GRIDS
+                // ==========================================
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = cardColor),
+                    border = BorderStroke(0.5.dp, textColor.copy(alpha = 0.12f)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "عوارض و نمادهای ساختاری نقشه",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = textColor
                         )
 
                         OverlaySwitchRow(
-                            label = "Stations & Field Outcrops / ایستگاه‌ها و برون‌زدها",
-                            checked = showStations,
-                            onCheckedChange = onToggleStations,
-                            textColor = textColor,
-                            accentColor = accentColor
-                        )
-
-                        OverlaySwitchRow(
-                            label = "Bedding Strike-Dips / شیب و امتداد لایه‌ها",
+                            label = "نمادهای شیب و امتداد لایه‌بندی (Strike & Dip)",
                             checked = showSymbols,
                             onCheckedChange = onToggleSymbols,
                             textColor = textColor,
                             accentColor = accentColor
                         )
 
+                        Divider(color = textColor.copy(alpha = 0.05f))
+
                         OverlaySwitchRow(
-                            label = "Fault Contacts & Lines / گسل‌ها و درزه‌های فعال",
+                            label = "نمایش ایستگاه‌های مشاهداتی پروژه (Stations)",
+                            checked = showStations,
+                            onCheckedChange = onToggleStations,
+                            textColor = textColor,
+                            accentColor = accentColor
+                        )
+
+                        Divider(color = textColor.copy(alpha = 0.05f))
+
+                        OverlaySwitchRow(
+                            label = "خطوط و امتداد گسل‌های زمین‌شناسی (Faults)",
                             checked = showFaultLines,
                             onCheckedChange = onToggleFaultLines,
                             textColor = textColor,
+                            accentColor = Color(0xFFEF5350)
+                        )
+
+                        Divider(color = textColor.copy(alpha = 0.05f))
+
+                        OverlaySwitchRow(
+                            label = "شبکه‌بندی مختصات UTM (UTM Grid Lines)",
+                            checked = showGrids,
+                            onCheckedChange = onToggleGrids,
+                            textColor = textColor,
                             accentColor = accentColor
                         )
                     }
                 }
 
-                // GIS SEED DEMO CONTROL
+                // ==========================================
+                // 🌐 SECTION 4: DEFAULT BASEMAP PROVIDER
+                // ==========================================
                 Card(
                     colors = CardDefaults.cardColors(containerColor = cardColor),
-                    modifier = Modifier.fillMaxWidth(),
-                    border = BorderStroke(0.5.dp, textColor.copy(alpha = 0.05f))
+                    border = BorderStroke(0.5.dp, textColor.copy(alpha = 0.12f)),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSeedDemoDataset() }
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(accentColor.copy(alpha = 0.15f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(imageVector = Icons.Default.BackupTable, contentDescription = null, tint = accentColor, modifier = Modifier.size(18.dp))
-                        }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Load Representative Outcrop Dataset",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = textColor
-                            )
-                            Text(
-                                text = "Instantly populates active grids with test structural beddings.",
-                                fontSize = 10.sp,
-                                color = textColor.copy(alpha = 0.5f)
-                            )
-                        }
-                        Icon(imageVector = Icons.Default.ChevronRight, contentDescription = null, tint = textColor.copy(alpha = 0.3f))
-                    }
-                }
-
-            } else if (selectedTab == 1) {
-                // TAB 1: LOCAL OFFLINE CACHE STORAGE ENGINE
-                
-                // FORCE OFFLINE DISCONNECT / SYSTEM STATUS CARD
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = cardColor),
-                    border = BorderStroke(1.dp, if (offlineModeForce) accentColor else textColor.copy(alpha = 0.1f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(if (offlineModeForce) Color(0xFFFFA726) else Color(0xFF66BB6A))
-                                )
-                                Text(
-                                    text = if (offlineModeForce) "SYSTEM OFFLINE: ENFORCED (HIGH-RISK SAFE) / آفلاین اجباری" else "CONNECTED FIELD WORKSTATION / کارگاه زمین‌شناسی متصل",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (offlineModeForce) Color(0xFFFFA726) else Color(0xFF66BB6A),
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                        }
-
-                        OverlaySwitchRow(
-                            label = "Force Offline Safe Mode / اجبار کارکرد کامل آفلاین",
-                            checked = offlineModeForce,
-                            onCheckedChange = { onToggleOfflineModeForce(it) },
-                            textColor = textColor,
-                            accentColor = accentColor
-                        )
-                        Text(
-                            text = "تمام اتصالات یا پردازش‌های همگام‌سازی نقشه پایه را مسدود می‌کند. نقشه را کاملاً متکی بر حافظه آفلاین و SQLite محلی کرده تا بدون هیچ ریسکی در عمق معدن کار کنید.",
-                            fontSize = 9.5.sp,
-                            color = textColor.copy(alpha = 0.5f),
-                            lineHeight = 13.sp
-                        )
-
-                        Divider(color = textColor.copy(alpha = 0.05f), modifier = Modifier.padding(vertical = 4.dp))
-
-                        OverlaySwitchRow(
-                            label = "Draw Cached Map Boundaries / رسم محدوده بسته‌های نقشه",
-                            checked = showOfflineBoundaries,
-                            onCheckedChange = { onToggleOfflineBoundaries(it) },
-                            textColor = textColor,
-                            accentColor = accentColor
-                        )
-                    }
-                }
-
-                // GEOLOGICAL SURVEY LOCATIONS TILE CACHER CARD
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = cardColor),
-                    border = BorderStroke(1.dp, accentColor.copy(alpha = 0.4f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Row(
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(imageVector = Icons.Default.CloudDownload, contentDescription = null, tint = accentColor, modifier = Modifier.size(18.dp))
-                                Text(
-                                    text = "SURVEY LOCATIONS OFFLINE CACHE",
-                                    fontSize = 11.sp,
-                                    color = accentColor,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(accentColor.copy(alpha = 0.2f))
-                                    .padding(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = "${surveyStationsList.size} STATIONS ON RECORD",
-                                    fontSize = 9.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = accentColor,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                        }
-
-                        Text(
-                            text = "ذخیره‌سازی و کش خودکار کاشی‌های نقشه توپوگرافی و ماهواره‌ای برای محدوده کل ایستگاه‌های زمین‌شناسی ثبت‌شده جهت کار در مناطق بدون پوشش شبکه.",
-                            fontSize = 11.sp,
-                            color = textColor.copy(alpha = 0.7f),
-                            lineHeight = 15.sp
-                        )
-
-                        var surveyRadiusKm by remember { mutableStateOf(2.0) }
-                        var surveyCacheName by remember { mutableStateOf("") }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("شعاع پوشش هر ایستگاه / Radius:", fontSize = 10.5.sp, color = textColor.copy(alpha = 0.8f))
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                listOf(1.0, 2.0, 5.0).forEach { r ->
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .background(if (surveyRadiusKm == r) accentColor else textColor.copy(alpha = 0.1f))
-                                            .clickable { surveyRadiusKm = r }
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                    ) {
-                                        Text(
-                                            text = "${r.toInt()} km",
-                                            fontSize = 9.5.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (surveyRadiusKm == r) Color.Black else textColor
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        OutlinedTextField(
-                            value = surveyCacheName,
-                            onValueChange = { surveyCacheName = it },
-                            placeholder = { Text("مثلاً: ایستگاه‌های زون A", fontSize = 11.sp) },
-                            label = { Text("نام بسته نقشه ایستگاه‌ها", fontSize = 11.sp) },
-                            singleLine = true,
-                            enabled = !isDownloading,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = accentColor,
-                                unfocusedBorderColor = textColor.copy(alpha = 0.2f),
-                                focusedLabelColor = accentColor,
-                                focusedTextColor = textColor,
-                                unfocusedTextColor = textColor
-                            ),
-                            shape = RoundedCornerShape(6.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Button(
-                            onClick = {
-                                onDownloadSurveyLocationsTiles(
-                                    surveyStationsList,
-                                    surveyRadiusKm,
-                                    listOf("OSM", "OTM", "Satellite"),
-                                    surveyCacheName
-                                )
-                                surveyCacheName = ""
-                            },
-                            enabled = !isDownloading && surveyStationsList.isNotEmpty(),
-                            colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.Black),
-                            shape = RoundedCornerShape(6.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(imageVector = Icons.Default.Map, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
-                                Text(
-                                    text = if (surveyStationsList.isEmpty()) "ایستگاهی برای دانلود یافت نشد" else "ذخیره آفلاین کاشی‌های نقشه تمام ایستگاه‌ها (${surveyStationsList.size} نقطه)",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // DOWNLOADING ENGINE / SIMULATOR PACKET COMPILER
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = cardColor),
-                    border = BorderStroke(0.5.dp, textColor.copy(alpha = 0.1f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(imageVector = Icons.Default.BookmarkBorder, contentDescription = null, tint = accentColor, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Public, contentDescription = null, tint = accentColor, modifier = Modifier.size(16.dp))
                             Text(
-                                text = "OFFLINE COMPILER & DOWNLOADER / دانلودکننده آفلاین",
-                                fontSize = 11.sp,
-                                color = accentColor,
+                                text = "نقشه پایه زمینه (Basemap Provider)",
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace
+                                color = textColor
                             )
                         }
 
-                        Text(
-                            text = "تنفس و دانلود نقشه ماهواره‌ای/توپوگرافی در شعاع ۵ کیلومتری موقعیت طرح جهت استفاده بدون دسترسی به شبکه تلفن همراه.",
-                            fontSize = 11.sp,
-                            color = textColor.copy(alpha = 0.6f)
-                        )
-
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            mapProviders.forEach { provider ->
+                                val isChosen = activeBaseMap == provider
+                                val label = when {
+                                    provider.contains("Google", ignoreCase = true) -> "گوگل ماهواره"
+                                    provider.contains("Esri", ignoreCase = true) -> "اسری ماهواره"
+                                    provider.contains("Topo", ignoreCase = true) -> "توپوگرافی"
+                                    else -> "آفلاین تراز"
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(if (isChosen) accentColor.copy(alpha = 0.15f) else textColor.copy(alpha = 0.03f))
+                                        .border(1.dp, if (isChosen) accentColor else textColor.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+                                        .clickable { onBaseMapChange(provider) }
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontSize = 10.sp,
+                                        fontWeight = if (isChosen) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isChosen) accentColor else textColor.copy(alpha = 0.7f)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Basemap Opacity
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "Bound Lat: ${currentLat.toString().take(7)} | Lon: ${currentLon.toString().take(7)}",
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Medium,
-                                color = textColor.copy(alpha = 0.7f)
-                            )
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(3.dp))
-                                    .background(accentColor.copy(alpha = 0.15f))
-                                    .padding(horizontal = 4.dp, vertical = 2.dp)
-                            ) {
-                                Text(
-                                    text = "GRID RANGE: 5 KM",
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = accentColor,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
+                            Text("شفافیت نقشه زمینه", fontSize = 10.5.sp, color = textColor.copy(alpha = 0.7f))
+                            Text("${(activeBaseMapOpacity * 100).toInt()}%", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = accentColor, fontFamily = FontFamily.Monospace)
                         }
-
-                        var inputRegionName by remember { mutableStateOf("") }
-                        
-                        OutlinedTextField(
-                            value = inputRegionName,
-                            onValueChange = { inputRegionName = it },
-                            placeholder = { Text("E.g. Northern Fold Quad-2", fontSize = 11.sp) },
-                            label = { Text("Offline Packet Label / نام بسته آفلاین", fontSize = 11.sp) },
-                            singleLine = true,
-                            enabled = !isDownloading,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = accentColor,
-                                unfocusedBorderColor = textColor.copy(alpha = 0.2f),
-                                focusedLabelColor = accentColor,
-                                focusedTextColor = textColor,
-                                unfocusedTextColor = textColor
+                        Slider(
+                            value = activeBaseMapOpacity,
+                            onValueChange = onBaseMapOpacityChange,
+                            colors = SliderDefaults.colors(
+                                thumbColor = accentColor,
+                                activeTrackColor = accentColor,
+                                inactiveTrackColor = textColor.copy(alpha = 0.1f)
                             ),
-                            shape = RoundedCornerShape(6.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.height(20.dp)
                         )
-
-                        if (isDownloading) {
-                            Column(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = downloadStatusText,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = accentColor,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                    Text(
-                                        text = "${(downloadProgress * 100).toInt()}%",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = textColor,
-                                        fontFamily = FontFamily.Monospace
-                                    )
-                                }
-                                LinearProgressIndicator(
-                                    progress = downloadProgress,
-                                    color = accentColor,
-                                    trackColor = textColor.copy(alpha = 0.1f),
-                                    modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp))
-                                )
-                            }
-                        } else {
-                            Button(
-                                onClick = {
-                                    onDownloadRegion(inputRegionName, listOf("OSM", "Satellite"), 5.0, 15, currentLat, currentLon)
-                                    inputRegionName = ""
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = accentColor, contentColor = Color.Black),
-                                shape = RoundedCornerShape(6.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(imageVector = Icons.Default.DownloadForOffline, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
-                                    Text("شروع دانلود بسته نقشه / START DOWNLOAD", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                }
-                            }
-                        }
                     }
                 }
 
-                // DOWNLOADED OFFLINE MAP PACKETS LIST
-                Text(
-                    text = "STORED REGIONAL SECTOR CACHES (${downloadedRegionsList.size})",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = textColor.copy(alpha = 0.5f),
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.padding(top = 4.dp, start = 4.dp)
-                )
-
-                if (downloadedRegionsList.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .border(BorderStroke(1.dp, textColor.copy(alpha = 0.05f)), RoundedCornerShape(8.dp))
-                            .background(cardColor.copy(alpha = 0.5f))
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(imageVector = Icons.Default.CloudQueue, contentDescription = null, tint = textColor.copy(alpha = 0.2f), modifier = Modifier.size(32.dp))
-                            Text(
-                                text = "No local offline map packages compiled",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = textColor.copy(alpha = 0.4f)
-                            )
-                        }
-                    }
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        downloadedRegionsList.forEach { region ->
-                            OfflineRegionItem(
-                                region = region,
-                                onDelete = { onDeleteRegion(region.id) },
-                                isOutdoor = isOutdoorMode,
-                                accentColor = accentColor,
-                                cardColor = cardColor,
-                                textColor = textColor
-                            )
-                        }
-                    }
-                }
-            } else {
-                // TAB 2: SAVED TRACKS & EXPORTS
+            } else if (selectedTab == 1) {
+                // ==========================================
+                // 🚶 TAB 1: SAVED TRACKS & ELEVATION PROFILES
+                // ==========================================
                 if (savedTracks.isEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .border(BorderStroke(1.dp, textColor.copy(alpha = 0.05f)), RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(12.dp))
+                            .border(BorderStroke(1.dp, textColor.copy(alpha = 0.08f)), RoundedCornerShape(12.dp))
                             .background(cardColor.copy(alpha = 0.5f))
-                            .padding(24.dp),
+                            .padding(28.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Icon(imageVector = Icons.Default.DirectionsWalk, contentDescription = null, tint = textColor.copy(alpha = 0.2f), modifier = Modifier.size(32.dp))
+                            Icon(imageVector = Icons.Default.DirectionsWalk, contentDescription = null, tint = textColor.copy(alpha = 0.25f), modifier = Modifier.size(36.dp))
                             Text(
                                 text = "هیچ مسیر حرکت ذخیره شده‌ای یافت نشد",
-                                fontSize = 11.5.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = textColor
                             )
                             Text(
-                                text = "جهت شروع ضبط مسیر، از منوی ابزار نقشه اقدام کنید.",
-                                fontSize = 9.5.sp,
+                                text = "برای ضبط مسیر پیمایش، از دکمه ضبط در منوی ابزار نقشه استفاده کنید.",
+                                fontSize = 10.sp,
                                 color = textColor.copy(alpha = 0.5f)
                             )
                         }
@@ -936,6 +711,7 @@ fun LayerManagerSheet(
                             Card(
                                 colors = CardDefaults.cardColors(containerColor = cardColor),
                                 border = BorderStroke(0.5.dp, textColor.copy(alpha = 0.1f)),
+                                shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Row(
@@ -1052,99 +828,114 @@ fun LayerManagerSheet(
                         }
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun OfflineRegionItem(
-    region: OfflineRegion,
-    onDelete: () -> Unit,
-    isOutdoor: Boolean,
-    accentColor: Color,
-    cardColor: Color,
-    textColor: Color
-) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = cardColor),
-        border = BorderStroke(0.5.dp, textColor.copy(alpha = 0.1f)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier.padding(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(
-                modifier = Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color(0xFF2E7D32).copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
+            } else {
+                // ==========================================
+                // 🛠️ TAB 2: FIELD TOOLS & EXPORT
+                // ==========================================
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.CloudDone,
-                        contentDescription = "Saved offline",
-                        tint = Color(0xFF4CAF50),
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-                
-                Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                     Text(
-                        text = region.name,
-                        fontSize = 12.sp,
+                        text = "ابزارهای اندازه‌گیری و محاسبات مهندسی / MEASUREMENT TOOLS",
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = textColor
+                        color = accentColor
                     )
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "${region.sizeMb} MB",
-                            fontSize = 10.sp,
-                            color = Color(0xFF4CAF50),
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                        Text(
-                            text = region.zoomRange,
-                            fontSize = 9.sp,
-                            color = textColor.copy(alpha = 0.5f),
-                            fontFamily = FontFamily.Monospace
-                        )
-                        Text(
-                            text = "• ${region.dateDownloaded}",
-                            fontSize = 9.sp,
-                            color = textColor.copy(alpha = 0.4f)
-                        )
-                    }
-                    Text(
-                        text = "Lat: [${region.minLat}~${region.maxLat}] | Lon: [${region.minLon}~${region.maxLon}]",
-                        fontSize = 8.5.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = textColor.copy(alpha = 0.4f)
-                    )
-                }
-            }
 
-            IconButton(
-                onClick = onDelete,
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.DeleteForever,
-                    contentDescription = "Delete cache",
-                    tint = Color(0xFFEF5350).copy(alpha = 0.8f),
-                    modifier = Modifier.size(18.dp)
-                )
+                    // 1. Distance Ruler
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = cardColor),
+                        border = BorderStroke(0.5.dp, textColor.copy(alpha = 0.12f)),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth().clickable { onStartRuler() }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(Icons.Default.Straighten, contentDescription = null, tint = accentColor, modifier = Modifier.size(24.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("خط‌کش اندازه‌گیری مسافت (Distance Ruler)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = textColor)
+                                Text("سنجش فاصله بین چند نقطه روی نقشه با کلیک روی عوارض", fontSize = 10.sp, color = textColor.copy(alpha = 0.6f))
+                            }
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = textColor.copy(alpha = 0.4f))
+                        }
+                    }
+
+                    // 2. Area Measurement
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = cardColor),
+                        border = BorderStroke(0.5.dp, textColor.copy(alpha = 0.12f)),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth().clickable { onStartArea() }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(Icons.Default.AllOut, contentDescription = null, tint = Color(0xFFE91E63), modifier = Modifier.size(24.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("مساحی و محاسبه مساحت محدوده (Area Measurement)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = textColor)
+                                Text("محاسبه مساحت زون کانی‌سازی، کانسار یا رخنمون به هکتار و مترمربع", fontSize = 10.sp, color = textColor.copy(alpha = 0.6f))
+                            }
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = textColor.copy(alpha = 0.4f))
+                        }
+                    }
+
+                    Divider(color = textColor.copy(alpha = 0.08f), modifier = Modifier.padding(vertical = 4.dp))
+
+                    Text(
+                        text = "آمار و خروجی پروژه / PROJECT STATS & EXPORT",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = accentColor
+                    )
+
+                    // 3. Project Stats Dashboard
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = cardColor),
+                        border = BorderStroke(0.5.dp, textColor.copy(alpha = 0.12f)),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth().clickable { onShowStats() }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(Icons.Default.BarChart, contentDescription = null, tint = Color(0xFF29B6F6), modifier = Modifier.size(24.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("داشبورد آماری پروژه (Project Statistics)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = textColor)
+                                Text("تعداد ایستگاه‌ها، نمونه‌ها، ساختارهای ثبت‌شده و خلاصه پیمایش", fontSize = 10.sp, color = textColor.copy(alpha = 0.6f))
+                            }
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = textColor.copy(alpha = 0.4f))
+                        }
+                    }
+
+                    // 4. Export GIS
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = cardColor),
+                        border = BorderStroke(0.5.dp, textColor.copy(alpha = 0.12f)),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.fillMaxWidth().clickable { onExportData() }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(Icons.Default.CloudUpload, contentDescription = null, tint = Color(0xFFFF9800), modifier = Modifier.size(24.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("استخراج خروجی نقشه‌ها (Export GPX / KML)", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = textColor)
+                                Text("خروجی ایستگاه‌ها، مسیرها و نقاط برای ArcGIS, QGIS و Google Earth", fontSize = 10.sp, color = textColor.copy(alpha = 0.6f))
+                            }
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = textColor.copy(alpha = 0.4f))
+                        }
+                    }
+                }
             }
         }
     }
@@ -1165,9 +956,9 @@ private fun TabButton(
     
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(bg)
-            .border(0.5.dp, borderCol, RoundedCornerShape(6.dp))
+            .border(0.5.dp, borderCol, RoundedCornerShape(8.dp))
             .clickable { onClick() }
             .padding(vertical = 8.dp),
         contentAlignment = Alignment.Center
@@ -1180,7 +971,7 @@ private fun TabButton(
                 imageVector = icon,
                 contentDescription = null,
                 tint = if (isSelected) activeColor else textColor.copy(alpha = 0.6f),
-                modifier = Modifier.size(14.dp)
+                modifier = Modifier.size(15.dp)
             )
             Text(
                 text = text,
@@ -1204,21 +995,21 @@ private fun OverlaySwitchRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onCheckedChange(!checked) }
-            .padding(vertical = 4.dp),
+            .padding(vertical = 3.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = label,
-            fontSize = 11.5.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
             color = textColor
         )
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
             colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.Black,
+                checkedThumbColor = Color.White,
                 checkedTrackColor = accentColor,
                 uncheckedThumbColor = textColor.copy(alpha = 0.4f),
                 uncheckedTrackColor = textColor.copy(alpha = 0.1f)
@@ -1230,6 +1021,5 @@ private fun OverlaySwitchRow(
 
 @Composable
 private fun Modifier.scaleScaleHelper(): Modifier {
-    // scale switch down slightly for elegant tight layout spacing
     return this.height(24.dp).padding(vertical = 0.dp)
 }

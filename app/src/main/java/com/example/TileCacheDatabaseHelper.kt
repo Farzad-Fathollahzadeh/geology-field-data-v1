@@ -102,6 +102,24 @@ class TileCacheDatabaseHelper private constructor(context: Context) :
             e.printStackTrace()
         }
     }
+
+    fun getCacheStats(): Pair<Int, Long> {
+        return try {
+            val db = readableDatabase
+            db.rawQuery("SELECT COUNT(*), COALESCE(SUM(LENGTH($COLUMN_DATA)), 0) FROM $TABLE_TILE_CACHE", null).use { c ->
+                if (c.moveToFirst()) Pair(c.getInt(0), c.getLong(1)) else Pair(0, 0L)
+            }
+        } catch (_: Exception) {
+            Pair(0, 0L)
+        }
+    }
+
+    fun clearCache() {
+        memoryCache.evictAll()
+        try {
+            writableDatabase.delete(TABLE_TILE_CACHE, null, null)
+        } catch (_: Exception) {}
+    }
 }
 
 data class TileData(val data: ByteArray, val contentType: String)

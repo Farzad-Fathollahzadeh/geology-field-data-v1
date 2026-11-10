@@ -240,6 +240,12 @@ fun ToolsContent(
                 text = { Text(if (isFarsiMode) "توسعه‌دهنده" else "Developer", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                 icon = { Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(18.dp)) }
             )
+            Tab(
+                selected = selectedToolTab == 12,
+                onClick = { selectedToolTab = 12 },
+                text = { Text(if (isFarsiMode) "نقشه‌های کاربر" else "Custom Maps", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                icon = { Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp)) }
+            )
         }
 
         Divider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f))
@@ -259,6 +265,13 @@ fun ToolsContent(
                 9 -> StructuralGeometryCalculator(isFarsiMode)
                 10 -> GeotechConverter()
                 11 -> DeveloperProfilePage()
+                12 -> {
+                    UserMapImportCenterSheet(
+                        viewModel = viewModel,
+                        onDismiss = { selectedToolTab = 0 },
+                        isOutdoorMode = false
+                    )
+                }
             }
         }
     }
